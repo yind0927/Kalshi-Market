@@ -1,5 +1,5 @@
 /* ============================================================
- * Kalshi Weather — Server-side Kalshi proxy (v3 — auto-discover)
+ * Kalshi Weather — Server-side Kalshi proxy (v4 — robust discovery)
  *
  * ENV (one pair required):
  *   KALSHI_KEY_ID + KALSHI_PRIVATE_KEY  ← RSA API key (recommended)
@@ -12,9 +12,6 @@ const BASE = "https://trading-api.kalshi.com/trade-api/v2";
 // ── RSA-PSS signing ───────────────────────────────────────────
 function buildRsaHeaders(method, path) {
   const ts  = Date.now().toString();
-  // Kalshi signs: timestamp + METHOD + /trade-api/v2<path>  (full URL path, no host)
-  // Some implementations sign with query string, some without.
-  // We sign the path AS PASSED so caller controls what gets signed.
   const msg = ts + method.toUpperCase() + path;
   const pem = (process.env.KALSHI_PRIVATE_KEY || "").replace(/\\n/g, "\n");
   const key = crypto.createPrivateKey(pem);
@@ -29,7 +26,7 @@ function buildRsaHeaders(method, path) {
   };
 }
 
-// ── JWT Token (email+password fallback) ──────────────────────
+// ── JWT Token fallback ────────────────────────────────────────
 let _token = null, _tokenExp = 0;
 async function getJwtToken() {
   if (_token && Date.now() < _tokenExp) return _token;
@@ -80,61 +77,117 @@ function normaliseMarket(m) {
   };
 }
 
-// ── Auto-discover: 4-step fallback strategy ───────────────────
-// Returns { markets[], resolvedTicker, debug{} }
-//
-// Strategy (in order):
-//  ① Exact event ticker         /markets?event_ticker=KXHIGHMIA-26MAY26
-//  ② series_ticker + open       /markets?series_ticker=KXHIGHMIA&status=open   ← confirmed Kalshi param
-//  ③ series_ticker no filter    /markets?series_ticker=KXHIGHMIA               ← catches settled
-//  ④ events endpoint fallback   /events?series_ticker=KXHIGHMIA + per-event lookup
+// ── Date helpers ─────────────────────────────────────────────
+const MONTHS_ABB = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+function todayKalshiSuffix() {
+  // Returns YYMONDD in UTC — e.g. "26MAY26" for May 26 2026
+  const now = new Date();
+  const yy  = String(now.getUTCFullYear()).slice(2);
+  const mon = MONTHS_ABB[now.getUTCMonth()];
+  const dd  = String(now.getUTCDate()).padStart(2, "0");
+  return `${yy}${mon}${dd}`;
+}
+
+// ── Group markets by event_ticker ─────────────────────────────
+function groupByEvent(markets) {
+  const groups = {};
+  for (const m of markets) {
+    const et = m.event_ticker || "unknown";
+    if (!groups[et]) groups[et] = [];
+    groups[et].push(m);
+  }
+  return groups;
+}
+
+// Pick today's group, or fall back to the largest group in the result set
+function pickBestGroup(groups, todayEventTicker) {
+  // Exact match for today
+  if (groups[todayEventTicker]?.length) {
+    return { markets: groups[todayEventTicker], ticker: todayEventTicker };
+  }
+  // Partial match (e.g. event ticker uses a different suffix format)
+  const todaySuffix = todayEventTicker.split("-").slice(1).join("-");
+  for (const [et, mks] of Object.entries(groups)) {
+    if (et.includes(todaySuffix)) return { markets: mks, ticker: et };
+  }
+  // Last resort: group with most markets (most likely today's event)
+  const best = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length)[0];
+  return best ? { markets: groups[best], ticker: best } : { markets: [], ticker: null };
+}
+
+// ── Main discovery (4-step, series_ticker as primary) ─────────
+// Confirmed working approach from Kalshi weather-trading bots:
+//   GET /markets?series_ticker=KXHIGHNY&status=open&limit=200
+// (event_ticker filter is unreliable/not always supported as query param)
 async function findMarkets(ticker) {
   const dbg = { tried: [], errors: [] };
 
-  // ① Exact event ticker (fastest path — works for NYC, may return empty for others)
-  try {
-    dbg.tried.push(`event:${ticker}`);
-    const d = await kalshiGet(`/markets?event_ticker=${encodeURIComponent(ticker)}&limit=20`);
-    if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: ticker, dbg };
-    dbg.errors.push(`${ticker}: 0 markets`);
-  } catch (e) { dbg.errors.push(`${ticker}: ${e.message}`); }
-
   // Extract series prefix: KXHIGHMIA-26MAY26 → KXHIGHMIA
   const sm = ticker.match(/^([A-Z0-9]+)-/);
-  if (!sm) return { markets: [], resolvedTicker: ticker, dbg };
-  const series = sm[1];
+  const series = sm ? sm[1] : ticker;
 
-  // ② series_ticker + status=open (documented Kalshi approach, returns today's live markets)
+  // Compute today's canonical event ticker server-side
+  // (don't trust the client-supplied date in ticker)
+  const todaySuffix      = todayKalshiSuffix();
+  const todayEventTicker = `${series}-${todaySuffix}`;
+  dbg.series         = series;
+  dbg.todayTicker    = todayEventTicker;
+  dbg.requestedTicker = ticker;
+
+  // ① series_ticker + status=open — primary confirmed approach
+  //   Returns all currently open markets for the series (may include today + tomorrow);
+  //   group by event_ticker to isolate today's markets.
   try {
-    dbg.tried.push(`${series}?status=open`);
-    const d = await kalshiGet(`/markets?series_ticker=${encodeURIComponent(series)}&status=open&limit=20`);
-    if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: `${series}[open]`, dbg };
+    dbg.tried.push(`${series}?open`);
+    const d = await kalshiGet(
+      `/markets?series_ticker=${encodeURIComponent(series)}&status=open&limit=200`
+    );
+    dbg.openCount = d.markets?.length ?? 0;
+    if (d.markets?.length > 0) {
+      const groups = groupByEvent(d.markets);
+      dbg.openEvents = Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.length]));
+      const { markets, ticker: resolved } = pickBestGroup(groups, todayEventTicker);
+      if (markets.length > 0) return { markets, resolvedTicker: resolved, dbg };
+    }
     dbg.errors.push(`${series} open: 0 markets`);
   } catch (e) { dbg.errors.push(`${series} open: ${e.message}`); }
 
-  // ③ series_ticker without status (catches settled/closed markets — market already resolved today)
+  // ② Direct event_ticker lookup (today's server-computed ticker)
+  try {
+    dbg.tried.push(`event:${todayEventTicker}`);
+    const d = await kalshiGet(
+      `/markets?event_ticker=${encodeURIComponent(todayEventTicker)}&limit=20`
+    );
+    if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: todayEventTicker, dbg };
+    dbg.errors.push(`${todayEventTicker}: 0 markets`);
+  } catch (e) { dbg.errors.push(`${todayEventTicker}: ${e.message}`); }
+
+  // ③ Client-supplied ticker (may differ from server-computed; fallback for NYC-like cases)
+  if (ticker !== todayEventTicker) {
+    try {
+      dbg.tried.push(`event:${ticker}`);
+      const d = await kalshiGet(
+        `/markets?event_ticker=${encodeURIComponent(ticker)}&limit=20`
+      );
+      if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: ticker, dbg };
+      dbg.errors.push(`${ticker}: 0 markets`);
+    } catch (e) { dbg.errors.push(`${ticker}: ${e.message}`); }
+  }
+
+  // ④ series_ticker without status filter (catches already-settled markets for today)
   try {
     dbg.tried.push(`${series}?all`);
-    const d = await kalshiGet(`/markets?series_ticker=${encodeURIComponent(series)}&limit=20`);
-    if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: `${series}[all]`, dbg };
+    const d = await kalshiGet(
+      `/markets?series_ticker=${encodeURIComponent(series)}&limit=200`
+    );
+    if (d.markets?.length > 0) {
+      const groups = groupByEvent(d.markets);
+      dbg.allEvents = Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.length]));
+      const { markets, ticker: resolved } = pickBestGroup(groups, todayEventTicker);
+      if (markets.length > 0) return { markets, resolvedTicker: resolved, dbg };
+    }
     dbg.errors.push(`${series} all: 0 markets`);
   } catch (e) { dbg.errors.push(`${series} all: ${e.message}`); }
-
-  // ④ Events endpoint fallback (last resort — less reliable but catches edge cases)
-  try {
-    dbg.tried.push(`events:${series}`);
-    const ed = await kalshiGet(`/events?series_ticker=${encodeURIComponent(series)}&limit=10`);
-    const events = ed.events || [];
-    dbg.seriesEvents = events.map(ev => ev.event_ticker);
-    for (const ev of events) {
-      if (ev.event_ticker === ticker) continue;
-      try {
-        const d = await kalshiGet(`/markets?event_ticker=${encodeURIComponent(ev.event_ticker)}&limit=20`);
-        if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: ev.event_ticker, dbg };
-        dbg.errors.push(`${ev.event_ticker}: 0 markets`);
-      } catch (e2) { dbg.errors.push(`${ev.event_ticker}: ${e2.message}`); }
-    }
-  } catch (e) { dbg.errors.push(`events ${series}: ${e.message}`); }
 
   return { markets: [], resolvedTicker: ticker, dbg };
 }
@@ -143,7 +196,6 @@ async function findMarkets(ticker) {
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  // No caching — market prices change every few seconds
   res.setHeader("Cache-Control", "no-store, no-cache");
 
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -163,17 +215,14 @@ module.exports = async function handler(req, res) {
 
     const payload = {
       markets,
-      resolvedTicker,               // may differ from requested ticker if auto-discovered
+      resolvedTicker,
       requestedTicker: ticker,
       fetchedAt: new Date().toISOString(),
       authMethod: hasKey ? "api-key" : "jwt",
       ...(showDebug ? { debug: dbg } : {}),
     };
 
-    // If empty, include debug info automatically so the UI can surface it
-    if (markets.length === 0) {
-      payload.debug = dbg;
-    }
+    if (markets.length === 0) payload.debug = dbg;
 
     return res.status(200).json(payload);
   } catch (e) {

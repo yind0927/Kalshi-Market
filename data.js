@@ -1,23 +1,32 @@
-// Kalshi Weather — mock data (redesign build)
-// All numbers are illustrative.
+// Kalshi Weather — static config + seed data
+// Market tickers are generated dynamically so the app always uses today's date.
+
+// ── Build today's Kalshi date suffix (YYMONDD, local time) ──
+const _KD = (() => {
+  const d = new Date();
+  const mon = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  const yy  = String(d.getFullYear()).slice(2);
+  const mmm = mon[d.getMonth()];
+  const dd  = String(d.getDate()).padStart(2, "0");
+  return `${yy}${mmm}${dd}`;  // e.g. "26MAY26"
+})();
 
 window.KW_DATA = {
-  lastUpdated: "2026-05-26 22:15 BJT",
+  lastUpdated: new Date().toLocaleDateString("zh-CN") + " BJT",
   marketStatus: "OPEN",
 
-  // Current BJT decimal hour (mock "now" for demo — ~22:45 BJT)
-  bjtNow: 22.78,
+  bjtNow: ((new Date().getUTCHours() + 8) % 24) + new Date().getUTCMinutes() / 60,
 
   tradingWindow: { startH: 19, endH: 26 }, // 19:00–02:00 BJT (02:00 = 26 normalized)
 
   markets: [
     // ─────────────────────────────── NEW YORK ────────────────────────────────
     {
-      id: "KXHIGHNY-26MAY26",
+      id: `KXHIGHNY-${_KD}`,
       city: "New York",
       cnCity: "纽约",
       airport: "KNYC · Central Park",
-      date: "May 26, 2026",
+      date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
       timezone: "ET",
       tzLabel: "EDT (UTC−4)",
       bjtOffset: -12,
@@ -56,11 +65,11 @@ window.KW_DATA = {
 
     // ─────────────────────────────── MIAMI ───────────────────────────────────
     {
-      id: "KXHIGHMIA-26MAY26",
+      id: `KXHIGHMIA-${_KD}`,
       city: "Miami",
       cnCity: "迈阿密",
       airport: "KMIA · Miami Intl",
-      date: "May 26, 2026",
+      date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
       timezone: "ET",
       tzLabel: "EDT (UTC−4)",
       bjtOffset: -12,
@@ -97,11 +106,11 @@ window.KW_DATA = {
 
     // ─────────────────────────────── CHICAGO ─────────────────────────────────
     {
-      id: "KXHIGHCHI-26MAY26",
+      id: `KXHIGHCHI-${_KD}`,
       city: "Chicago",
       cnCity: "芝加哥",
       airport: "KMDW · Midway Airport",
-      date: "May 26, 2026",
+      date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
       timezone: "CT",
       tzLabel: "CDT (UTC−5)",
       bjtOffset: -13,
@@ -138,11 +147,11 @@ window.KW_DATA = {
 
     // ─────────────────────────────── AUSTIN ──────────────────────────────────
     {
-      id: "KXHIGHAUS-26MAY26",
+      id: `KXHIGHAUS-${_KD}`,
       city: "Austin",
       cnCity: "奥斯汀",
       airport: "KAUS · Austin-Bergstrom",
-      date: "May 26, 2026",
+      date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
       timezone: "CT",
       tzLabel: "CDT (UTC−5)",
       bjtOffset: -13,
@@ -179,11 +188,11 @@ window.KW_DATA = {
 
     // ─────────────────────────────── DALLAS ──────────────────────────────────
     {
-      id: "KXHIGHTDAL-26MAY26",
+      id: `KXHIGHTDAL-${_KD}`,
       city: "Dallas",
       cnCity: "达拉斯",
       airport: "KDFW · Dallas/Fort Worth",
-      date: "May 26, 2026",
+      date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
       timezone: "CT",
       tzLabel: "CDT (UTC−5)",
       bjtOffset: -13,
@@ -220,11 +229,11 @@ window.KW_DATA = {
 
     // ─────────────────────────────── LOS ANGELES ─────────────────────────────
     {
-      id: "KXHIGHLAX-26MAY26",
+      id: `KXHIGHLAX-${_KD}`,
       city: "Los Angeles",
       cnCity: "洛杉矶",
       airport: "KLAX · LA Intl",
-      date: "May 26, 2026",
+      date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
       timezone: "PT",
       tzLabel: "PDT (UTC−7)",
       bjtOffset: -15,
