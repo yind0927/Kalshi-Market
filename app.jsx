@@ -19,6 +19,51 @@ const totalAbsEdge = (m) =>
   m.buckets.reduce((s, b) => s + Math.abs(b.model - b.market), 0) / 2;
 
 /* ─────────────────────────────────────────────────────────
+ * BJT / Timing helpers
+ * ───────────────────────────────────────────────────────── */
+function getCurrentBJTDecimal() {
+  const now = new Date();
+  const utcDecimal = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+  return (utcDecimal + 8) % 24;
+}
+
+function formatBJTDisplay(dec) {
+  const h = Math.floor(dec < 0 ? dec + 24 : dec) % 24;
+  const m = Math.floor(((dec % 1) + 1) % 1 * 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function normH(h) { return h < 7 ? h + 24 : h; } // normalize for timeline math
+
+function isInWindow(bjtDec) { return bjtDec >= 19 || bjtDec < 2; }
+
+function getPlaybookStatus(market, bjtDec) {
+  const maxE = maxEdgeBucket(market);
+  const edgePP = Math.abs(maxE.model - maxE.market) * 100;
+  const now = normH(bjtDec);
+  const [es, ee] = market.entryWindowBJT;
+  const inWin = now >= es && now < ee;
+  const soonWin = !inWin && es > now && (es - now) < 2;
+  if (edgePP < 4) return "skip";
+  if (inWin && edgePP >= 9) return "act";
+  if ((inWin || soonWin) && edgePP >= 4) return "watch";
+  if (!inWin && edgePP >= 8) return "late";
+  return "skip";
+}
+
+function windowStatusLabel(market, bjtDec) {
+  const now = normH(bjtDec);
+  const [es, ee] = market.entryWindowBJT;
+  const [ps] = market.peakTimeBJT;
+  if (now >= es && now < ee) return { text: "入场窗口 ✓", cls: "active" };
+  if (now < es) {
+    const hh = Math.floor(es % 24);
+    return { text: `${String(hh).padStart(2, "0")}:00 入场`, cls: "pre" };
+  }
+  return { text: `峰值前 ${(ps - now).toFixed(1)}h`, cls: "post" };
+}
+
+/* ─────────────────────────────────────────────────────────
  * Reusable
  * ───────────────────────────────────────────────────────── */
 function EdgePill({ value, large }) {
@@ -39,14 +84,12 @@ function EdgePill({ value, large }) {
 const US_PATH = "M 90 95 L 180 82 L 300 78 L 420 80 L 490 95 L 560 105 L 615 100 L 680 110 L 710 130 L 685 155 L 665 185 L 655 215 L 640 245 L 620 280 L 610 310 L 615 335 L 635 355 L 632 380 L 605 375 L 600 358 L 575 348 L 510 350 L 450 360 L 380 375 L 320 358 L 260 340 L 200 315 L 130 295 L 95 270 L 75 235 L 60 195 L 65 155 L 75 120 Z";
 
 const CITY_COORDS = {
-  "Boston":       [675, 170],
-  "New York":     [645, 198],
-  "Philadelphia": [625, 218],
-  "Chicago":      [470, 145],
-  "Denver":       [275, 200],
-  "Austin":       [385, 315],
-  "Miami":        [617, 365],
-  "Los Angeles":  [108, 268],
+  "New York":    [645, 198],
+  "Miami":       [617, 365],
+  "Chicago":     [470, 145],
+  "Austin":      [382, 302],
+  "Dallas":      [390, 273],
+  "Los Angeles": [108, 268],
 };
 
 function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
@@ -150,7 +193,7 @@ function MapHero({ markets, onOpen }) {
         <div className="map-card-actions">
           <button className="chip">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            8 cities
+            6 cities
           </button>
           <button className="chip">Heatmap</button>
         </div>
@@ -261,7 +304,7 @@ function LocationCard({ market }) {
             </span>
             <div>
               <div className="loc-l">Settles on · 结算时间</div>
-              <div className="loc-v">{market.date} · 23:59 ET</div>
+              <div className="loc-v">{market.date} · 23:59 {market.timezone}</div>
             </div>
           </div>
         </div>
@@ -272,9 +315,12 @@ function LocationCard({ market }) {
 
 function regionCode(city) {
   return {
-    "New York": "NY", "Boston": "MA", "Philadelphia": "PA",
-    "Chicago": "IL", "Denver": "CO", "Austin": "TX",
-    "Miami": "FL", "Los Angeles": "CA",
+    "New York": "NY",
+    "Chicago": "IL",
+    "Austin": "TX",
+    "Dallas": "TX",
+    "Miami": "FL",
+    "Los Angeles": "CA",
   }[city] || "";
 }
 
@@ -297,15 +343,186 @@ function Spark({ series, color = "var(--ink-3)", w = 72, h = 30 }) {
 }
 
 /* ─────────────────────────────────────────────────────────
+ * Tonight's Playbook
+ * ───────────────────────────────────────────────────────── */
+function TonightPlaybook({ markets, bjtDec, openAnalysis }) {
+  const groups = [
+    { key: "act",   label: "立即入场", en: "Act Now",     cls: "pos"    },
+    { key: "watch", label: "关注观望", en: "Watch",       cls: "warn"   },
+    { key: "late",  label: "稍后入场", en: "Enter Later", cls: "accent" },
+    { key: "skip",  label: "今日跳过", en: "Skip",        cls: "flat"   },
+  ];
+  const rows = markets.map((m) => {
+    const maxE = maxEdgeBucket(m);
+    return { m, maxE, edge: maxE.model - maxE.market, status: getPlaybookStatus(m, bjtDec) };
+  });
+  const inWindow = isInWindow(bjtDec);
+
+  return (
+    <div className="card playbook-card">
+      <div className="playbook-head">
+        <div>
+          <div className="hero-eyebrow">Tonight's Playbook · 今晚操作板</div>
+          <h2>当前交易建议</h2>
+        </div>
+        <div className="pb-time">
+          <div className="pb-bjt">
+            {formatBJTDisplay(bjtDec)} <span className="bjt-unit">BJT</span>
+          </div>
+          <div className={`window-badge ${inWindow ? "active" : ""}`}>
+            {inWindow ? (
+              <><span className="wd" />主力窗口</>
+            ) : (
+              "窗口外"
+            )}
+          </div>
+        </div>
+      </div>
+
+      {groups.map((g) => {
+        const items = rows.filter((r) => r.status === g.key);
+        if (!items.length) return null;
+        return (
+          <div className="pb-group" key={g.key}>
+            <div className={`pb-group-head ${g.cls}`}>
+              <span className="pb-dot" />
+              <span>{g.label}</span>
+              <span className="pb-group-en">{g.en}</span>
+              <span className="pb-count">{items.length}</span>
+            </div>
+            {items.map(({ m, maxE, edge }) => {
+              const ws = windowStatusLabel(m, bjtDec);
+              return (
+                <div className="pb-city-row" key={m.id} onClick={() => openAnalysis(m.id)}>
+                  <div className="pb-city-name">
+                    {m.city} <span className="cn">{m.cnCity}</span>
+                  </div>
+                  <div className="pb-bucket">{maxE.range}</div>
+                  <div className="pb-nums">
+                    <span className="pb-market">{Math.round(maxE.market * 100)}¢</span>
+                    <span className="pb-sep">vs</span>
+                    <span className="pb-model">{Math.round(maxE.model * 100)}%</span>
+                  </div>
+                  <EdgePill value={edge} />
+                  <div className="pb-meta">{ws.text}</div>
+                  <div className="pb-arrow">→</div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+ * City Timeline
+ * ───────────────────────────────────────────────────────── */
+function CityTimeline({ markets, bjtDec }) {
+  const TL_S = 19, TL_E = 31, TL_SPAN = 12;
+  const toX = (h) => ((normH(h) - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
+  const now = normH(bjtDec);
+  const ticks = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
+
+  return (
+    <div className="card tl-card">
+      <div className="tl-card-head">
+        <div>
+          <h3>City Trading Timeline <em>城市交易时间轴</em></h3>
+          <div className="sub">北京时间 (BJT) · 绿色 = 最佳入场窗口 · ▲ = 高温峰值</div>
+        </div>
+        <div className="tl-legend">
+          <span><i className="tl-i entry" /> 入场窗口</span>
+          <span><i className="tl-i model-upd" /> 12z模型</span>
+        </div>
+      </div>
+
+      <div className="tl-wrap">
+        {/* Trading window background */}
+        <div
+          className="tl-window-bg"
+          style={{
+            left: toX(19),
+            width: `${((26 - 19) / TL_SPAN * 100).toFixed(2)}%`,
+          }}
+        />
+        {/* 12z model update line */}
+        <div className="tl-model-line" style={{ left: toX(23) }}>
+          <div className="tl-model-label">12z GFS</div>
+        </div>
+        {/* Now line */}
+        {now >= TL_S && now <= TL_E && (
+          <div
+            className="tl-now-line"
+            style={{ left: `${((now - TL_S) / TL_SPAN * 100).toFixed(2)}%` }}
+          >
+            <div className="tl-now-label">NOW</div>
+          </div>
+        )}
+        {/* Hour axis */}
+        <div className="tl-axis">
+          {ticks.map((h) => {
+            const hn = normH(h);
+            if (hn < TL_S || hn > TL_E) return null;
+            return (
+              <div
+                key={h}
+                className="tl-tick"
+                style={{ left: `${((hn - TL_S) / TL_SPAN * 100).toFixed(2)}%` }}
+              >
+                <span>{String(h).padStart(2, "0")}:00</span>
+              </div>
+            );
+          })}
+        </div>
+        {/* City rows */}
+        {markets.map((m) => {
+          const [es, ee] = m.entryWindowBJT;
+          const [ps] = m.peakTimeBJT;
+          const eeClamp = Math.min(ee, TL_E);
+          const esN = normH(es);
+          const eeN = normH(eeClamp);
+          const barW = ((eeN - esN) / TL_SPAN * 100).toFixed(2);
+          const peakN = normH(ps);
+          const peakX = peakN <= TL_E ? `${((peakN - TL_S) / TL_SPAN * 100).toFixed(2)}%` : null;
+          return (
+            <div className="tl-row" key={m.id}>
+              <div className="tl-row-label">
+                <span className="tl-city">{m.city}</span>
+                <span className="tl-cn">{m.cnCity}</span>
+                <span className="tl-tz">{m.timezone}</span>
+              </div>
+              <div className="tl-track">
+                <div
+                  className={`tl-bar entry ${m.windowStatus}`}
+                  style={{ left: toX(es), width: barW + "%" }}
+                />
+                {peakX && (
+                  <div className="tl-peak-marker" style={{ left: peakX }}>
+                    <svg width="9" height="9" viewBox="0 0 9 9">
+                      <polygon points="4.5,0 9,9 0,9" fill="var(--ink-2)" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
  * Top bar
  * ───────────────────────────────────────────────────────── */
-function TopBar({ tab, setTab, theme, setTheme, openSettings }) {
+function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec }) {
   return (
     <header className="topbar">
       <div className="brand">
         <div className="brand-mark" aria-label="Kalshi Weather logo">
           <svg viewBox="0 0 32 32" width="22" height="22" fill="currentColor">
-            {/* Cloud built from overlapping circles + flat base — clean modern shape */}
             <path d="M9.5 23.5h13a5 5 0 0 0 .8-9.94 6.5 6.5 0 0 0 -12.43 -1.4A4.75 4.75 0 0 0 9.5 23.5z" />
           </svg>
         </div>
@@ -329,6 +546,18 @@ function TopBar({ tab, setTab, theme, setTheme, openSettings }) {
       </div>
 
       <div className="topbar-right">
+        <div className="bjt-clock">
+          <div className="bjt-time">{formatBJTDisplay(bjtDec)}</div>
+          <div className="bjt-label">BJT 北京时间</div>
+        </div>
+        <div className={`window-badge ${isInWindow(bjtDec) ? "active" : ""}`}>
+          {isInWindow(bjtDec) ? (
+            <><span className="wd" />主力窗口</>
+          ) : (
+            "窗口外"
+          )}
+        </div>
+        <div className="divider-v" />
         <button
           className="icon-btn"
           title={theme === "dark" ? "Switch to light" : "Switch to dark"}
@@ -359,12 +588,13 @@ function TopBar({ tab, setTab, theme, setTheme, openSettings }) {
 /* ─────────────────────────────────────────────────────────
  * Market card
  * ───────────────────────────────────────────────────────── */
-function MarketCard({ market, onOpen }) {
+function MarketCard({ market, onOpen, bjtDec }) {
   const maxE = maxEdgeBucket(market);
   const edge = maxE.model - maxE.market;
   const best = bestBucket(market);
   const series = DATA.hourlySeries[market.city];
   const maxBucketVal = Math.max(...market.buckets.flatMap((b) => [b.market, b.model]));
+  const wsInfo = windowStatusLabel(market, bjtDec);
 
   return (
     <div className="mkt-card" onClick={onOpen}>
@@ -374,6 +604,10 @@ function MarketCard({ market, onOpen }) {
             {market.city} <span className="cn">{market.cnCity}</span>
           </div>
           <div className="mkt-card-id">{market.id} · {market.airport}</div>
+          <div className="mkt-card-badges">
+            <span className="tz-badge">{market.timezone}</span>
+            <span className={`window-status-badge ${wsInfo.cls}`}>{wsInfo.text}</span>
+          </div>
         </div>
         <EdgePill value={edge} large />
       </div>
@@ -391,6 +625,13 @@ function MarketCard({ market, onOpen }) {
         <div className="mkt-temp-spark">
           <Spark series={series} color="var(--accent)" w={84} h={36} />
         </div>
+      </div>
+
+      <div className="mkt-keyvar">
+        <span className="kv-label">{market.keyVar.labelCN}</span>
+        <span className={`kv-signal ${market.keyVar.signal}`} />
+        <span className="kv-val">{market.keyVar.value}</span>
+        <span className="kv-cn">{market.keyVar.valueCN}</span>
       </div>
 
       <div className="mkt-dist">
@@ -437,7 +678,7 @@ function MarketCard({ market, onOpen }) {
 /* ─────────────────────────────────────────────────────────
  * Markets view
  * ───────────────────────────────────────────────────────── */
-function MarketsView({ openAnalysis }) {
+function MarketsView({ openAnalysis, bjtDec }) {
   const [filter, setFilter] = useState("all");
   const filtered = useMemo(() => {
     let arr = [...DATA.markets];
@@ -447,29 +688,16 @@ function MarketsView({ openAnalysis }) {
     return arr;
   }, [filter]);
 
-  const totalVol = DATA.markets.reduce((s, m) => s + m.volume, 0);
   const avgEdge = DATA.markets.reduce((s, m) => s + totalAbsEdge(m), 0) / DATA.markets.length;
   const top = DATA.markets
     .map((m) => ({ m, e: Math.max(...m.buckets.map((b) => b.model - b.market)) }))
     .sort((a, b) => b.e - a.e)[0];
+  const activeCount = DATA.markets.filter((m) => m.windowStatus === "active").length;
 
   return (
     <div className="view" data-screen-label="markets">
-      <div className="hero">
-        <div>
-          <div className="hero-eyebrow">May 25, 2026 · Daily high temperature</div>
-          <h1>
-            Today's Markets
-            <em>今日天气合约 · 共 {DATA.markets.length} 个市场</em>
-          </h1>
-          <div className="hero-sub">
-            实时追踪 Kalshi 平台上美国主要城市的「当日最高气温」合约，对比模型概率与市场价格，挖掘定价偏差机会。
-          </div>
-        </div>
-        <div className="hero-meta">
-          <span>Updated <strong>{DATA.lastUpdated}</strong></span>
-        </div>
-      </div>
+
+      <TonightPlaybook markets={DATA.markets} bjtDec={bjtDec} openAnalysis={openAnalysis} />
 
       <div className="kpis">
         <div className="kpi">
@@ -478,7 +706,7 @@ function MarketsView({ openAnalysis }) {
             <span className="cn">跟踪市场</span>
           </div>
           <div className="kpi-value">{DATA.markets.length}</div>
-          <div className="kpi-foot">8 US cities · daily high</div>
+          <div className="kpi-foot">6 US cities · daily high</div>
         </div>
         <div className="kpi">
           <div className="kpi-label">
@@ -498,17 +726,19 @@ function MarketsView({ openAnalysis }) {
         </div>
         <div className="kpi">
           <div className="kpi-label">
-            <span className="en">24h Volume</span>
-            <span className="cn">成交量</span>
+            <span className="en">Active Cities</span>
+            <span className="cn">活跃城市</span>
           </div>
-          <div className="kpi-value">${fmtVolume(totalVol)}</div>
-          <div className="kpi-foot">across {DATA.markets.length} contract sets</div>
+          <div className="kpi-value">{activeCount}</div>
+          <div className="kpi-foot">窗口内 · {DATA.markets.length - activeCount} 待入场</div>
         </div>
       </div>
 
+      <CityTimeline markets={DATA.markets} bjtDec={bjtDec} />
+
       <div className="section-head">
         <div>
-          <h2>Edge Opportunities <em>价差机会</em></h2>
+          <h2>市场一览 <em>Market Overview</em></h2>
           <div className="section-sub">按模型预测概率与市场价格之差排序</div>
         </div>
         <div className="section-actions">
@@ -520,7 +750,7 @@ function MarketsView({ openAnalysis }) {
 
       <div className="card-grid">
         {filtered.map((m) => (
-          <MarketCard key={m.id} market={m} onOpen={() => openAnalysis(m.id)} />
+          <MarketCard key={m.id} market={m} bjtDec={bjtDec} onOpen={() => openAnalysis(m.id)} />
         ))}
       </div>
     </div>
@@ -596,7 +826,7 @@ function HourlyChart({ market }) {
   const obsPath = obsPoints.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
   const areaPath = obsPath + ` L${obsPoints[obsPoints.length - 1][0]} ${H - padB} L${obsPoints[0][0]} ${H - padB} Z`;
 
-  const lastIdx = series.findLastIndex((v) => v != null);
+  const lastIdx = series.findLastIndex ? series.findLastIndex((v) => v != null) : series.reduce((acc, v, i) => (v != null ? i : acc), 0);
   const forecastIdx = 16;
   const fcPath = `M${xFor(lastIdx)} ${yFor(market.currentObs)} L${xFor(forecastIdx)} ${yFor(market.forecastHigh)}`;
 
@@ -604,7 +834,8 @@ function HourlyChart({ market }) {
   for (let v = minV; v <= maxV; v += 5) ticks.push(v);
 
   const open = series[0];
-  const delta = market.currentObs - series[6];
+  const sixHourIdx = Math.min(6, lastIdx);
+  const delta = market.currentObs - (series[sixHourIdx] || series[0]);
 
   return (
     <div className="card">
@@ -659,7 +890,7 @@ function HourlyChart({ market }) {
         <div className="obs-stat">
           <div className="l">Δ since 06:00</div>
           <div className="v pos">+{delta}°<span style={{ fontSize: 12, color: "var(--ink-3)" }}>F</span></div>
-          <div className="vs">past 8 hours</div>
+          <div className="vs">past 6 hours</div>
         </div>
         <div className="obs-stat">
           <div className="l">Forecast · 预测峰值</div>
@@ -674,7 +905,7 @@ function HourlyChart({ market }) {
 /* ─────────────────────────────────────────────────────────
  * Analysis view
  * ───────────────────────────────────────────────────────── */
-function AnalysisView({ marketId, setMarketId }) {
+function AnalysisView({ marketId, setMarketId, bjtDec }) {
   const market = DATA.markets.find((m) => m.id === marketId) || DATA.markets[0];
   const maxE = maxEdgeBucket(market);
   const edge = maxE.model - maxE.market;
@@ -709,6 +940,7 @@ function AnalysisView({ marketId, setMarketId }) {
           </div>
           <div className="ana-hero-tags">
             <span className="ana-tag">{market.airport}</span>
+            <span className="ana-tag">{market.timezone} · {market.tzLabel}</span>
             <span className="ana-tag">{market.modelConsensus}</span>
             <span className="ana-tag">conf {Math.round(market.forecastConf * 100)}%</span>
             <span className="ana-tag">vol ${fmtVolume(market.volume)}</span>
@@ -1105,7 +1337,7 @@ function SettingsDrawer({ open, onClose, theme, setTheme }) {
             <SectionHead title="About" cn="关于"
               icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>} />
             <SettingsRow label="Version" cn="版本">
-              <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-2)" }}>v0.4.2 · build 1183</span>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-2)" }}>v0.5.0 · build 1200</span>
             </SettingsRow>
             <SettingsRow label="Status page" cn="服务状态">
               <a href="#" style={{ fontSize: 12, color: "var(--accent-ink)", textDecoration: "none" }}>status.kw.io ↗</a>
@@ -1145,6 +1377,12 @@ function App() {
   const [theme, setTheme] = useState(TWEAK_DEFAULTS.theme);
   const [marketId, setMarketId] = useState(DATA.markets[0].id);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bjtDec, setBjtDec] = useState(getCurrentBJTDecimal());
+
+  useEffect(() => {
+    const t = setInterval(() => setBjtDec(getCurrentBJTDecimal()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     const t = theme === "system"
@@ -1168,11 +1406,18 @@ function App() {
 
   return (
     <div className="app">
-      <TopBar tab={tab} setTab={setTab} theme={theme} setTheme={setTheme} openSettings={() => setSettingsOpen(true)} />
+      <TopBar
+        tab={tab}
+        setTab={setTab}
+        theme={theme}
+        setTheme={setTheme}
+        openSettings={() => setSettingsOpen(true)}
+        bjtDec={bjtDec}
+      />
       {tab === "markets" ? (
-        <MarketsView openAnalysis={openAnalysis} />
+        <MarketsView openAnalysis={openAnalysis} bjtDec={bjtDec} />
       ) : (
-        <AnalysisView marketId={marketId} setMarketId={setMarketId} />
+        <AnalysisView marketId={marketId} setMarketId={setMarketId} bjtDec={bjtDec} />
       )}
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} setTheme={setTheme} />
     </div>
