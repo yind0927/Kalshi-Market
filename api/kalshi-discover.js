@@ -11,7 +11,9 @@ async function getHeaders(method, path) {
   const pemRaw = (process.env.KALSHI_PRIVATE_KEY || "").replace(/\\n/g, "\n");
   if (keyId && pemRaw) {
     const ts  = Date.now().toString();
-    const msg = ts + method.toUpperCase() + path;
+    // Full path from API root, query params stripped (Kalshi spec)
+    const pathForSig = ("/trade-api/v2" + path).split("?")[0];
+    const msg = ts + method.toUpperCase() + pathForSig;
     const key = crypto.createPrivateKey(pemRaw);
     const sig = crypto.sign("SHA256", Buffer.from(msg), {
       key, padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
@@ -57,8 +59,8 @@ function summariseMarkets(markets) {
       subtitle: m.subtitle,
       event:    m.event_ticker,
       status:   m.status,
-      yes_bid:  m.yes_bid,
-      yes_ask:  m.yes_ask,
+      yes_bid:  m.yes_bid_dollars,
+      yes_ask:  m.yes_ask_dollars,
     })),
   };
 }

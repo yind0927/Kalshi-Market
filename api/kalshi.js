@@ -10,9 +10,12 @@ const crypto = require("crypto");
 const BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
 // ── RSA-PSS signing ───────────────────────────────────────────
-function buildRsaHeaders(method, path) {
+// Kalshi requires: timestamp + METHOD + /trade-api/v2/path  (NO query params)
+function buildRsaHeaders(method, apiPath) {
   const ts  = Date.now().toString();
-  const msg = ts + method.toUpperCase() + path;
+  // Full path from API root, query params stripped (Kalshi spec)
+  const pathForSig = ("/trade-api/v2" + apiPath).split("?")[0];
+  const msg = ts + method.toUpperCase() + pathForSig;
   const pem = (process.env.KALSHI_PRIVATE_KEY || "").replace(/\\n/g, "\n");
   const key = crypto.createPrivateKey(pem);
   const sig = crypto.sign("SHA256", Buffer.from(msg), {
@@ -75,8 +78,8 @@ function normaliseMarket(m) {
                     : m.result === "yes" ? 1.0
                     : m.result === "no"  ? 0.0
                     : null,
-    volume:       m.volume,
-    openInterest: m.open_interest,
+    volume:       m.volume_fp,
+    openInterest: m.open_interest_fp,
   };
 }
 
