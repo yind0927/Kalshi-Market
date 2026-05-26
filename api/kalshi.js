@@ -7,7 +7,7 @@
  * ========================================================== */
 
 const crypto = require("crypto");
-const BASE = "https://trading-api.kalshi.com/trade-api/v2";
+const BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
 // ── RSA-PSS signing ───────────────────────────────────────────
 function buildRsaHeaders(method, path) {
@@ -59,16 +59,19 @@ async function kalshiGet(apiPath) {
 }
 
 // ── Market data normaliser ────────────────────────────────────
+// As of March 2026, Kalshi uses _dollars fields (0.0–1.0) instead of integer cents.
 function normaliseMarket(m) {
+  const bid = m.yes_bid_dollars ?? null;
+  const ask = m.yes_ask_dollars ?? null;
   return {
     ticker:       m.ticker,
     subtitle:     m.subtitle,
     status:       m.status,
     result:       m.result,
-    yes_bid:      m.yes_bid  != null ? +(m.yes_bid  / 100).toFixed(4) : null,
-    yes_ask:      m.yes_ask  != null ? +(m.yes_ask  / 100).toFixed(4) : null,
-    mid:          m.yes_bid != null && m.yes_ask != null
-                    ? +((m.yes_bid + m.yes_ask) / 200).toFixed(4)
+    yes_bid:      bid != null ? +bid.toFixed(4) : null,
+    yes_ask:      ask != null ? +ask.toFixed(4) : null,
+    mid:          bid != null && ask != null
+                    ? +((bid + ask) / 2).toFixed(4)
                     : m.result === "yes" ? 1.0
                     : m.result === "no"  ? 0.0
                     : null,

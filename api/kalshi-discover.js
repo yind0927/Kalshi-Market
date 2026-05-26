@@ -3,7 +3,7 @@
  * Visit this URL after deploy to see exactly what Kalshi returns.
  * ========================================================== */
 const crypto = require("crypto");
-const BASE = "https://trading-api.kalshi.com/trade-api/v2";
+const BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
 let _token = null, _tokenExp = 0;
 async function getHeaders(method, path) {
