@@ -2386,3 +2386,65 @@ input { font-family: inherit; }
 .mkt-peak-row .peak-label { color: var(--ink-3); }
 .mkt-peak-row .peak-val { color: var(--ink-2); font-weight: 500; }
 .mkt-peak-row .peak-sep { color: var(--ink-4); }
+
+/* ============================================================
+ * Playbook — manual tag selector
+ * ========================================================== */
+.pb-city-row {
+  /* extend grid to fit tag selector between meta and arrow */
+  grid-template-columns: 150px 100px 1fr auto auto auto auto !important;
+}
+.pb-tag-selector {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.pb-tag-btn {
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--ink-4);
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+.pb-tag-btn:hover {
+  background: var(--bg-2);
+  color: var(--ink-2);
+  border-color: var(--border-strong);
+}
+/* Active states per category */
+.pb-tag-btn.act.active {
+  background: var(--pos-soft);
+  color: var(--pos);
+  border-color: color-mix(in oklab, var(--pos) 35%, var(--border));
+}
+.pb-tag-btn.watch.active {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: color-mix(in oklab, var(--warn) 35%, var(--border));
+}
+.pb-tag-btn.late.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-color: color-mix(in oklab, var(--accent) 35%, var(--border));
+}
+.pb-tag-btn.skip.active {
+  background: var(--bg-2);
+  color: var(--ink-3);
+  border-color: var(--border-strong);
+}
+@media (max-width: 1100px) {
+  .pb-tag-btn { font-size: 10px; padding: 2px 6px; }
+}
+@media (max-width: 900px) {
+  .pb-tag-selector { display: none; }
+  .pb-city-row {
+    grid-template-columns: 1fr auto auto !important;
+  }
+}

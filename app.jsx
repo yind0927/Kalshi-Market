@@ -38,17 +38,12 @@ function normH(h) { return h < 7 ? h + 24 : h; } // normalize for timeline math
 function isInWindow(bjtDec) { return bjtDec >= 19 || bjtDec < 2; }
 
 function getPlaybookStatus(market, bjtDec) {
+  // Conservative default: everything is "late" unless edge is negligible.
+  // Manual overrides in TonightPlaybook let the user reclassify.
   const maxE = maxEdgeBucket(market);
   const edgePP = Math.abs(maxE.model - maxE.market) * 100;
-  const now = normH(bjtDec);
-  const [es, ee] = market.entryWindowBJT;
-  const inWin = now >= es && now < ee;
-  const soonWin = !inWin && es > now && (es - now) < 2;
   if (edgePP < 4) return "skip";
-  if (inWin && edgePP >= 9) return "act";
-  if ((inWin || soonWin) && edgePP >= 4) return "watch";
-  if (!inWin && edgePP >= 8) return "late";
-  return "skip";
+  return "late";
 }
 
 function windowStatusLabel(market, bjtDec) {
@@ -345,18 +340,28 @@ function Spark({ series, color = "var(--ink-3)", w = 72, h = 30 }) {
 /* ─────────────────────────────────────────────────────────
  * Tonight's Playbook
  * ───────────────────────────────────────────────────────── */
+const PB_GROUPS = [
+  { key: "act",   label: "立即入场", en: "Act Now",     cls: "pos"    },
+  { key: "watch", label: "关注观望", en: "Watch",       cls: "warn"   },
+  { key: "late",  label: "稍后入场", en: "Enter Later", cls: "accent" },
+  { key: "skip",  label: "今日跳过", en: "Skip",        cls: "flat"   },
+];
+
 function TonightPlaybook({ markets, bjtDec, openAnalysis }) {
-  const groups = [
-    { key: "act",   label: "立即入场", en: "Act Now",     cls: "pos"    },
-    { key: "watch", label: "关注观望", en: "Watch",       cls: "warn"   },
-    { key: "late",  label: "稍后入场", en: "Enter Later", cls: "accent" },
-    { key: "skip",  label: "今日跳过", en: "Skip",        cls: "flat"   },
-  ];
+  // overrides: { [market.id]: "act"|"watch"|"late"|"skip" }
+  const [overrides, setOverrides] = useState({});
+  const inWindow = isInWindow(bjtDec);
+
   const rows = markets.map((m) => {
     const maxE = maxEdgeBucket(m);
-    return { m, maxE, edge: maxE.model - maxE.market, status: getPlaybookStatus(m, bjtDec) };
+    const autoStatus = getPlaybookStatus(m, bjtDec);
+    const status = overrides[m.id] || autoStatus;
+    return { m, maxE, edge: maxE.model - maxE.market, status };
   });
-  const inWindow = isInWindow(bjtDec);
+
+  const setOverride = (id, key) => {
+    setOverrides((prev) => ({ ...prev, [id]: key }));
+  };
 
   return (
     <div className="card playbook-card">
@@ -370,16 +375,12 @@ function TonightPlaybook({ markets, bjtDec, openAnalysis }) {
             {formatBJTDisplay(bjtDec)} <span className="bjt-unit">BJT</span>
           </div>
           <div className={`window-badge ${inWindow ? "active" : ""}`}>
-            {inWindow ? (
-              <><span className="wd" />主力窗口</>
-            ) : (
-              "窗口外"
-            )}
+            {inWindow ? <><span className="wd" />主力窗口</> : "窗口外"}
           </div>
         </div>
       </div>
 
-      {groups.map((g) => {
+      {PB_GROUPS.map((g) => {
         const items = rows.filter((r) => r.status === g.key);
         if (!items.length) return null;
         return (
@@ -390,11 +391,12 @@ function TonightPlaybook({ markets, bjtDec, openAnalysis }) {
               <span className="pb-group-en">{g.en}</span>
               <span className="pb-count">{items.length}</span>
             </div>
-            {items.map(({ m, maxE, edge }) => {
+            {items.map(({ m, maxE, edge, status }) => {
               const ws = windowStatusLabel(m, bjtDec);
               return (
-                <div className="pb-city-row" key={m.id} onClick={() => openAnalysis(m.id)}>
-                  <div className="pb-city-name">
+                <div className="pb-city-row" key={m.id}>
+                  {/* City name — click to open analysis */}
+                  <div className="pb-city-name" onClick={() => openAnalysis(m.id)}>
                     {m.city} <span className="cn">{m.cnCity}</span>
                   </div>
                   <div className="pb-bucket">{maxE.range}</div>
@@ -405,7 +407,22 @@ function TonightPlaybook({ markets, bjtDec, openAnalysis }) {
                   </div>
                   <EdgePill value={edge} />
                   <div className="pb-meta">{ws.text}</div>
-                  <div className="pb-arrow">→</div>
+
+                  {/* Manual tag selector — stops click from propagating to row */}
+                  <div className="pb-tag-selector" onClick={(e) => e.stopPropagation()}>
+                    {PB_GROUPS.map((opt) => (
+                      <button
+                        key={opt.key}
+                        className={`pb-tag-btn ${opt.key}${status === opt.key ? " active" : ""}`}
+                        onClick={() => setOverride(m.id, opt.key)}
+                        title={opt.label}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="pb-arrow" onClick={() => openAnalysis(m.id)}>→</div>
                 </div>
               );
             })}
