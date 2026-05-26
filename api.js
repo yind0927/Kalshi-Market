@@ -140,27 +140,35 @@ window.KW_API = (() => {
     const s = (m.subtitle || "").trim();
     let lowerBound = -Infinity, upperBound = Infinity, range, label;
 
-    // "76° or below"  /  "76°F or below"
-    let g = s.match(/^(\d+)°\s*(?:F\s*)?or below$/i);
+    // ── Pattern 1: "76° or below" / "76°F or below" / "Below 76°"
+    let g = s.match(/^(\d+)°\s*(?:F\s*)?or below$/i)
+         || s.match(/^below\s+(\d+)°/i)
+         || s.match(/^(?:less|lower)\s+than\s+(\d+)°/i)
+         || s.match(/^under\s+(\d+)°/i);
     if (g) {
       const t = +g[1];
       upperBound = t + 1; lowerBound = -Infinity;
       range = `≤${t}°F`; label = `≤${t}`;
     }
 
-    // "85° or above"
-    g = s.match(/^(\d+)°\s*(?:F\s*)?or above$/i);
-    if (g) {
+    // ── Pattern 2: "85° or above" / "85°F or above" / "Above 85°"
+    g = s.match(/^(\d+)°\s*(?:F\s*)?or above$/i)
+     || s.match(/^above\s+(\d+)°/i)
+     || s.match(/^(?:greater|higher)\s+than\s+(\d+)°/i)
+     || s.match(/^over\s+(\d+)°/i);
+    if (g && !range) {
       const t = +g[1];
       lowerBound = t; upperBound = Infinity;
       range = `≥${t}°F`; label = `≥${t}`;
     }
 
-    // "77° to 78°"  /  "77°F to 78°F"
-    g = s.match(/^(\d+)°\s*(?:F\s*)?to\s*(\d+)°/i);
-    if (g) {
+    // ── Pattern 3: "77° to 78°" / "77°F to 78°F" / "77-78°F" / "Between 77° and 78°"
+    g = s.match(/^(\d+)°\s*(?:F\s*)?to\s*(\d+)°/i)
+     || s.match(/^(\d+)\s*[-–]\s*(\d+)°/i)
+     || s.match(/^between\s+(\d+)°\s*(?:F\s*)?and\s*(\d+)°/i);
+    if (g && !range) {
       const lo = +g[1], hi = +g[2];
-      lowerBound = lo; upperBound = hi + 1;   // exclusive upper: T∈[lo, hi+1)
+      lowerBound = lo; upperBound = hi + 1;
       range = `${lo}–${hi}°F`; label = `${lo}–${hi}`;
     }
 

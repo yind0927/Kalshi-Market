@@ -716,12 +716,16 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
 function kalshiToBucket(m) {
   const s = (m.subtitle || "").trim();
   let lowerBound = -Infinity, upperBound = Infinity, range, label;
-  let g = s.match(/^(\d+)°\s*(?:F\s*)?or below$/i);
+  let g;
+  // "76° or below" / "Below 76°" / "under 76°"
+  g = s.match(/^(\d+)°\s*(?:F\s*)?or below$/i) || s.match(/^below\s+(\d+)°/i) || s.match(/^under\s+(\d+)°/i);
   if (g) { const t=+g[1]; upperBound=t+1; range=`≤${t}°F`; label=`≤${t}`; }
-  g = s.match(/^(\d+)°\s*(?:F\s*)?or above$/i);
-  if (g) { const t=+g[1]; lowerBound=t; range=`≥${t}°F`; label=`≥${t}`; }
-  g = s.match(/^(\d+)°\s*(?:F\s*)?to\s*(\d+)°/i);
-  if (g) { const lo=+g[1],hi=+g[2]; lowerBound=lo; upperBound=hi+1; range=`${lo}–${hi}°F`; label=`${lo}–${hi}`; }
+  // "85° or above" / "Above 85°" / "over 85°"
+  g = s.match(/^(\d+)°\s*(?:F\s*)?or above$/i) || s.match(/^above\s+(\d+)°/i) || s.match(/^over\s+(\d+)°/i);
+  if (g && !range) { const t=+g[1]; lowerBound=t; range=`≥${t}°F`; label=`≥${t}`; }
+  // "77° to 78°" / "77-78°F" / "Between 77° and 78°"
+  g = s.match(/^(\d+)°\s*(?:F\s*)?to\s*(\d+)°/i) || s.match(/^(\d+)\s*[-–]\s*(\d+)°/i) || s.match(/^between\s+(\d+)°.*?(\d+)°/i);
+  if (g && !range) { const lo=+g[1],hi=+g[2]; lowerBound=lo; upperBound=hi+1; range=`${lo}–${hi}°F`; label=`${lo}–${hi}`; }
   return { range: range||s, label: label||s, lowerBound, upperBound,
            market: m.mid??0, model:0, yes_bid: m.yes_bid??null, yes_ask: m.yes_ask??null,
            status: m.status??null, result: m.result??null };
