@@ -40,8 +40,10 @@ async function get(path) {
   try {
     const headers = await getHeaders("GET", path);
     const res = await fetch(`${BASE}${path}`, { headers });
-    const body = await res.json();
-    return { status: res.status, ok: res.ok, body };
+    const text = await res.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch (_) {}
+    return { status: res.status, ok: res.ok, body, rawText: body ? null : text.slice(0, 300) };
   } catch (e) {
     return { status: 0, ok: false, body: null, error: e.message };
   }
@@ -95,15 +97,19 @@ module.exports = async function handler(req, res) {
 
     // A) series_ticker + status=open (our new primary approach)
     const a = await get(`/markets?series_ticker=${encodeURIComponent(series)}&status=open&limit=200`);
-    r.series_open = a.ok ? summariseMarkets(a.body?.markets) : { error: `HTTP ${a.status}`, detail: a.error };
+    r.series_open = a.ok ? summariseMarkets(a.body?.markets) : { error: `HTTP ${a.status}`, detail: a.error, rawText: a.rawText };
 
-    // B) series_ticker without status filter
-    const b = await get(`/markets?series_ticker=${encodeURIComponent(series)}&limit=200`);
-    r.series_all = b.ok ? summariseMarkets(b.body?.markets) : { error: `HTTP ${b.status}`, detail: b.error };
+    // B) series_ticker without status filter — only run if A failed (save quota)
+    if (a.ok) {
+      r.series_all = { skipped: "A succeeded" };
+    } else {
+      const b = await get(`/markets?series_ticker=${encodeURIComponent(series)}&limit=200`);
+      r.series_all = b.ok ? summariseMarkets(b.body?.markets) : { error: `HTTP ${b.status}`, detail: b.error, rawText: b.rawText };
+    }
 
     // C) exact event_ticker for today
     const c = await get(`/markets?event_ticker=${encodeURIComponent(todayEvent)}&limit=50`);
-    r.event_today = c.ok ? summariseMarkets(c.body?.markets) : { error: `HTTP ${c.status}`, detail: c.error };
+    r.event_today = c.ok ? summariseMarkets(c.body?.markets) : { error: `HTTP ${c.status}`, detail: c.error, rawText: c.rawText };
 
     results[name] = { todayEvent, ...r };
   }));
@@ -112,7 +118,7 @@ module.exports = async function handler(req, res) {
   const eventsResp = await get(`/events?series_ticker_contains=KXHIGH&limit=50`);
   const events = eventsResp.ok
     ? (eventsResp.body?.events || []).map(e => ({ ticker: e.event_ticker, status: e.status }))
-    : { error: `HTTP ${eventsResp.status}`, detail: eventsResp.error };
+    : { error: `HTTP ${eventsResp.status}`, detail: eventsResp.error, rawText: eventsResp.rawText };
 
   return res.status(200).json({
     utcNow:   now.toISOString(),

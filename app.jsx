@@ -881,15 +881,18 @@ function ProbDistribution({ market, live, kalshiStatus }) {
   const maxV = Math.max(...buckets.flatMap((b) => [b.market || 0, b.model || 0])) || 1;
 
   // Kalshi connection status indicator
+  const kalshiErr = live?.kalshiError;
   const kalshiBadge = isLiveKalshi
     ? <span className="kalshi-badge ok">✓ Kalshi LIVE</span>
-    : kalshiStatus === "ok"
-      ? <span className="kalshi-badge pending">⏳ Kalshi 连接中…</span>
-      : kalshiStatus === "unconfigured"
-        ? <span className="kalshi-badge warn">⚠ Kalshi Key 未配置</span>
-        : kalshiStatus === "error"
-          ? <span className="kalshi-badge err">✗ 代理 404</span>
-          : null;
+    : kalshiErr
+      ? <span className="kalshi-badge err" title={kalshiErr}>✗ Kalshi 失败</span>
+      : kalshiStatus === "ok"
+        ? <span className="kalshi-badge pending">⏳ Kalshi 连接中…</span>
+        : kalshiStatus === "unconfigured"
+          ? <span className="kalshi-badge warn">⚠ Kalshi Key 未配置</span>
+          : kalshiStatus === "error"
+            ? <span className="kalshi-badge err">✗ 代理 404</span>
+            : null;
 
   return (
     <div className="card">
