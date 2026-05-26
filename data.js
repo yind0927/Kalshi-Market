@@ -179,7 +179,7 @@ window.KW_DATA = {
 
     // ─────────────────────────────── DALLAS ──────────────────────────────────
     {
-      id: "KXHIGHDFW-26MAY26",
+      id: "KXHIGHTDAL-26MAY26",
       city: "Dallas",
       cnCity: "达拉斯",
       airport: "KDFW · Dallas/Fort Worth",
