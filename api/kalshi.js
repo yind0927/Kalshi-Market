@@ -62,10 +62,10 @@ async function kalshiGet(apiPath) {
 }
 
 // ── Market data normaliser ────────────────────────────────────
-// As of March 2026, Kalshi uses _dollars fields (0.0–1.0) instead of integer cents.
+// Kalshi returns _dollars fields as strings (e.g. "0.4800"), so parseFloat first.
 function normaliseMarket(m) {
-  const bid = m.yes_bid_dollars ?? null;
-  const ask = m.yes_ask_dollars ?? null;
+  const bid = m.yes_bid_dollars != null ? parseFloat(m.yes_bid_dollars) : null;
+  const ask = m.yes_ask_dollars != null ? parseFloat(m.yes_ask_dollars) : null;
   return {
     ticker:       m.ticker,
     subtitle:     m.subtitle,
@@ -78,8 +78,8 @@ function normaliseMarket(m) {
                     : m.result === "yes" ? 1.0
                     : m.result === "no"  ? 0.0
                     : null,
-    volume:       m.volume_fp,
-    openInterest: m.open_interest_fp,
+    volume:       m.volume_fp       != null ? parseFloat(m.volume_fp)       : null,
+    openInterest: m.open_interest_fp != null ? parseFloat(m.open_interest_fp) : null,
   };
 }
 

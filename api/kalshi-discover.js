@@ -61,8 +61,8 @@ function summariseMarkets(markets) {
       subtitle: m.subtitle,
       event:    m.event_ticker,
       status:   m.status,
-      yes_bid:  m.yes_bid_dollars,
-      yes_ask:  m.yes_ask_dollars,
+      yes_bid:  m.yes_bid_dollars  != null ? parseFloat(m.yes_bid_dollars)  : null,
+      yes_ask:  m.yes_ask_dollars  != null ? parseFloat(m.yes_ask_dollars)  : null,
     })),
   };
 }
