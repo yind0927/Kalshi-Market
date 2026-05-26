@@ -135,6 +135,49 @@ window.KW_API = (() => {
     return { models: results, errors: errs };
   }
 
+  /* ── 3a. Parse a Kalshi market subtitle → bucket bounds ──── */
+  function kalshiToBucket(m) {
+    const s = (m.subtitle || "").trim();
+    let lowerBound = -Infinity, upperBound = Infinity, range, label;
+
+    // "76° or below"  /  "76°F or below"
+    let g = s.match(/^(\d+)°\s*(?:F\s*)?or below$/i);
+    if (g) {
+      const t = +g[1];
+      upperBound = t + 1; lowerBound = -Infinity;
+      range = `≤${t}°F`; label = `≤${t}`;
+    }
+
+    // "85° or above"
+    g = s.match(/^(\d+)°\s*(?:F\s*)?or above$/i);
+    if (g) {
+      const t = +g[1];
+      lowerBound = t; upperBound = Infinity;
+      range = `≥${t}°F`; label = `≥${t}`;
+    }
+
+    // "77° to 78°"  /  "77°F to 78°F"
+    g = s.match(/^(\d+)°\s*(?:F\s*)?to\s*(\d+)°/i);
+    if (g) {
+      const lo = +g[1], hi = +g[2];
+      lowerBound = lo; upperBound = hi + 1;   // exclusive upper: T∈[lo, hi+1)
+      range = `${lo}–${hi}°F`; label = `${lo}–${hi}`;
+    }
+
+    return {
+      range:      range || s || m.ticker,
+      label:      label || s,
+      lowerBound,
+      upperBound,
+      market:     m.mid  ?? 0,
+      model:      0,
+      yes_bid:    m.yes_bid  ?? null,
+      yes_ask:    m.yes_ask  ?? null,
+      status:     m.status   ?? null,
+      result:     m.result   ?? null,
+    };
+  }
+
   /* ── 3. Probability Distribution from Ensemble ──────────── */
   function buildDistribution(modelData, buckets) {
     const vals = Object.values(modelData)
@@ -193,8 +236,17 @@ window.KW_API = (() => {
     const modelsData  = modelsResult.status === "fulfilled" ? modelsResult.value : null;
     const kalshi      = kalshiResult.status === "fulfilled" ? kalshiResult.value : null;
 
+    // Build dynamic buckets from Kalshi subtitles when available.
+    // These become the authoritative bucket structure — no more hardcoded
+    // ranges in data.js per-city. Falls back to static buckets if Kalshi
+    // is unavailable.
+    const kalshiBuckets = (kalshi && kalshi.length > 0)
+      ? kalshi.map(m => kalshiToBucket(m))
+      : null;
+
+    const effectiveBuckets = kalshiBuckets || buckets;
     const distribution = modelsData
-      ? buildDistribution(modelsData.models, buckets)
+      ? buildDistribution(modelsData.models, effectiveBuckets)
       : null;
 
     return {
@@ -206,7 +258,8 @@ window.KW_API = (() => {
       modelsError: modelsResult.status === "rejected" ? String(modelsResult.reason) : null,
       distribution,
       kalshi,
-      kalshiError: kalshiResult.status === "rejected" ? "CORS/auth — using mock"    : null,
+      kalshiBuckets,    // parsed bucket definitions (null if Kalshi unavailable)
+      kalshiError: kalshiResult.status === "rejected" ? String(kalshiResult.reason) : null,
       fetchedAt:   new Date().toISOString(),
     };
   }

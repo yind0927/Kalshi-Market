@@ -712,36 +712,48 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
 /* ─────────────────────────────────────────────────────────
  * Markets view
  * ───────────────────────────────────────────────────────── */
+/* ── Client-side subtitle parser (mirrors api.js kalshiToBucket) ── */
+function kalshiToBucket(m) {
+  const s = (m.subtitle || "").trim();
+  let lowerBound = -Infinity, upperBound = Infinity, range, label;
+  let g = s.match(/^(\d+)°\s*(?:F\s*)?or below$/i);
+  if (g) { const t=+g[1]; upperBound=t+1; range=`≤${t}°F`; label=`≤${t}`; }
+  g = s.match(/^(\d+)°\s*(?:F\s*)?or above$/i);
+  if (g) { const t=+g[1]; lowerBound=t; range=`≥${t}°F`; label=`≥${t}`; }
+  g = s.match(/^(\d+)°\s*(?:F\s*)?to\s*(\d+)°/i);
+  if (g) { const lo=+g[1],hi=+g[2]; lowerBound=lo; upperBound=hi+1; range=`${lo}–${hi}°F`; label=`${lo}–${hi}`; }
+  return { range: range||s, label: label||s, lowerBound, upperBound,
+           market: m.mid??0, model:0, yes_bid: m.yes_bid??null, yes_ask: m.yes_ask??null,
+           status: m.status??null, result: m.result??null };
+}
+
 // Merge all live data into a market object (used everywhere in UI)
 function liveMarket(market, live) {
   if (!live) return market;
   const dist   = live.distribution;
-  const kalshi = live.kalshi;   // array of { ticker, mid, yes_bid, yes_ask, ... }
   const obs    = live.observation;
 
-  const buckets = market.buckets.map((b, i) => {
-    const lp = dist?.buckets?.[i]?.modelProb;   // live model probability
-    const kp = kalshi?.[i]?.mid;                 // live Kalshi mid price
+  // Use Kalshi-derived buckets when available (authoritative structure)
+  // Falls back to static data.js buckets
+  const baseBuckets = live.kalshiBuckets || market.buckets;
+
+  const buckets = baseBuckets.map((b, i) => {
+    const lp = dist?.buckets?.[i]?.modelProb;
     return {
       ...b,
-      model:  lp != null ? lp : b.model,
-      market: kp != null ? kp : b.market,
-      // carry raw bid/ask for tooltip
-      yes_bid: kalshi?.[i]?.yes_bid ?? null,
-      yes_ask: kalshi?.[i]?.yes_ask ?? null,
+      model: lp != null ? lp : (b.model || 0),
     };
   });
 
   return {
     ...market,
     buckets,
-    currentObs:  obs?.temperature       ?? market.currentObs,
-    forecastHigh: dist?.mean            ?? market.forecastHigh,
-    forecastConf: dist ? 0.5 + Math.min(0.45, 1 / (dist.std + 0.1) * 0.45) : market.forecastConf,
-    volume:       kalshi?.[0]?.volume   ?? market.volume,
+    currentObs:   obs?.temperature ?? market.currentObs,
+    forecastHigh: dist?.mean        ?? market.forecastHigh,
+    forecastConf: dist ? 0.5 + Math.min(0.45, 1/(dist.std+0.1)*0.45) : market.forecastConf,
     _liveObs:    !!(obs),
     _liveModel:  !!(dist),
-    _liveKalshi: !!(kalshi?.length),
+    _liveKalshi: !!(live.kalshiBuckets?.length),
   };
 }
 
@@ -848,25 +860,21 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
  * Probability distribution (analysis)
  * ───────────────────────────────────────────────────────── */
 function ProbDistribution({ market, live, kalshiStatus }) {
-  // ── live.kalshi  = array from Kalshi API (raw liveData object)
-  // ── live.distribution = Open-Meteo ensemble fit
+  // kalshiBuckets (from live) = parsed from Kalshi subtitles → authoritative
+  // Fallback to market.buckets (static data.js) when Kalshi unavailable
   const isLiveModel  = !!(live?.distribution?.buckets);
-  const isLiveKalshi = !!(live?.kalshi?.length);   // FIX: was live?._liveKalshi
+  const isLiveKalshi = !!(live?.kalshiBuckets?.length);
 
-  // Merge both live sources into display buckets
-  const buckets = market.buckets.map((b, i) => {
-    const lp = live?.distribution?.buckets?.[i]?.modelProb; // live model prob
-    const kp = live?.kalshi?.[i]?.mid;                       // live Kalshi mid price
+  const baseBuckets = live?.kalshiBuckets || market.buckets;
+  const buckets = baseBuckets.map((b, i) => {
+    const lp = live?.distribution?.buckets?.[i]?.modelProb;
     return {
       ...b,
-      model:   lp != null ? lp : b.model,
-      market:  kp != null ? kp : b.market,
-      // raw bid/ask for tooltip
-      yes_bid: live?.kalshi?.[i]?.yes_bid ?? null,
-      yes_ask: live?.kalshi?.[i]?.yes_ask ?? null,
+      model:   lp != null ? lp : (b.model || 0),
+      // market/yes_bid/yes_ask already set correctly in kalshiBuckets
     };
   });
-  const maxV = Math.max(...buckets.flatMap((b) => [b.market, b.model]));
+  const maxV = Math.max(...buckets.flatMap((b) => [b.market || 0, b.model || 0])) || 1;
 
   // Kalshi connection status indicator
   const kalshiBadge = isLiveKalshi
@@ -926,8 +934,13 @@ function ProbDistribution({ market, live, kalshiStatus }) {
                 </div>
               </div>
               <div className="num" title={hasBidAsk ? `Bid ${Math.round(b.yes_bid*100)}¢ / Ask ${Math.round(b.yes_ask*100)}¢` : undefined}>
-                {fmtCents(b.market)}
-                {hasBidAsk && <span className="bid-ask"> {Math.round(b.yes_bid*100)}–{Math.round(b.yes_ask*100)}</span>}
+                {b.result === "yes"
+                  ? <span style={{color:"var(--pos)",fontWeight:700}}>✓ YES</span>
+                  : b.result === "no"
+                    ? <span style={{color:"var(--ink-4)"}}>✗ NO</span>
+                    : fmtCents(b.market)}
+                {!b.result && hasBidAsk && <span className="bid-ask">{Math.round(b.yes_bid*100)}–{Math.round(b.yes_ask*100)}</span>}
+                {b.status === "settled" && !b.result && <span className="bid-ask">settled</span>}
               </div>
               <div className="num">{fmtPct(b.model)}</div>
               <div className="num"><EdgePill value={e} /></div>
@@ -1730,10 +1743,17 @@ function App() {
             .then(r => r.ok ? r.json() : null)
             .then(data => {
               if (!data?.markets?.length) return;
+              const newKalshi  = data.markets;
+              const newBuckets = newKalshi.map(km => kalshiToBucket(km));
               setLiveData(prev => {
                 const old = prev[m.id];
                 if (!old) return prev;  // no base data yet, skip
-                return { ...prev, [m.id]: { ...old, kalshi: data.markets, fetchedAt: data.fetchedAt } };
+                return { ...prev, [m.id]: {
+                  ...old,
+                  kalshi:        newKalshi,
+                  kalshiBuckets: newBuckets,
+                  fetchedAt:     data.fetchedAt,
+                }};
               });
             })
             .catch(() => {});

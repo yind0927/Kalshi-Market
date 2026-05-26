@@ -117,16 +117,21 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const path = `/markets?event_ticker=${encodeURIComponent(ticker)}&status=open&limit=20`;
+    // No status filter → return open AND settled markets
+    // (settled markets show final prices which are still useful)
+    const path = `/markets?event_ticker=${encodeURIComponent(ticker)}&limit=20`;
     const data = await kalshiFetch("GET", path);
 
     const markets = (data.markets || []).map(m => ({
       ticker:       m.ticker,
       subtitle:     m.subtitle,
+      status:       m.status,                         // "open" | "closed" | "settled"
+      result:       m.result,                         // "yes" | "no" | null
       yes_bid:      m.yes_bid  != null ? +(m.yes_bid  / 100).toFixed(4) : null,
       yes_ask:      m.yes_ask  != null ? +(m.yes_ask  / 100).toFixed(4) : null,
       mid:          m.yes_bid != null && m.yes_ask != null
-                      ? +((m.yes_bid + m.yes_ask) / 200).toFixed(4) : null,
+                      ? +((m.yes_bid + m.yes_ask) / 200).toFixed(4)
+                      : m.result === "yes" ? 1.0 : m.result === "no" ? 0.0 : null,
       volume:       m.volume,
       openInterest: m.open_interest,
     }));
