@@ -39,17 +39,19 @@ window.KW_DATA = {
         detail: "Sea breeze front stalled offshore — peak heating window extended by ~2h",
       },
       seasonQuality: "peak",
+      // ── Buckets match Kalshi KXHIGHNY market exactly (6 × 2°F) ──
       buckets: [
-        { range: "< 75°F",  label: "<75",   lowerBound: -Infinity, upperBound: 75, market: 0.02, model: 0.01 },
-        { range: "75–79°F", label: "75–79", lowerBound: 75,        upperBound: 80, market: 0.07, model: 0.04 },
-        { range: "80–84°F", label: "80–84", lowerBound: 80,        upperBound: 85, market: 0.46, model: 0.61 },
-        { range: "85–89°F", label: "85–89", lowerBound: 85,        upperBound: 90, market: 0.38, model: 0.30 },
-        { range: "90°F +",  label: "90+",   lowerBound: 90,        upperBound: Infinity, market: 0.07, model: 0.04 },
+        { range: "≤76°F",   label: "≤76",   lowerBound: -Infinity, upperBound: 77, market: 0.03, model: 0.04 },
+        { range: "77–78°F", label: "77–78", lowerBound: 77,        upperBound: 79, market: 0.25, model: 0.25 },
+        { range: "79–80°F", label: "79–80", lowerBound: 79,        upperBound: 81, market: 0.56, model: 0.56 },
+        { range: "81–82°F", label: "81–82", lowerBound: 81,        upperBound: 83, market: 0.20, model: 0.20 },
+        { range: "83–84°F", label: "83–84", lowerBound: 83,        upperBound: 85, market: 0.04, model: 0.04 },
+        { range: "≥85°F",   label: "≥85",   lowerBound: 85,        upperBound: Infinity, market: 0.01, model: 0.01 },
       ],
-      volume: 184320,
-      openInterest: 412900,
+      volume: 31330,
+      openInterest: 0,
       aiSummary:
-        "ECMWF与HRRR一致指向82–84°F，海风延迟到15:00 ET，80–84°F市场46¢ vs 模型61%，Edge +15pp，建议YES。",
+        "市场定价：79–80°F Yes 56¢为最强信号，77–78°F 25¢，81–82°F 20¢。高温中心约79–80°F，两侧尾部均薄。",
     },
 
     // ─────────────────────────────── MIAMI ───────────────────────────────────

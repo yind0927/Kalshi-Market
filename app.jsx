@@ -847,26 +847,41 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
 /* ─────────────────────────────────────────────────────────
  * Probability distribution (analysis)
  * ───────────────────────────────────────────────────────── */
-function ProbDistribution({ market, live }) {
+function ProbDistribution({ market, live, kalshiStatus }) {
   // Merge live distribution model probs when available
-  const isLive = !!(live?.distribution?.buckets);
+  const isLiveModel  = !!(live?.distribution?.buckets);
+  const isLiveKalshi = !!(live?._liveKalshi);
   const buckets = market.buckets.map((b, i) => {
     const lp = live?.distribution?.buckets?.[i]?.modelProb;
     return { ...b, model: lp != null ? lp : b.model };
   });
   const maxV = Math.max(...buckets.flatMap((b) => [b.market, b.model]));
 
+  // Kalshi connection status indicator
+  const kalshiBadge = isLiveKalshi
+    ? <span className="kalshi-badge ok">✓ Kalshi LIVE</span>
+    : kalshiStatus === "ok"
+      ? <span className="kalshi-badge pending">⏳ Kalshi 连接中…</span>
+      : kalshiStatus === "unconfigured"
+        ? <span className="kalshi-badge warn">⚠ Kalshi Key 未配置</span>
+        : kalshiStatus === "error"
+          ? <span className="kalshi-badge err">✗ 代理 404</span>
+          : null;
+
   return (
     <div className="card">
       <div className="card-head">
         <div>
           <h3>Probability Distribution <em>概率分布</em></h3>
-          <div className="sub">Kalshi 市场价格 vs 模型预测概率 · 单位 % / ¢</div>
+          <div className="sub">
+            Kalshi 市场价格 vs 模型预测概率 · 单位 % / ¢
+            {kalshiBadge && <>&ensp;{kalshiBadge}</>}
+          </div>
         </div>
         <div className="legend">
           <span><i className="market" />Market 市场</span>
           <span><i className="model" />
-            {isLive
+            {isLiveModel
               ? <><span className="live-badge-sm">LIVE</span> Model</>
               : "Model 模型"}
           </span>
@@ -1140,7 +1155,7 @@ function ApiStatusRow({ live }) {
 /* ─────────────────────────────────────────────────────────
  * Analysis view
  * ───────────────────────────────────────────────────────── */
-function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch }) {
+function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshiStatus }) {
   const market = DATA.markets.find((m) => m.id === marketId) || DATA.markets[0];
   const live   = liveData?.[market.id];
 
@@ -1230,7 +1245,7 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch }) {
 
       <div style={{ height: 16 }} />
       <div className="ana-row-3-2">
-        <ProbDistribution market={market} live={live} />
+        <ProbDistribution market={market} live={live} kalshiStatus={kalshiStatus} />
         <AISummary market={market} edge={edge} maxE={maxE} />
       </div>
 
@@ -1653,6 +1668,15 @@ function App() {
   const [bjtDec, setBjtDec] = useState(getCurrentBJTDecimal());
   const [liveData, setLiveData] = useState({});
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [kalshiStatus, setKalshiStatus] = useState(null); // null | "ok" | "error" | "unconfigured"
+
+  // Check Kalshi credential status once on mount
+  useEffect(() => {
+    fetch("/api/kalshi-status")
+      .then(r => r.json())
+      .then(d => setKalshiStatus(d.ready ? "ok" : "unconfigured"))
+      .catch(() => setKalshiStatus("error"));
+  }, []);
 
   useEffect(() => {
     const t = setInterval(() => setBjtDec(getCurrentBJTDecimal()), 30000);
@@ -1732,6 +1756,7 @@ function App() {
           bjtDec={bjtDec}
           liveData={liveData}
           onFetch={fetchLiveForMarket}
+          kalshiStatus={kalshiStatus}
         />
       )}
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} setTheme={setTheme} />
