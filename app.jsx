@@ -605,7 +605,7 @@ function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec }) {
 /* ─────────────────────────────────────────────────────────
  * Market card
  * ───────────────────────────────────────────────────────── */
-function MarketCard({ market, onOpen, bjtDec }) {
+function MarketCard({ market, onOpen, bjtDec, isLive }) {
   const maxE = maxEdgeBucket(market);
   const edge = maxE.model - maxE.market;
   const best = bestBucket(market);
@@ -631,8 +631,13 @@ function MarketCard({ market, onOpen, bjtDec }) {
 
       <div className="mkt-temp-row">
         <div className="mkt-temp-block">
-          <div className="l">Current 当前</div>
-          <div className="v">{market.currentObs}<span className="deg">°F</span></div>
+          <div className="l">
+            Current 当前
+            {isLive && <span className="live-badge-sm" style={{ marginLeft: 4 }}>LIVE</span>}
+          </div>
+          <div className="v" style={isLive ? { color: "var(--pos)" } : {}}>
+            {market.currentObs}<span className="deg">°F</span>
+          </div>
         </div>
         <span className="mkt-temp-arrow">→</span>
         <div className="mkt-temp-block">
@@ -695,26 +700,50 @@ function MarketCard({ market, onOpen, bjtDec }) {
 /* ─────────────────────────────────────────────────────────
  * Markets view
  * ───────────────────────────────────────────────────────── */
-function MarketsView({ openAnalysis, bjtDec }) {
+// Merge live distribution probs into market buckets (used on cards + map)
+function liveMarket(market, live) {
+  if (!live?.distribution?.buckets) return market;
+  return {
+    ...market,
+    buckets: market.buckets.map((b, i) => {
+      const lp = live.distribution.buckets[i]?.modelProb;
+      return lp != null ? { ...b, model: lp } : b;
+    }),
+    currentObs: live.observation?.temperature ?? market.currentObs,
+    _live: true,
+  };
+}
+
+function MarketsView({ openAnalysis, bjtDec, liveData }) {
   const [filter, setFilter] = useState("all");
+
+  // Merge live data into markets for edge/temp calculations
+  const markets = useMemo(() =>
+    DATA.markets.map(m => liveMarket(m, liveData?.[m.id])),
+    [liveData]
+  );
+
   const filtered = useMemo(() => {
-    let arr = [...DATA.markets];
+    let arr = [...markets];
     if (filter === "edge") arr = arr.filter((m) => totalAbsEdge(m) > 0.07);
     if (filter === "watch") arr = arr.slice(0, 4);
     if (filter === "edge") arr.sort((a, b) => totalAbsEdge(b) - totalAbsEdge(a));
     return arr;
-  }, [filter]);
+  }, [filter, markets]);
 
-  const avgEdge = DATA.markets.reduce((s, m) => s + totalAbsEdge(m), 0) / DATA.markets.length;
-  const top = DATA.markets
+  const avgEdge = markets.reduce((s, m) => s + totalAbsEdge(m), 0) / markets.length;
+  const top = markets
     .map((m) => ({ m, e: Math.max(...m.buckets.map((b) => b.model - b.market)) }))
     .sort((a, b) => b.e - a.e)[0];
   const activeCount = DATA.markets.filter((m) => m.windowStatus === "active").length;
+  const liveCount = DATA.markets.filter(m => liveData?.[m.id]?.observation).length;
 
   return (
     <div className="view" data-screen-label="markets">
 
-      <TonightPlaybook markets={DATA.markets} bjtDec={bjtDec} openAnalysis={openAnalysis} />
+      <MapHero markets={markets} onOpen={openAnalysis} />
+
+      <TonightPlaybook markets={markets} bjtDec={bjtDec} openAnalysis={openAnalysis} />
 
       <div className="kpis">
         <div className="kpi">
@@ -723,7 +752,11 @@ function MarketsView({ openAnalysis, bjtDec }) {
             <span className="cn">跟踪市场</span>
           </div>
           <div className="kpi-value">{DATA.markets.length}</div>
-          <div className="kpi-foot">6 US cities · daily high</div>
+          <div className="kpi-foot">
+            {liveCount > 0
+              ? <span className="kpi-delta pos">↑ {liveCount} LIVE</span>
+              : "6 US cities · daily high"}
+          </div>
         </div>
         <div className="kpi">
           <div className="kpi-label">
@@ -731,7 +764,9 @@ function MarketsView({ openAnalysis, bjtDec }) {
             <span className="cn">平均偏差</span>
           </div>
           <div className="kpi-value">{(avgEdge * 100).toFixed(1)}<span className="small">%</span></div>
-          <div className="kpi-foot"><span className="kpi-delta pos">↑ 1.2pp</span> vs 7d avg</div>
+          <div className="kpi-foot">
+            {liveCount > 0 ? <span className="kpi-delta pos">实时模型计算</span> : <span className="kpi-delta pos">↑ 1.2pp vs 7d avg</span>}
+          </div>
         </div>
         <div className="kpi">
           <div className="kpi-label">
@@ -755,7 +790,10 @@ function MarketsView({ openAnalysis, bjtDec }) {
 
       <div className="section-head">
         <div>
-          <h2>市场一览 <em>Market Overview</em></h2>
+          <h2>
+            市场一览 <em>Market Overview</em>
+            {liveCount > 0 && <span className="live-badge-sm" style={{ marginLeft: 8 }}>LIVE</span>}
+          </h2>
           <div className="section-sub">按模型预测概率与市场价格之差排序</div>
         </div>
         <div className="section-actions">
@@ -767,7 +805,8 @@ function MarketsView({ openAnalysis, bjtDec }) {
 
       <div className="card-grid">
         {filtered.map((m) => (
-          <MarketCard key={m.id} market={m} bjtDec={bjtDec} onOpen={() => openAnalysis(m.id)} />
+          <MarketCard key={m.id} market={m} bjtDec={bjtDec} onOpen={() => openAnalysis(m.id)}
+            isLive={!!(liveData?.[m.id]?.observation)} />
         ))}
       </div>
     </div>
@@ -1600,6 +1639,21 @@ function App() {
     }
   };
 
+  // Auto-fetch all markets on app start
+  useEffect(() => {
+    if (typeof window.KW_API !== "undefined") {
+      DATA.markets.forEach(m => fetchLiveForMarket(m));
+    } else {
+      // api.js may not have loaded yet — retry once after 500ms
+      const t = setTimeout(() => {
+        if (typeof window.KW_API !== "undefined") {
+          DATA.markets.forEach(m => fetchLiveForMarket(m));
+        }
+      }, 500);
+      return () => clearTimeout(t);
+    }
+  }, []); // once on mount
+
   useEffect(() => {
     const t = theme === "system"
       ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
@@ -1631,7 +1685,7 @@ function App() {
         bjtDec={bjtDec}
       />
       {tab === "markets" ? (
-        <MarketsView openAnalysis={openAnalysis} bjtDec={bjtDec} />
+        <MarketsView openAnalysis={openAnalysis} bjtDec={bjtDec} liveData={liveData} />
       ) : (
         <AnalysisView
           marketId={marketId}
