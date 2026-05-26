@@ -93,15 +93,15 @@ module.exports = async function handler(req, res) {
 
     // A) series_ticker + status=open (our new primary approach)
     const a = await get(`/markets?series_ticker=${encodeURIComponent(series)}&status=open&limit=200`);
-    r.series_open = a.ok ? summariseMarkets(a.body?.markets) : { error: `HTTP ${a.status}` };
+    r.series_open = a.ok ? summariseMarkets(a.body?.markets) : { error: `HTTP ${a.status}`, detail: a.error };
 
     // B) series_ticker without status filter
     const b = await get(`/markets?series_ticker=${encodeURIComponent(series)}&limit=200`);
-    r.series_all = b.ok ? summariseMarkets(b.body?.markets) : { error: `HTTP ${b.status}` };
+    r.series_all = b.ok ? summariseMarkets(b.body?.markets) : { error: `HTTP ${b.status}`, detail: b.error };
 
     // C) exact event_ticker for today
     const c = await get(`/markets?event_ticker=${encodeURIComponent(todayEvent)}&limit=50`);
-    r.event_today = c.ok ? summariseMarkets(c.body?.markets) : { error: `HTTP ${c.status}` };
+    r.event_today = c.ok ? summariseMarkets(c.body?.markets) : { error: `HTTP ${c.status}`, detail: c.error };
 
     results[name] = { todayEvent, ...r };
   }));
@@ -110,7 +110,7 @@ module.exports = async function handler(req, res) {
   const eventsResp = await get(`/events?series_ticker_contains=KXHIGH&limit=50`);
   const events = eventsResp.ok
     ? (eventsResp.body?.events || []).map(e => ({ ticker: e.event_ticker, status: e.status }))
-    : { error: `HTTP ${eventsResp.status}` };
+    : { error: `HTTP ${eventsResp.status}`, detail: eventsResp.error };
 
   return res.status(200).json({
     utcNow:   now.toISOString(),
