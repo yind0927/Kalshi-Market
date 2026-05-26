@@ -1198,13 +1198,22 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
   const market = DATA.markets.find((m) => m.id === marketId) || DATA.markets[0];
   const live   = liveData?.[market.id];
 
-  // Recalculate edge using live model probs if available
-  const liveBuckets = market.buckets.map((b, i) => {
+  // Use live Kalshi buckets (authoritative ranges + prices) when available,
+  // fall back to static data.js buckets
+  const effectiveBuckets = live?.kalshiBuckets || market.buckets;
+
+  // Overlay live model probs onto effective buckets for edge calculation
+  const liveBuckets = effectiveBuckets.map((b, i) => {
     const lp = live?.distribution?.buckets?.[i]?.modelProb;
     return { ...b, model: lp != null ? lp : b.model };
   });
   const maxE = liveBuckets.reduce((a, b) => Math.abs(b.model - b.market) > Math.abs(a.model - a.market) ? b : a);
   const edge = maxE.model - maxE.market;
+
+  // Live volume / OI summed across all Kalshi buckets
+  const liveVolume = live?.kalshi?.reduce((s, m) => s + (m.volume || 0), 0) || market.volume;
+  const liveOI     = live?.kalshi?.reduce((s, m) => s + (m.openInterest || 0), 0) || market.openInterest;
+  const isLiveKalshi = !!(live?.kalshiBuckets?.length);
 
   // Live observation temperature (falls back to mock)
   const liveTemp = live?.observation?.temperature;
@@ -1251,8 +1260,14 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
             <span className="ana-tag">{market.timezone} · {market.tzLabel}</span>
             <span className="ana-tag">{market.modelConsensus}</span>
             <span className="ana-tag">conf {Math.round(market.forecastConf * 100)}%</span>
-            <span className="ana-tag">vol ${fmtVolume(market.volume)}</span>
-            <span className="ana-tag">OI ${fmtVolume(market.openInterest)}</span>
+            <span className={`ana-tag${isLiveKalshi ? " live-tag" : ""}`}>
+              {isLiveKalshi && <span className="live-badge-sm" style={{marginRight:4}}>LIVE</span>}
+              vol ${fmtVolume(liveVolume)}
+            </span>
+            <span className={`ana-tag${isLiveKalshi ? " live-tag" : ""}`}>
+              {isLiveKalshi && <span className="live-badge-sm" style={{marginRight:4}}>LIVE</span>}
+              OI ${fmtVolume(liveOI)}
+            </span>
           </div>
         </div>
 
