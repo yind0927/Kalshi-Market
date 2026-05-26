@@ -848,12 +848,23 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
  * Probability distribution (analysis)
  * ───────────────────────────────────────────────────────── */
 function ProbDistribution({ market, live, kalshiStatus }) {
-  // Merge live distribution model probs when available
+  // ── live.kalshi  = array from Kalshi API (raw liveData object)
+  // ── live.distribution = Open-Meteo ensemble fit
   const isLiveModel  = !!(live?.distribution?.buckets);
-  const isLiveKalshi = !!(live?._liveKalshi);
+  const isLiveKalshi = !!(live?.kalshi?.length);   // FIX: was live?._liveKalshi
+
+  // Merge both live sources into display buckets
   const buckets = market.buckets.map((b, i) => {
-    const lp = live?.distribution?.buckets?.[i]?.modelProb;
-    return { ...b, model: lp != null ? lp : b.model };
+    const lp = live?.distribution?.buckets?.[i]?.modelProb; // live model prob
+    const kp = live?.kalshi?.[i]?.mid;                       // live Kalshi mid price
+    return {
+      ...b,
+      model:   lp != null ? lp : b.model,
+      market:  kp != null ? kp : b.market,
+      // raw bid/ask for tooltip
+      yes_bid: live?.kalshi?.[i]?.yes_bid ?? null,
+      yes_ask: live?.kalshi?.[i]?.yes_ask ?? null,
+    };
   });
   const maxV = Math.max(...buckets.flatMap((b) => [b.market, b.model]));
 
@@ -879,7 +890,11 @@ function ProbDistribution({ market, live, kalshiStatus }) {
           </div>
         </div>
         <div className="legend">
-          <span><i className="market" />Market 市场</span>
+          <span><i className="market" />
+            {isLiveKalshi
+              ? <><span className="live-badge-sm" style={{background:"var(--ink-4)",color:"var(--bg-1)"}}>LIVE</span> Market</>
+              : "Market 市场"}
+          </span>
           <span><i className="model" />
             {isLiveModel
               ? <><span className="live-badge-sm">LIVE</span> Model</>
@@ -892,12 +907,13 @@ function ProbDistribution({ market, live, kalshiStatus }) {
         <li className="prob-row head">
           <div>Range</div>
           <div>Distribution</div>
-          <div className="num head">Market</div>
-          <div className="num head">Model</div>
+          <div className="num head">Market {isLiveKalshi ? "↻" : ""}</div>
+          <div className="num head">Model {isLiveModel ? "↻" : ""}</div>
           <div className="num head">Edge</div>
         </li>
         {buckets.map((b, i) => {
           const e = b.model - b.market;
+          const hasBidAsk = b.yes_bid != null && b.yes_ask != null;
           return (
             <li className="prob-row" key={i}>
               <div className="range">{b.range}</div>
@@ -909,7 +925,10 @@ function ProbDistribution({ market, live, kalshiStatus }) {
                   <div className="fill" style={{ width: `${(b.model / maxV) * 100}%` }} />
                 </div>
               </div>
-              <div className="num">{fmtCents(b.market)}</div>
+              <div className="num" title={hasBidAsk ? `Bid ${Math.round(b.yes_bid*100)}¢ / Ask ${Math.round(b.yes_ask*100)}¢` : undefined}>
+                {fmtCents(b.market)}
+                {hasBidAsk && <span className="bid-ask"> {Math.round(b.yes_bid*100)}–{Math.round(b.yes_ask*100)}</span>}
+              </div>
               <div className="num">{fmtPct(b.model)}</div>
               <div className="num"><EdgePill value={e} /></div>
             </li>
@@ -1699,18 +1718,35 @@ function App() {
     }
   };
 
-  // Auto-fetch all markets on app start
+  // Auto-fetch: full refresh every 5 min, Kalshi-only every 90 sec
   useEffect(() => {
-    const doFetch = () => {
-      if (typeof window.KW_API !== "undefined") {
-        DATA.markets.forEach(m => fetchLiveForMarket(m));
-      }
+    const runFetch = (kalshiOnly = false) => {
+      if (typeof window.KW_API === "undefined") return;
+      DATA.markets.forEach(m => {
+        if (kalshiOnly) {
+          // Lightweight: only re-fetch Kalshi prices (fast, cheap)
+          if (!window.KW_API) return;
+          fetch(`/api/kalshi?ticker=${encodeURIComponent(m.id)}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+              if (!data?.markets?.length) return;
+              setLiveData(prev => {
+                const old = prev[m.id];
+                if (!old) return prev;  // no base data yet, skip
+                return { ...prev, [m.id]: { ...old, kalshi: data.markets, fetchedAt: data.fetchedAt } };
+              });
+            })
+            .catch(() => {});
+        } else {
+          fetchLiveForMarket(m);
+        }
+      });
     };
-    // Small delay to let api.js finish loading
-    const boot = setTimeout(doFetch, 300);
-    // Refresh every 5 minutes
-    const refresh = setInterval(doFetch, 5 * 60 * 1000);
-    return () => { clearTimeout(boot); clearInterval(refresh); };
+
+    const boot    = setTimeout(() => runFetch(false), 300);       // full fetch on start
+    const fullRef = setInterval(() => runFetch(false), 5 * 60 * 1000);  // full every 5 min
+    const fastRef = setInterval(() => runFetch(true),  90 * 1000);       // Kalshi only every 90 sec
+    return () => { clearTimeout(boot); clearInterval(fullRef); clearInterval(fastRef); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
