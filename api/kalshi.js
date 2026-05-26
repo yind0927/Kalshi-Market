@@ -80,44 +80,61 @@ function normaliseMarket(m) {
   };
 }
 
-// ── Auto-discover: exact ticker → series fallback ─────────────
+// ── Auto-discover: 4-step fallback strategy ───────────────────
 // Returns { markets[], resolvedTicker, debug{} }
+//
+// Strategy (in order):
+//  ① Exact event ticker         /markets?event_ticker=KXHIGHMIA-26MAY26
+//  ② series_ticker + open       /markets?series_ticker=KXHIGHMIA&status=open   ← confirmed Kalshi param
+//  ③ series_ticker no filter    /markets?series_ticker=KXHIGHMIA               ← catches settled
+//  ④ events endpoint fallback   /events?series_ticker=KXHIGHMIA + per-event lookup
 async function findMarkets(ticker) {
   const dbg = { tried: [], errors: [] };
 
-  // ① Exact event ticker
+  // ① Exact event ticker (fastest path — works for NYC, may return empty for others)
   try {
-    dbg.tried.push(ticker);
+    dbg.tried.push(`event:${ticker}`);
     const d = await kalshiGet(`/markets?event_ticker=${encodeURIComponent(ticker)}&limit=20`);
     if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: ticker, dbg };
-    dbg.errors.push(`${ticker}: 0 markets returned`);
+    dbg.errors.push(`${ticker}: 0 markets`);
   } catch (e) { dbg.errors.push(`${ticker}: ${e.message}`); }
 
-  // ② Extract series prefix (e.g. KXHIGHMIA from KXHIGHMIA-26MAY26)
-  const m = ticker.match(/^([A-Z0-9]+)-/);
-  if (!m) return { markets: [], resolvedTicker: ticker, dbg };
-  const series = m[1];
+  // Extract series prefix: KXHIGHMIA-26MAY26 → KXHIGHMIA
+  const sm = ticker.match(/^([A-Z0-9]+)-/);
+  if (!sm) return { markets: [], resolvedTicker: ticker, dbg };
+  const series = sm[1];
 
-  // ③ List recent events for this series (no status filter → open+settled)
-  let events = [];
+  // ② series_ticker + status=open (documented Kalshi approach, returns today's live markets)
   try {
-    const ed = await kalshiGet(`/events?series_ticker=${encodeURIComponent(series)}&limit=10`);
-    events = ed.events || [];
-    dbg.seriesEvents = events.map(e => e.event_ticker);
-  } catch (e) { dbg.errors.push(`series ${series}: ${e.message}`); }
+    dbg.tried.push(`${series}?status=open`);
+    const d = await kalshiGet(`/markets?series_ticker=${encodeURIComponent(series)}&status=open&limit=20`);
+    if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: `${series}[open]`, dbg };
+    dbg.errors.push(`${series} open: 0 markets`);
+  } catch (e) { dbg.errors.push(`${series} open: ${e.message}`); }
 
-  // ④ Try each discovered event ticker
-  for (const ev of events) {
-    if (ev.event_ticker === ticker) continue;
-    try {
-      dbg.tried.push(ev.event_ticker);
-      const d = await kalshiGet(`/markets?event_ticker=${encodeURIComponent(ev.event_ticker)}&limit=20`);
-      if (d.markets?.length > 0) {
-        return { markets: d.markets, resolvedTicker: ev.event_ticker, dbg };
-      }
-      dbg.errors.push(`${ev.event_ticker}: 0 markets`);
-    } catch (e) { dbg.errors.push(`${ev.event_ticker}: ${e.message}`); }
-  }
+  // ③ series_ticker without status (catches settled/closed markets — market already resolved today)
+  try {
+    dbg.tried.push(`${series}?all`);
+    const d = await kalshiGet(`/markets?series_ticker=${encodeURIComponent(series)}&limit=20`);
+    if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: `${series}[all]`, dbg };
+    dbg.errors.push(`${series} all: 0 markets`);
+  } catch (e) { dbg.errors.push(`${series} all: ${e.message}`); }
+
+  // ④ Events endpoint fallback (last resort — less reliable but catches edge cases)
+  try {
+    dbg.tried.push(`events:${series}`);
+    const ed = await kalshiGet(`/events?series_ticker=${encodeURIComponent(series)}&limit=10`);
+    const events = ed.events || [];
+    dbg.seriesEvents = events.map(ev => ev.event_ticker);
+    for (const ev of events) {
+      if (ev.event_ticker === ticker) continue;
+      try {
+        const d = await kalshiGet(`/markets?event_ticker=${encodeURIComponent(ev.event_ticker)}&limit=20`);
+        if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: ev.event_ticker, dbg };
+        dbg.errors.push(`${ev.event_ticker}: 0 markets`);
+      } catch (e2) { dbg.errors.push(`${ev.event_ticker}: ${e2.message}`); }
+    }
+  } catch (e) { dbg.errors.push(`events ${series}: ${e.message}`); }
 
   return { markets: [], resolvedTicker: ticker, dbg };
 }

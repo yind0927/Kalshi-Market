@@ -14,7 +14,7 @@ window.KW_API = (() => {
   const CITIES = {
     "New York":    { stationId:"KNYC", lat:40.7789, lon:-73.9692, tz:"America/New_York"      },
     "Miami":       { stationId:"KMIA", lat:25.7959, lon:-80.2870, tz:"America/New_York"      },
-    "Chicago":     { stationId:"KORD", lat:41.9742, lon:-87.9073, tz:"America/Chicago"       },
+    "Chicago":     { stationId:"KMDW", lat:41.7868, lon:-87.7522, tz:"America/Chicago"       },
     "Austin":      { stationId:"KAUS", lat:30.1945, lon:-97.6699, tz:"America/Chicago"       },
     "Dallas":      { stationId:"KDFW", lat:32.8998, lon:-97.0403, tz:"America/Chicago"       },
     "Los Angeles": { stationId:"KLAX", lat:33.9425, lon:-118.408, tz:"America/Los_Angeles"   },

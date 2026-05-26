@@ -100,7 +100,7 @@ window.KW_DATA = {
       id: "KXHIGHCHI-26MAY26",
       city: "Chicago",
       cnCity: "芝加哥",
-      airport: "KORD · O'Hare Intl",
+      airport: "KMDW · Midway Airport",
       date: "May 26, 2026",
       timezone: "CT",
       tzLabel: "CDT (UTC−5)",
