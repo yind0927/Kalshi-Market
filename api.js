@@ -136,40 +136,60 @@ window.KW_API = (() => {
   }
 
   /* ── 3a. Parse a Kalshi market subtitle → bucket bounds ──── */
+  // Handles integer temps ("76°"), decimal temps ("68.5°"), and ticker-suffix fallback.
   function kalshiToBucket(m) {
     const s = (m.subtitle || "").trim();
     let lowerBound = -Infinity, upperBound = Infinity, range, label;
+    const NUM = "(\\d+(?:\\.\\d+)?)"; // matches integers and decimals like 68.5
 
     // ── Pattern 1: "76° or below" / "76°F or below" / "Below 76°"
-    let g = s.match(/^(\d+)°\s*(?:F\s*)?or below$/i)
-         || s.match(/^below\s+(\d+)°/i)
-         || s.match(/^(?:less|lower)\s+than\s+(\d+)°/i)
-         || s.match(/^under\s+(\d+)°/i);
+    let g = s.match(new RegExp(`^${NUM}°\\s*(?:F\\s*)?or below$`, "i"))
+         || s.match(new RegExp(`^below\\s+${NUM}°`, "i"))
+         || s.match(new RegExp(`^(?:less|lower)\\s+than\\s+${NUM}°`, "i"))
+         || s.match(new RegExp(`^under\\s+${NUM}°`, "i"));
     if (g) {
-      const t = +g[1];
-      upperBound = t + 1; lowerBound = -Infinity;
+      const t = parseFloat(g[1]);
+      upperBound = Number.isInteger(t) ? t + 1 : Math.ceil(t);
+      lowerBound = -Infinity;
       range = `≤${t}°F`; label = `≤${t}`;
     }
 
     // ── Pattern 2: "85° or above" / "85°F or above" / "Above 85°"
-    g = s.match(/^(\d+)°\s*(?:F\s*)?or above$/i)
-     || s.match(/^above\s+(\d+)°/i)
-     || s.match(/^(?:greater|higher)\s+than\s+(\d+)°/i)
-     || s.match(/^over\s+(\d+)°/i);
+    g = s.match(new RegExp(`^${NUM}°\\s*(?:F\\s*)?or above$`, "i"))
+     || s.match(new RegExp(`^above\\s+${NUM}°`, "i"))
+     || s.match(new RegExp(`^(?:greater|higher)\\s+than\\s+${NUM}°`, "i"))
+     || s.match(new RegExp(`^over\\s+${NUM}°`, "i"));
     if (g && !range) {
-      const t = +g[1];
+      const t = parseFloat(g[1]);
       lowerBound = t; upperBound = Infinity;
       range = `≥${t}°F`; label = `≥${t}`;
     }
 
     // ── Pattern 3: "77° to 78°" / "77°F to 78°F" / "77-78°F" / "Between 77° and 78°"
-    g = s.match(/^(\d+)°\s*(?:F\s*)?to\s*(\d+)°/i)
-     || s.match(/^(\d+)\s*[-–]\s*(\d+)°/i)
-     || s.match(/^between\s+(\d+)°\s*(?:F\s*)?and\s*(\d+)°/i);
+    g = s.match(new RegExp(`^${NUM}°\\s*(?:F\\s*)?to\\s*${NUM}°`, "i"))
+     || s.match(new RegExp(`^${NUM}\\s*[-–]\\s*${NUM}°`, "i"))
+     || s.match(new RegExp(`^between\\s+${NUM}°\\s*(?:F\\s*)?and\\s*${NUM}°`, "i"));
     if (g && !range) {
-      const lo = +g[1], hi = +g[2];
-      lowerBound = lo; upperBound = hi + 1;
+      const lo = parseFloat(g[1]), hi = parseFloat(g[2]);
+      lowerBound = lo; upperBound = Number.isInteger(hi) ? hi + 1 : Math.ceil(hi);
       range = `${lo}–${hi}°F`; label = `${lo}–${hi}`;
+    }
+
+    // ── Fallback: parse ticker suffix (B{N.5} or T{N}) when subtitle is missing ──
+    if (!range && !s) {
+      const suffix = (m.ticker || "").split("-").pop();
+      const bm = suffix.match(/^B(\d+(?:\.\d+)?)$/);
+      const tm = suffix.match(/^T(\d+(?:\.\d+)?)$/);
+      if (bm) {
+        const n = parseFloat(bm[1]);
+        const lo = Math.floor(n), hi = Math.ceil(n);
+        if (lo === hi) { upperBound = lo + 1; range = `≤${lo}°F`; label = `≤${lo}`; }
+        else { lowerBound = lo; upperBound = hi + 1; range = `${lo}–${hi}°F`; label = `${lo}–${hi}`; }
+      } else if (tm) {
+        const n = parseFloat(tm[1]);
+        // Without cross-market context, assume upper tail (T{N} → ≥{N+1}°F)
+        lowerBound = n + 1; range = `≥${n + 1}°F`; label = `≥${n + 1}`;
+      }
     }
 
     return {

@@ -713,20 +713,54 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
  * Markets view
  * ───────────────────────────────────────────────────────── */
 /* ── Client-side subtitle parser (mirrors api.js kalshiToBucket) ── */
+// Handles decimal temps (68.5°) and ticker-suffix fallback for cities without subtitles.
 function kalshiToBucket(m) {
   const s = (m.subtitle || "").trim();
   let lowerBound = -Infinity, upperBound = Infinity, range, label;
+  const NUM = "(\\d+(?:\\.\\d+)?)"; // matches 76 or 68.5
   let g;
   // "76° or below" / "Below 76°" / "under 76°"
-  g = s.match(/^(\d+)°\s*(?:F\s*)?or below$/i) || s.match(/^below\s+(\d+)°/i) || s.match(/^under\s+(\d+)°/i);
-  if (g) { const t=+g[1]; upperBound=t+1; range=`≤${t}°F`; label=`≤${t}`; }
+  g = s.match(new RegExp(`^${NUM}°\\s*(?:F\\s*)?or below$`, "i"))
+   || s.match(new RegExp(`^below\\s+${NUM}°`, "i"))
+   || s.match(new RegExp(`^under\\s+${NUM}°`, "i"));
+  if (g) {
+    const t = parseFloat(g[1]);
+    upperBound = Number.isInteger(t) ? t + 1 : Math.ceil(t);
+    range = `≤${t}°F`; label = `≤${t}`;
+  }
   // "85° or above" / "Above 85°" / "over 85°"
-  g = s.match(/^(\d+)°\s*(?:F\s*)?or above$/i) || s.match(/^above\s+(\d+)°/i) || s.match(/^over\s+(\d+)°/i);
-  if (g && !range) { const t=+g[1]; lowerBound=t; range=`≥${t}°F`; label=`≥${t}`; }
+  g = s.match(new RegExp(`^${NUM}°\\s*(?:F\\s*)?or above$`, "i"))
+   || s.match(new RegExp(`^above\\s+${NUM}°`, "i"))
+   || s.match(new RegExp(`^over\\s+${NUM}°`, "i"));
+  if (g && !range) {
+    const t = parseFloat(g[1]);
+    lowerBound = t; range = `≥${t}°F`; label = `≥${t}`;
+  }
   // "77° to 78°" / "77-78°F" / "Between 77° and 78°"
-  g = s.match(/^(\d+)°\s*(?:F\s*)?to\s*(\d+)°/i) || s.match(/^(\d+)\s*[-–]\s*(\d+)°/i) || s.match(/^between\s+(\d+)°.*?(\d+)°/i);
-  if (g && !range) { const lo=+g[1],hi=+g[2]; lowerBound=lo; upperBound=hi+1; range=`${lo}–${hi}°F`; label=`${lo}–${hi}`; }
-  return { range: range||s, label: label||s, lowerBound, upperBound,
+  g = s.match(new RegExp(`^${NUM}°\\s*(?:F\\s*)?to\\s*${NUM}°`, "i"))
+   || s.match(new RegExp(`^${NUM}\\s*[-–]\\s*${NUM}°`, "i"))
+   || s.match(new RegExp(`^between\\s+${NUM}°.*?${NUM}°`, "i"));
+  if (g && !range) {
+    const lo = parseFloat(g[1]), hi = parseFloat(g[2]);
+    lowerBound = lo; upperBound = Number.isInteger(hi) ? hi + 1 : Math.ceil(hi);
+    range = `${lo}–${hi}°F`; label = `${lo}–${hi}`;
+  }
+  // Ticker-suffix fallback: B{N.5} or T{N} when subtitle is missing (e.g. LA, Dallas)
+  if (!range && !s) {
+    const suffix = (m.ticker || "").split("-").pop();
+    const bm = suffix.match(/^B(\d+(?:\.\d+)?)$/);
+    const tm = suffix.match(/^T(\d+(?:\.\d+)?)$/);
+    if (bm) {
+      const n = parseFloat(bm[1]);
+      const lo = Math.floor(n), hi = Math.ceil(n);
+      if (lo === hi) { upperBound = lo + 1; range = `≤${lo}°F`; label = `≤${lo}`; }
+      else { lowerBound = lo; upperBound = hi + 1; range = `${lo}–${hi}°F`; label = `${lo}–${hi}`; }
+    } else if (tm) {
+      const n = parseFloat(tm[1]);
+      lowerBound = n + 1; range = `≥${n + 1}°F`; label = `≥${n + 1}`;
+    }
+  }
+  return { range: range||s||m.ticker, label: label||s, lowerBound, upperBound,
            market: m.mid??0, model:0, yes_bid: m.yes_bid??null, yes_ask: m.yes_ask??null,
            status: m.status??null, result: m.result??null };
 }

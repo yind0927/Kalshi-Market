@@ -83,6 +83,48 @@ function normaliseMarket(m) {
   };
 }
 
+// ── Synthetic subtitle from ticker suffix ─────────────────────
+// Some Kalshi cities (LA, Dallas) return markets with no subtitle.
+// We infer the human-readable range from the ticker suffix:
+//   B{N.5} → "{floor(N)}° to {ceil(N)}°"  e.g. B68.5 → "68° to 69°"
+//   T{N} (lowest)  → "{N}° or below"       e.g. T62 → "62° or below"
+//   T{N} (others)  → "{N+1}° or above"     e.g. T69 → "70° or above", T84 → "85° or above"
+function addSyntheticSubtitles(markets) {
+  if (markets.every(m => m.subtitle)) return markets; // all have subtitles already
+
+  // Collect T{N} values to identify the lower tail (smallest T = lower bound)
+  const tNums = markets
+    .map(m => { const s = m.ticker.split("-").pop(); const r = s.match(/^T(\d+(?:\.\d+)?)/); return r ? parseFloat(r[1]) : null; })
+    .filter(n => n !== null)
+    .sort((a, b) => a - b);
+  const lowerTailN = tNums.length >= 2 ? tNums[0] : null;
+
+  return markets.map(m => {
+    if (m.subtitle) return m; // keep existing subtitle
+
+    const suffix = m.ticker.split("-").pop();
+
+    // B{N} bucket — N.5 means 1°F range centred at N
+    const bm = suffix.match(/^B(\d+(?:\.\d+)?)$/);
+    if (bm) {
+      const n = parseFloat(bm[1]);
+      const lo = Math.floor(n), hi = Math.ceil(n);
+      const sub = lo === hi ? `${lo}° or below` : `${lo}° to ${hi}°`;
+      return { ...m, subtitle: sub };
+    }
+
+    // T{N} tail bucket
+    const tm = suffix.match(/^T(\d+(?:\.\d+)?)$/);
+    if (tm) {
+      const n = parseFloat(tm[1]);
+      const sub = (n === lowerTailN) ? `${n}° or below` : `${n + 1}° or above`;
+      return { ...m, subtitle: sub };
+    }
+
+    return m;
+  });
+}
+
 // ── Date helpers ─────────────────────────────────────────────
 const MONTHS_ABB = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
 function todayKalshiSuffix() {
@@ -217,7 +259,8 @@ module.exports = async function handler(req, res) {
 
   try {
     const { markets: raw, resolvedTicker, dbg } = await findMarkets(ticker);
-    const markets = raw.map(normaliseMarket);
+    const withSubtitles = addSyntheticSubtitles(raw); // fill missing subtitles from ticker suffix
+    const markets = withSubtitles.map(normaliseMarket);
 
     const payload = {
       markets,
