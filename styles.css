@@ -2448,3 +2448,258 @@ input { font-family: inherit; }
     grid-template-columns: 1fr auto auto !important;
   }
 }
+
+/* ============================================================
+ * Live badge (small inline)
+ * ========================================================== */
+.live-badge-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--pos) 14%, transparent);
+  color: var(--pos);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  vertical-align: middle;
+}
+.live-val { color: var(--pos); }
+
+/* ============================================================
+ * Analysis hero — right side with obs + edge stacked
+ * ========================================================== */
+.ana-hero-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-end;
+}
+.ana-hero-obs {
+  text-align: right;
+}
+.ana-hero-obs .l,
+.ana-hero-edge .l {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.ana-hero-obs .v { font-size: 36px; font-weight: 700; line-height: 1; color: var(--ink-1); }
+.ana-hero-obs .vsub { font-size: 11px; color: var(--ink-3); }
+
+/* ============================================================
+ * API Status Row
+ * ========================================================== */
+.api-status-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0 0;
+  flex-wrap: wrap;
+}
+.api-dot-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ink-3);
+  font-family: var(--mono);
+}
+.api-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.api-dot-item.ok .api-dot    { background: var(--pos); box-shadow: 0 0 0 2px color-mix(in oklab, var(--pos) 25%, transparent); }
+.api-dot-item.warn .api-dot  { background: var(--warn); }
+.api-dot-item.err .api-dot   { background: var(--neg); }
+.api-dot-item.idle .api-dot  { background: var(--ink-4); }
+.api-tag {
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.api-tag.live { background: color-mix(in oklab, var(--pos) 14%, transparent);  color: var(--pos); }
+.api-tag.mock { background: color-mix(in oklab, var(--warn) 14%, transparent); color: var(--warn); }
+.api-tag.err  { background: color-mix(in oklab, var(--neg) 14%, transparent);  color: var(--neg); }
+.api-tag.idle { color: var(--ink-4); }
+.api-stamp {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--ink-4);
+  font-family: var(--mono);
+}
+
+/* ============================================================
+ * Model Ensemble Panel
+ * ========================================================== */
+.ens-card {}
+.ens-head-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ens-mean-tag {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.ens-refresh-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.ens-refresh-btn:hover:not(:disabled) { background: var(--bg-3); color: var(--ink-1); }
+.ens-refresh-btn:disabled { opacity: 0.5; cursor: default; }
+.ens-refresh-btn.spin svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Live obs strip */
+.obs-live-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  margin: 0 -20px 16px;
+  background: color-mix(in oklab, var(--pos) 6%, var(--bg-2));
+  border-top: 1px solid color-mix(in oklab, var(--pos) 20%, var(--border));
+  border-bottom: 1px solid color-mix(in oklab, var(--pos) 20%, var(--border));
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.obs-live-temp {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--pos);
+  font-family: var(--mono);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.obs-live-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  flex-wrap: wrap;
+}
+.obs-live-meta .sep { color: var(--ink-4); }
+.obs-live-raw {
+  font-size: 10px;
+  color: var(--ink-4);
+  font-family: var(--mono);
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+/* Ensemble model grid */
+.ens-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.ens-model {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ens-model-name {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--mono);
+}
+.ens-model-temp {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink-1);
+  line-height: 1;
+  font-family: var(--mono);
+}
+.ens-model-temp span { font-size: 14px; font-weight: 500; color: var(--ink-3); }
+.ens-model-peak {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-family: var(--mono);
+}
+.ens-model-diff {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--mono);
+  margin-top: 2px;
+}
+.ens-model-diff.pos { color: var(--pos); }
+.ens-model-diff.neg { color: var(--neg); }
+.ens-model-diff.flat { color: var(--ink-4); }
+
+/* Loading skeleton */
+.ens-loading {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.ens-skel {
+  height: 96px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--bg-2) 25%, var(--bg-3) 50%, var(--bg-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* Empty / error */
+.ens-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-3);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+.ens-empty .err { color: var(--neg); }
+
+/* Note footer */
+.ens-note {
+  font-size: 10.5px;
+  color: var(--ink-4);
+  font-family: var(--mono);
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}

@@ -777,8 +777,15 @@ function MarketsView({ openAnalysis, bjtDec }) {
 /* ─────────────────────────────────────────────────────────
  * Probability distribution (analysis)
  * ───────────────────────────────────────────────────────── */
-function ProbDistribution({ market }) {
-  const maxV = Math.max(...market.buckets.flatMap((b) => [b.market, b.model]));
+function ProbDistribution({ market, live }) {
+  // Merge live distribution model probs when available
+  const isLive = !!(live?.distribution?.buckets);
+  const buckets = market.buckets.map((b, i) => {
+    const lp = live?.distribution?.buckets?.[i]?.modelProb;
+    return { ...b, model: lp != null ? lp : b.model };
+  });
+  const maxV = Math.max(...buckets.flatMap((b) => [b.market, b.model]));
+
   return (
     <div className="card">
       <div className="card-head">
@@ -788,7 +795,11 @@ function ProbDistribution({ market }) {
         </div>
         <div className="legend">
           <span><i className="market" />Market 市场</span>
-          <span><i className="model" />Model 模型</span>
+          <span><i className="model" />
+            {isLive
+              ? <><span className="live-badge-sm">LIVE</span> Model</>
+              : "Model 模型"}
+          </span>
         </div>
       </div>
 
@@ -800,7 +811,7 @@ function ProbDistribution({ market }) {
           <div className="num head">Model</div>
           <div className="num head">Edge</div>
         </li>
-        {market.buckets.map((b, i) => {
+        {buckets.map((b, i) => {
           const e = b.model - b.market;
           return (
             <li className="prob-row" key={i}>
@@ -920,12 +931,168 @@ function HourlyChart({ market }) {
 }
 
 /* ─────────────────────────────────────────────────────────
+ * Live Model Ensemble Panel
+ * ───────────────────────────────────────────────────────── */
+function ModelEnsemblePanel({ live, market, onRefresh }) {
+  const loading = live?.status === "loading";
+  const models  = live?.models || {};
+  const dist    = live?.distribution;
+  const obs     = live?.observation;
+  const keys    = Object.keys(models);
+
+  return (
+    <div className="card ens-card">
+      <div className="card-head">
+        <div>
+          <h3>Live Model Ensemble <em>实时模型集合</em></h3>
+          <div className="sub">Open-Meteo · GFS / ECMWF / HRRR / NAM · 日内最高温 08:00–22:00 本地时</div>
+        </div>
+        <div className="ens-head-right">
+          {dist && (
+            <span className="ens-mean-tag">
+              均值 <strong>{dist.mean}°F</strong> ± {dist.std}°F
+            </span>
+          )}
+          <button className={`ens-refresh-btn ${loading ? "spin" : ""}`}
+            onClick={onRefresh} title="Refresh live data" disabled={loading}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M23 4v6h-6M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Live Observation Strip */}
+      {obs && (
+        <div className="obs-live-strip">
+          <div className="obs-live-temp">
+            <span className="live-badge-sm">LIVE</span>
+            {obs.temperature != null ? `${obs.temperature}°F` : "—"}
+          </div>
+          <div className="obs-live-meta">
+            <span>{obs.sky || "—"}</span>
+            <span className="sep">·</span>
+            <span>{obs.windCompass} {obs.windSpeed != null ? `${obs.windSpeed}kt` : ""}{obs.windGust ? ` G${obs.windGust}kt` : ""}</span>
+            <span className="sep">·</span>
+            <span>露点 {obs.dewpoint != null ? `${obs.dewpoint}°F` : "—"}</span>
+          </div>
+          <div className="obs-live-raw">{obs.source} · {obs.rawMessage || ""}</div>
+        </div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="ens-loading">
+          {[1,2,3,4].map(i => <div key={i} className="ens-skel" />)}
+        </div>
+      )}
+
+      {/* Model cards */}
+      {!loading && keys.length > 0 && (
+        <div className="ens-grid">
+          {keys.map(key => {
+            const m = models[key];
+            const diff = dist ? +(m.dailyMax - dist.mean).toFixed(1) : null;
+            const cls  = diff == null ? "flat" : diff > 0.5 ? "pos" : diff < -0.5 ? "neg" : "flat";
+            return (
+              <div className="ens-model" key={key}>
+                <div className="ens-model-name">{key}</div>
+                <div className="ens-model-temp">{m.dailyMax}<span>°F</span></div>
+                <div className="ens-model-peak">峰值 {String(m.peakHour).padStart(2,"0")}:00</div>
+                {diff != null && (
+                  <div className={`ens-model-diff ${cls}`}>
+                    {diff > 0 ? "+" : ""}{diff}°
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* No data / error */}
+      {!loading && keys.length === 0 && (
+        <div className="ens-empty">
+          {live?.modelsError
+            ? <span className="err">模型错误: {live.modelsError}</span>
+            : <span>点击 ↻ 加载实时模型数据</span>}
+        </div>
+      )}
+
+      {dist && (
+        <div className="ens-note">
+          模型扩散度 {dist.spread}°F · 加入不可约误差 2.0°F → σ = {dist.std}°F · {dist.modelCount} 模型参与集成
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+ * API Status Row
+ * ───────────────────────────────────────────────────────── */
+function ApiStatusRow({ live }) {
+  if (!live || live.status === "loading") return null;
+
+  const nwsSt    = live.observation ? "ok"   : live.obsError    ? "err"  : "idle";
+  const modelSt  = live.models && Object.keys(live.models).length > 0 ? "ok" : live.modelsError ? "err" : "idle";
+  const kalshiSt = live.kalshi ? "ok" : "warn";
+
+  const stamp = live.fetchedAt
+    ? new Date(live.fetchedAt).toLocaleTimeString("zh-CN",
+        { timeZone:"Asia/Shanghai", hour12:false, hour:"2-digit", minute:"2-digit", second:"2-digit" }) + " BJT"
+    : "";
+
+  const dots = [
+    { st: nwsSt,   label:"NWS ASOS",   detail: live.obsError },
+    { st: modelSt, label:"Open-Meteo", detail: live.modelsError },
+    { st: kalshiSt,label:"Kalshi",     detail: kalshiSt === "warn" ? "CORS限制—使用模拟价格" : null },
+  ];
+
+  return (
+    <div className="api-status-row">
+      {dots.map(({ st, label, detail }) => (
+        <span key={label} className={`api-dot-item ${st}`} title={detail || ""}>
+          <span className="api-dot" />
+          {label}
+          {st === "ok"   && <span className="api-tag live">LIVE</span>}
+          {st === "warn" && <span className="api-tag mock">MOCK</span>}
+          {st === "err"  && <span className="api-tag err">ERR</span>}
+          {st === "idle" && <span className="api-tag idle">—</span>}
+        </span>
+      ))}
+      {stamp && <span className="api-stamp">更新: {stamp}</span>}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
  * Analysis view
  * ───────────────────────────────────────────────────────── */
-function AnalysisView({ marketId, setMarketId, bjtDec }) {
+function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch }) {
   const market = DATA.markets.find((m) => m.id === marketId) || DATA.markets[0];
-  const maxE = maxEdgeBucket(market);
+  const live   = liveData?.[market.id];
+
+  // Recalculate edge using live model probs if available
+  const liveBuckets = market.buckets.map((b, i) => {
+    const lp = live?.distribution?.buckets?.[i]?.modelProb;
+    return { ...b, model: lp != null ? lp : b.model };
+  });
+  const maxE = liveBuckets.reduce((a, b) => Math.abs(b.model - b.market) > Math.abs(a.model - a.market) ? b : a);
   const edge = maxE.model - maxE.market;
+
+  // Live observation temperature (falls back to mock)
+  const liveTemp = live?.observation?.temperature;
+  const currentTemp = liveTemp != null ? liveTemp : market.currentObs;
+  const isLiveObs = liveTemp != null;
+
+  // Auto-fetch when this market is opened for the first time
+  useEffect(() => {
+    if (!live && typeof window.KW_API !== "undefined") {
+      onFetch(market);
+    }
+  }, [market.id]);
 
   return (
     <div className="view" data-screen-label="analysis">
@@ -964,17 +1131,36 @@ function AnalysisView({ marketId, setMarketId, bjtDec }) {
             <span className="ana-tag">OI ${fmtVolume(market.openInterest)}</span>
           </div>
         </div>
-        <div className="ana-hero-edge">
-          <div className="l">Max Edge · 最大偏差</div>
-          <div className={`v ${edge > 0 ? "pos" : "neg"}`}>
-            {edge > 0 ? "+" : "−"}{Math.abs(edge * 100).toFixed(1)}<span style={{ fontSize: 22 }}>pp</span>
+
+        <div className="ana-hero-right">
+          <div className="ana-hero-obs">
+            <div className="l">
+              Current Obs · 当前观测
+              {isLiveObs && <span className="live-badge-sm" style={{ marginLeft: 6 }}>LIVE</span>}
+            </div>
+            <div className={`v ${isLiveObs ? "live-val" : ""}`}>
+              {currentTemp}<span style={{ fontSize: 22 }}>°F</span>
+            </div>
+            <div className="vsub">{isLiveObs ? live.observation.source : market.obsTime}</div>
           </div>
-          <div className="vsub">{maxE.range} · model {fmtPct(maxE.model)} vs market {fmtCents(maxE.market)}</div>
+          <div className="ana-hero-edge">
+            <div className="l">Max Edge · 最大偏差</div>
+            <div className={`v ${edge > 0 ? "pos" : "neg"}`}>
+              {edge > 0 ? "+" : "−"}{Math.abs(edge * 100).toFixed(1)}<span style={{ fontSize: 22 }}>pp</span>
+            </div>
+            <div className="vsub">{maxE.range} · model {fmtPct(maxE.model)} vs market {fmtCents(maxE.market)}</div>
+          </div>
         </div>
       </div>
 
+      <ApiStatusRow live={live} />
+
+      <div style={{ height: 16 }} />
+      <ModelEnsemblePanel live={live} market={market} onRefresh={() => onFetch(market)} />
+
+      <div style={{ height: 16 }} />
       <div className="ana-row-3-2">
-        <ProbDistribution market={market} />
+        <ProbDistribution market={market} live={live} />
         <AISummary market={market} edge={edge} maxE={maxE} />
       </div>
 
@@ -1395,11 +1581,24 @@ function App() {
   const [marketId, setMarketId] = useState(DATA.markets[0].id);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bjtDec, setBjtDec] = useState(getCurrentBJTDecimal());
+  const [liveData, setLiveData] = useState({});
 
   useEffect(() => {
     const t = setInterval(() => setBjtDec(getCurrentBJTDecimal()), 30000);
     return () => clearInterval(t);
   }, []);
+
+  const fetchLiveForMarket = async (market) => {
+    const id = market.id;
+    if (!window.KW_API) return;
+    setLiveData(prev => ({ ...prev, [id]: { status: "loading" } }));
+    try {
+      const result = await window.KW_API.fetchCity(market.city, market.buckets, id);
+      setLiveData(prev => ({ ...prev, [id]: { status: "loaded", ...result } }));
+    } catch (e) {
+      setLiveData(prev => ({ ...prev, [id]: { status: "error", error: String(e) } }));
+    }
+  };
 
   useEffect(() => {
     const t = theme === "system"
@@ -1434,7 +1633,13 @@ function App() {
       {tab === "markets" ? (
         <MarketsView openAnalysis={openAnalysis} bjtDec={bjtDec} />
       ) : (
-        <AnalysisView marketId={marketId} setMarketId={setMarketId} bjtDec={bjtDec} />
+        <AnalysisView
+          marketId={marketId}
+          setMarketId={setMarketId}
+          bjtDec={bjtDec}
+          liveData={liveData}
+          onFetch={fetchLiveForMarket}
+        />
       )}
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} setTheme={setTheme} />
     </div>
