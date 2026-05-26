@@ -166,26 +166,16 @@ window.KW_API = (() => {
     };
   }
 
-  /* ── 4. Kalshi Market Prices ─────────────────────────────── */
+  /* ── 4. Kalshi Market Prices (via server-side proxy) ────── */
   async function fetchKalshi(eventTicker) {
-    // Production API — CORS headers may not be present for browser calls.
-    // Returns null gracefully; UI falls back to mock prices.
-    const url = `https://trading-api.kalshi.com/trade-api/v2/markets?event_ticker=${eventTicker}&status=open&limit=20`;
-    const res = await fetch(url, {
-      headers: { "Content-Type": "application/json" },
-      mode: "cors",
-    });
-    if (!res.ok) throw new Error(`Kalshi HTTP ${res.status}`);
+    // Routed through /api/kalshi (Vercel serverless) to avoid browser CORS.
+    // Falls back gracefully if proxy not deployed or credentials missing.
+    const url = `/api/kalshi?ticker=${encodeURIComponent(eventTicker)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Kalshi proxy ${res.status}`);
     const data = await res.json();
-    return (data.markets || []).map(m => ({
-      ticker:   m.ticker,
-      subtitle: m.subtitle,
-      yes_bid:  m.yes_bid  != null ? m.yes_bid  / 100 : null,
-      yes_ask:  m.yes_ask  != null ? m.yes_ask  / 100 : null,
-      mid:      m.yes_bid != null && m.yes_ask != null
-                  ? +((m.yes_bid + m.yes_ask) / 200).toFixed(4) : null,
-      volume:   m.volume,
-    }));
+    if (data.error) throw new Error(data.error);
+    return data.markets || [];
   }
 
   /* ── 5. Full City Fetch ──────────────────────────────────── */

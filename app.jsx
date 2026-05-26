@@ -534,7 +534,7 @@ function CityTimeline({ markets, bjtDec }) {
 /* ─────────────────────────────────────────────────────────
  * Top bar
  * ───────────────────────────────────────────────────────── */
-function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec }) {
+function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec, lastRefresh, liveCount }) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -565,8 +565,20 @@ function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec }) {
       <div className="topbar-right">
         <div className="bjt-clock">
           <div className="bjt-time">{formatBJTDisplay(bjtDec)}</div>
-          <div className="bjt-label">BJT 北京时间</div>
+          <div className="bjt-label">
+            BJT 北京时间
+            {lastRefresh && (
+              <span className="refresh-stamp" title={`Last refresh: ${lastRefresh.toLocaleTimeString()}`}>
+                · 更新 {lastRefresh.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}
+              </span>
+            )}
+          </div>
         </div>
+        {liveCount > 0 && (
+          <div className="live-count-badge">
+            <span className="wd" />{liveCount} LIVE
+          </div>
+        )}
         <div className={`window-badge ${isInWindow(bjtDec) ? "active" : ""}`}>
           {isInWindow(bjtDec) ? (
             <><span className="wd" />主力窗口</>
@@ -700,17 +712,36 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
 /* ─────────────────────────────────────────────────────────
  * Markets view
  * ───────────────────────────────────────────────────────── */
-// Merge live distribution probs into market buckets (used on cards + map)
+// Merge all live data into a market object (used everywhere in UI)
 function liveMarket(market, live) {
-  if (!live?.distribution?.buckets) return market;
+  if (!live) return market;
+  const dist   = live.distribution;
+  const kalshi = live.kalshi;   // array of { ticker, mid, yes_bid, yes_ask, ... }
+  const obs    = live.observation;
+
+  const buckets = market.buckets.map((b, i) => {
+    const lp = dist?.buckets?.[i]?.modelProb;   // live model probability
+    const kp = kalshi?.[i]?.mid;                 // live Kalshi mid price
+    return {
+      ...b,
+      model:  lp != null ? lp : b.model,
+      market: kp != null ? kp : b.market,
+      // carry raw bid/ask for tooltip
+      yes_bid: kalshi?.[i]?.yes_bid ?? null,
+      yes_ask: kalshi?.[i]?.yes_ask ?? null,
+    };
+  });
+
   return {
     ...market,
-    buckets: market.buckets.map((b, i) => {
-      const lp = live.distribution.buckets[i]?.modelProb;
-      return lp != null ? { ...b, model: lp } : b;
-    }),
-    currentObs: live.observation?.temperature ?? market.currentObs,
-    _live: true,
+    buckets,
+    currentObs:  obs?.temperature       ?? market.currentObs,
+    forecastHigh: dist?.mean            ?? market.forecastHigh,
+    forecastConf: dist ? 0.5 + Math.min(0.45, 1 / (dist.std + 0.1) * 0.45) : market.forecastConf,
+    volume:       kalshi?.[0]?.volume   ?? market.volume,
+    _liveObs:    !!(obs),
+    _liveModel:  !!(dist),
+    _liveKalshi: !!(kalshi?.length),
   };
 }
 
@@ -1621,6 +1652,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bjtDec, setBjtDec] = useState(getCurrentBJTDecimal());
   const [liveData, setLiveData] = useState({});
+  const [lastRefresh, setLastRefresh] = useState(null);
 
   useEffect(() => {
     const t = setInterval(() => setBjtDec(getCurrentBJTDecimal()), 30000);
@@ -1630,10 +1662,14 @@ function App() {
   const fetchLiveForMarket = async (market) => {
     const id = market.id;
     if (!window.KW_API) return;
-    setLiveData(prev => ({ ...prev, [id]: { status: "loading" } }));
+    setLiveData(prev => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), status: "loading" },
+    }));
     try {
       const result = await window.KW_API.fetchCity(market.city, market.buckets, id);
       setLiveData(prev => ({ ...prev, [id]: { status: "loaded", ...result } }));
+      setLastRefresh(new Date());
     } catch (e) {
       setLiveData(prev => ({ ...prev, [id]: { status: "error", error: String(e) } }));
     }
@@ -1641,18 +1677,17 @@ function App() {
 
   // Auto-fetch all markets on app start
   useEffect(() => {
-    if (typeof window.KW_API !== "undefined") {
-      DATA.markets.forEach(m => fetchLiveForMarket(m));
-    } else {
-      // api.js may not have loaded yet — retry once after 500ms
-      const t = setTimeout(() => {
-        if (typeof window.KW_API !== "undefined") {
-          DATA.markets.forEach(m => fetchLiveForMarket(m));
-        }
-      }, 500);
-      return () => clearTimeout(t);
-    }
-  }, []); // once on mount
+    const doFetch = () => {
+      if (typeof window.KW_API !== "undefined") {
+        DATA.markets.forEach(m => fetchLiveForMarket(m));
+      }
+    };
+    // Small delay to let api.js finish loading
+    const boot = setTimeout(doFetch, 300);
+    // Refresh every 5 minutes
+    const refresh = setInterval(doFetch, 5 * 60 * 1000);
+    return () => { clearTimeout(boot); clearInterval(refresh); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = theme === "system"
@@ -1674,6 +1709,8 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const liveCount = DATA.markets.filter(m => liveData[m.id]?.observation).length;
+
   return (
     <div className="app">
       <TopBar
@@ -1683,6 +1720,8 @@ function App() {
         setTheme={setTheme}
         openSettings={() => setSettingsOpen(true)}
         bjtDec={bjtDec}
+        lastRefresh={lastRefresh}
+        liveCount={liveCount}
       />
       {tab === "markets" ? (
         <MarketsView openAnalysis={openAnalysis} bjtDec={bjtDec} liveData={liveData} />

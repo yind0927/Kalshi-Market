@@ -2703,3 +2703,38 @@ input { font-family: inherit; }
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+
+/* ============================================================
+ * TopBar — refresh stamp + live count
+ * ========================================================== */
+.refresh-stamp {
+  font-size: 9px;
+  color: var(--ink-4);
+  margin-left: 2px;
+}
+.live-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: color-mix(in oklab, var(--pos) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--pos) 30%, transparent);
+  color: var(--pos);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  font-family: var(--mono);
+}
+.live-count-badge .wd {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pos);
+  display: inline-block;
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.55; transform: scale(0.8); }
+}
