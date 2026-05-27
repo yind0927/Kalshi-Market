@@ -20,12 +20,15 @@ window.KW_API = (() => {
     "Los Angeles": { stationId:"KLAX", lat:33.9425, lon:-118.408, tz:"America/Los_Angeles"   },
   };
 
-  const MODELS = [
-    { key: "GFS",   id: "gfs_seamless"   },
-    { key: "HRRR",  id: "gfs_hrrr"       },
-    { key: "ICON",  id: "icon_seamless"  },  // DWD ICON — replaces ECMWF (wrong endpoint/vars)
-    { key: "NAM",   id: "ncep_nam_conus" },
+  // Open-Meteo NWP models (all use /v1/forecast, same variable names)
+  const OM_MODELS = [
+    { key: "GFS",  id: "gfs_seamless"   },
+    { key: "HRRR", id: "gfs_hrrr"       },
+    { key: "NAM",  id: "ncep_nam_conus" },
   ];
+
+  // Cache NWS gridpoint forecast URLs — stable per lat/lon, no need to re-fetch
+  const NWS_FC_URL_CACHE = new Map();
 
   /* ── Helpers ────────────────────────────────────────────── */
   const cToF = c  => c  != null ? +(c  * 9/5 + 32).toFixed(1) : null;
@@ -41,6 +44,74 @@ window.KW_API = (() => {
   }
   function normalCDF(x, mu, sigma) {
     return 0.5 * (1 + erf((x - mu) / (sigma * Math.SQRT2)));
+  }
+
+  /* ── 0. NWS Official Hourly Forecast ───────────────────── */
+  // NWS is not a single NWP model — it's a human-QC'd blend (NBM-based)
+  // calibrated specifically for each ASOS station area.  For Kalshi it's
+  // the most directly relevant forecast: same agency, same station domain.
+  async function fetchNWSForecast(lat, lon, tz) {
+    const cacheKey = `${lat},${lon}`;
+
+    // Step 1: resolve gridpoint URL (cached after first call)
+    let fcUrl = NWS_FC_URL_CACHE.get(cacheKey);
+    if (!fcUrl) {
+      const ptRes = await fetch(
+        `https://api.weather.gov/points/${lat},${lon}`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (!ptRes.ok) throw new Error(`NWS points ${ptRes.status}`);
+      const ptData = await ptRes.json();
+      fcUrl = ptData.properties?.forecastHourly;
+      if (!fcUrl) throw new Error("NWS: no forecastHourly URL in response");
+      NWS_FC_URL_CACHE.set(cacheKey, fcUrl);
+    }
+
+    // Step 2: fetch hourly forecast
+    const fcRes = await fetch(fcUrl, { headers: { Accept: "application/json" } });
+    if (!fcRes.ok) throw new Error(`NWS hourly forecast ${fcRes.status}`);
+    const fcData = await fcRes.json();
+
+    const periods = fcData.properties?.periods;
+    if (!periods?.length) throw new Error("NWS: empty forecast periods");
+
+    // Determine today's local date string ("YYYY-MM-DD")
+    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+
+    const toLocalHour = (isoStr) =>
+      parseInt(new Intl.DateTimeFormat("en-US", {
+        timeZone: tz, hour: "numeric", hour12: false,
+      }).format(new Date(isoStr)), 10);
+
+    const toLocalDate = (isoStr) =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(isoStr));
+
+    // Filter to today's peak window (08:00–22:00 local); fall back to full today
+    const inWindow = periods.filter(p =>
+      toLocalDate(p.startTime) === todayStr &&
+      toLocalHour(p.startTime) >= 8 &&
+      toLocalHour(p.startTime) <= 22
+    );
+    const candidates = inWindow.length > 0
+      ? inWindow
+      : periods.filter(p => toLocalDate(p.startTime) === todayStr);
+
+    if (candidates.length === 0) throw new Error("NWS: no forecast periods for today");
+
+    // Temperature is already °F for all US NWS offices
+    const peak = candidates.reduce((mx, p) => p.temperature > mx.temperature ? p : mx);
+
+    if (!isFinite(peak.temperature) || peak.temperature < -60 || peak.temperature > 140) {
+      throw new Error(`NWS: implausible temperature ${peak.temperature}°F`);
+    }
+
+    return {
+      dailyMax:    peak.temperature,
+      peakHour:    isFinite(toLocalHour(peak.startTime)) ? toLocalHour(peak.startTime) : null,
+      windAtPeak:  null,   // NWS wind is a string like "10 mph" — skip for corrections
+      cloudAtPeak: null,
+      updatedAt:   new Date().toISOString(),
+    };
   }
 
   /* ── 1. NWS Current Observation ────────────────────────── */
@@ -145,7 +216,7 @@ window.KW_API = (() => {
     return sorted.filter(obs => new Date(obs.timestamp).getTime() >= cutoff);
   }
 
-  /* ── 2. Open-Meteo Multi-Model Forecast ─────────────────── */
+  /* ── 2. Multi-Model Forecast (Open-Meteo NWP + NWS official) ── */
   async function fetchModels(city) {
     const cfg = CITIES[city];
     if (!cfg) throw new Error(`Unknown city: ${city}`);
@@ -153,8 +224,10 @@ window.KW_API = (() => {
     const results = {};
     const errs    = {};
 
-    await Promise.allSettled(
-      MODELS.map(async ({ key, id }) => {
+    // Run all fetches in parallel: 3 Open-Meteo NWP models + NWS official forecast
+    await Promise.allSettled([
+      // ── Open-Meteo NWP models ──────────────────────────────
+      ...OM_MODELS.map(async ({ key, id }) => {
         const params = new URLSearchParams({
           latitude:         cfg.lat,
           longitude:        cfg.lon,
@@ -211,8 +284,13 @@ window.KW_API = (() => {
           hourly,
           updatedAt:   new Date().toISOString(),
         };
-      }).map((p, i) => p.catch(e => { errs[MODELS[i].key] = e.message; }))
-    );
+      }).map((p, i) => p.catch(e => { errs[OM_MODELS[i].key] = e.message; })),
+
+      // ── NWS official hourly forecast ───────────────────────
+      fetchNWSForecast(cfg.lat, cfg.lon, cfg.tz)
+        .then(d  => { results["NWS"] = d; })
+        .catch(e => { errs["NWS"]    = e.message; }),
+    ]);
 
     return { models: results, errors: errs };
   }
@@ -289,13 +367,12 @@ window.KW_API = (() => {
   }
 
   /* ── 3. Probability Distribution from Ensemble ──────────── */
-  // Model weights based on verified CONUS 12–24h RMSE performance:
-  //   HRRR  0.35 — best short-range US model, hourly updates (~2.1°F RMSE)
-  //   GFS   0.30 — reliable global model                     (~2.4°F RMSE)
-  //   ICON  0.25 — DWD ICON global, world-class accuracy     (~2.0°F RMSE)
-  //   NAM   0.10 — coarser US regional, least accurate       (~2.9°F RMSE)
-  // (ECMWF removed: requires dedicated endpoint + different variable names)
-  const MODEL_WEIGHTS = { GFS: 0.30, HRRR: 0.35, ICON: 0.25, NAM: 0.10 };
+  // Model weights based on CONUS 12–24h forecast skill:
+  //   NWS   0.35 — official human-QC'd blend (NBM), calibrated to settlement station
+  //   HRRR  0.30 — best raw NWP short-range, hourly updates  (~2.1°F RMSE)
+  //   GFS   0.25 — reliable global NWP backbone              (~2.4°F RMSE)
+  //   NAM   0.10 — US regional, coarser resolution           (~2.9°F RMSE)
+  const MODEL_WEIGHTS = { NWS: 0.35, HRRR: 0.30, GFS: 0.25, NAM: 0.10 };
 
   // ── Station-specific bias: NWS ASOS station vs Open-Meteo grid ──
   // Each ASOS station has microclimate characteristics that cause systematic
@@ -357,9 +434,9 @@ window.KW_API = (() => {
     const spread   = Math.sqrt(variance);
 
     // Irreducible forecast error (CONUS 12–24h)
-    // Lower bound 1.8 when a premium global model (ICON or old ECMWF) is present
-    const hasPremium  = entries.some(e => e.key === "ICON" || e.key === "ECMWF");
-    const irreducible = hasPremium ? 1.8 : 2.0;
+    // Lower bound 1.8 when NWS official forecast is present (already post-processed)
+    const hasNWS      = entries.some(e => e.key === "NWS");
+    const irreducible = hasNWS ? 1.8 : 2.0;
     const std         = Math.sqrt(spread ** 2 + irreducible ** 2);
 
     const modelMin = Math.min(...entries.map(e => e.val));

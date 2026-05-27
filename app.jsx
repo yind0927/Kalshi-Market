@@ -1386,7 +1386,7 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
       <div className="card-head">
         <div>
           <h3>Live Model Ensemble <em>实时模型集合</em></h3>
-          <div className="sub">Open-Meteo · GFS / HRRR / ICON / NAM · 日内最高温 08:00–22:00 本地时</div>
+          <div className="sub">NWS官方预报 + Open-Meteo · GFS / HRRR / NAM · 日内最高温 08:00–22:00 本地时</div>
         </div>
         <div className="ens-head-right">
           {dist && (
@@ -1475,7 +1475,7 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
 
       {dist && (
         <div className="ens-note">
-          加权均值 {dist.mean}°F → 修正后 {dist.adjustedMean}°F（HRRR×0.35 · GFS×0.30 · ICON×0.25 · NAM×0.10，共 {dist.modelCount}/4 模型）· 模型区间 {dist.modelMin}–{dist.modelMax}°F · σ原始 {dist.std}°F → 修正后 {dist.adjustedStd}°F
+          加权均值 {dist.mean}°F → 修正后 {dist.adjustedMean}°F（NWS×0.35 · HRRR×0.30 · GFS×0.25 · NAM×0.10，共 {dist.modelCount}/4 模型）· 模型区间 {dist.modelMin}–{dist.modelMax}°F · σ {dist.std}°F → 修正后 {dist.adjustedStd}°F
         </div>
       )}
 
@@ -1939,7 +1939,7 @@ function DataSources() {
         <div className="row"><span className="k">Markets</span><span className="v">Kalshi REST v2 · every 5s</span></div>
         <div className="row"><span className="k">Obs</span><span className="v">NOAA METAR / ASOS · 60s</span></div>
         <div className="row"><span className="k">Forecast</span><span className="v">NWS NDFD hourly · 15m</span></div>
-        <div className="row"><span className="k">Models</span><span className="v">GFS · ICON · HRRR · NAM</span></div>
+        <div className="row"><span className="k">Models</span><span className="v">NWS官方 · GFS · HRRR · NAM</span></div>
         <div className="row"><span className="k">AI</span><span className="v">KW-Llm v0.4</span></div>
         <div className="row"><span className="k">Refresh</span><span className="v">{DATA.lastUpdated}</span></div>
       </div>
@@ -2053,7 +2053,7 @@ function SettingsDrawer({ open, onClose, theme, setTheme, refreshCadence, setRef
     maxPositions: 5,
     autoSuggest: true,
 
-    models: { GFS: true, ICON: true, HRRR: true, NAM: true, HWRF: false },
+    models: { GFS: true, NWS: true, HRRR: true, NAM: true, HWRF: false },
 
     aiSummary: true,
     aiVerbosity: "concise",
@@ -2195,7 +2195,7 @@ function SettingsDrawer({ open, onClose, theme, setTheme, refreshCadence, setRef
               icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/><path d="M3 12h6M15 12h6M12 3v6M12 15v6"/></svg>} />
             <SettingsRowStack label="Active ensembles" cn="集成模型"
               desc="选择参与概率融合的天气模型">
-              <PillToggle options={["GFS", "ICON", "HRRR", "NAM", "HWRF"]} value={s.models}
+              <PillToggle options={["GFS", "NWS", "HRRR", "NAM", "HWRF"]} value={s.models}
                 onChange={(v) => update("models", v)} />
             </SettingsRowStack>
             <SettingsRow label="Kalshi refresh" cn="行情刷新" desc="Kalshi 实时价格轮询频率 · 越快越及时但消耗更多 API 配额">
