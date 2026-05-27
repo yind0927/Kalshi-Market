@@ -70,11 +70,12 @@ ${bucketLines}
 
 要求：数字具体，不超过80字，专业直接，不用"建议"/"推荐"等措辞。`;
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client  = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 250,
-    messages: [{ role: "user", content: prompt }],
+    model:      "claude-sonnet-4-6",   // Sonnet for higher-quality analysis
+    max_tokens: 350,
+    system: "你是一位专业的天气预测市场量化分析师，擅长从气象模型数据中提取交易信号。你的分析简洁、数字具体、不含废话。",
+    messages:  [{ role: "user", content: prompt }],
   });
 
   return res.status(200).json({

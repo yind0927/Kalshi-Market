@@ -1032,66 +1032,93 @@ function ProbDistribution({ market, live, kalshiStatus }) {
 
 /* ─────────────────────────────────────────────────────────
  * Hourly chart (analysis) — live NWS obs + ensemble forecast
+ *
+ * KEY FIX: uses elapsed-hours for X axis (handles midnight
+ * crossings — localHour wraps 23→0 and breaks xRange calc).
  * ───────────────────────────────────────────────────────── */
 function HourlyChart({ market, live }) {
-  const hourlyObs = live?.hourlyObs;
-  const isLive    = !!(hourlyObs?.length > 1);
-
-  // ── Build data points ─────────────────────────────────────
-  let dataPoints, forecastHour, forecastTemp;
-
-  if (isLive) {
-    // Filter to today's observations only (localHour 0–24) and valid temps
-    dataPoints  = hourlyObs.filter(o => o.localHour != null && o.temp != null);
-    forecastHour = 14.5; // typical peak hour
-    forecastTemp = live?.distribution?.adjustedMean ?? market.forecastHigh;
-  } else {
-    // Static fallback
-    const series = DATA.hourlySeries[market.city] || [];
-    dataPoints   = series.map((v, i) => v != null ? { localHour: i, temp: v } : null).filter(Boolean);
-    forecastHour = 16;
-    forecastTemp = market.forecastHigh;
-  }
-
-  if (!dataPoints.length) return null;
+  const rawObs = live?.hourlyObs;
+  const hasLive = !!(rawObs?.length > 1);
 
   const W = 720, H = 220;
   const padL = 40, padR = 24, padT = 20, padB = 36;
 
-  // X range: span from first obs hour to 1h past forecast hour
-  const xMin = Math.max(0, Math.floor(dataPoints[0].localHour));
-  const xMax = Math.min(24, Math.ceil(Math.max(dataPoints[dataPoints.length-1].localHour, forecastHour)) + 1);
-  const xRange = Math.max(1, xMax - xMin);
-  const xFor = h => padL + ((h - xMin) / xRange) * (W - padL - padR);
+  // ── Build data points with elapsed X coordinate ──────────
+  // Elapsed = hours since first observation (monotonically
+  // increasing even across midnight 23→0→1…).
+  let dataPoints = [], fcElapsed = 0, forecastTemp = 0;
 
-  // Y range: round to nearest 5°F with padding
-  const allT = dataPoints.map(p => p.temp).concat([forecastTemp]);
-  const minV = Math.floor((Math.min(...allT) - 2) / 5) * 5;
-  const maxV = Math.ceil ((Math.max(...allT) + 2) / 5) * 5;
-  const yRange = Math.max(1, maxV - minV);
-  const yFor = v => padT + (1 - (v - minV) / yRange) * (H - padT - padB);
+  if (hasLive) {
+    const valid = rawObs.filter(o => o.temp != null && o.timestamp);
+    if (valid.length < 2) return null;
+    const t0ms = new Date(valid[0].timestamp).getTime();
+    dataPoints = valid.map(o => ({
+      ...o,
+      elapsed: (new Date(o.timestamp).getTime() - t0ms) / 3_600_000,
+    }));
+    const last      = dataPoints[dataPoints.length - 1];
+    // Hours from last obs until today's expected peak (~14:30 local).
+    // If we're already past peak, aim for the next reasonable time (+0.5h).
+    let h2fc = 14.5 - (last.localHour ?? 14.5);
+    if (h2fc < 0.25) h2fc += 24;            // already past peak → next day
+    fcElapsed    = last.elapsed + h2fc;
+    forecastTemp = live?.distribution?.adjustedMean ?? market.forecastHigh;
 
-  // SVG paths
-  const obsPath  = dataPoints.map((p, i) =>
-    `${i === 0 ? "M" : "L"}${xFor(p.localHour).toFixed(1)} ${yFor(p.temp).toFixed(1)}`
-  ).join(" ");
+  } else {
+    // Static fallback data
+    const series = DATA.hourlySeries[market.city] || [];
+    dataPoints   = series
+      .map((v, i) => v != null ? { temp: v, elapsed: i, localHour: i, timestamp: null } : null)
+      .filter(Boolean);
+    if (dataPoints.length < 2) return null;
+    fcElapsed    = 16;
+    forecastTemp = market.forecastHigh;
+  }
+
   const last = dataPoints[dataPoints.length - 1];
+
+  // ── X axis (elapsed hours, 0 … fcElapsed+0.5) ────────────
+  const xTotal = Math.max(last.elapsed + 0.5, fcElapsed) + 0.5;
+  const xFor   = e => padL + (e / xTotal) * (W - padL - padR);
+
+  // ── Y axis ───────────────────────────────────────────────
+  const allT  = dataPoints.map(p => p.temp).concat([forecastTemp]);
+  const minV  = Math.floor((Math.min(...allT) - 3) / 5) * 5;
+  const maxV  = Math.ceil ((Math.max(...allT) + 3) / 5) * 5;
+  const ySpan = Math.max(10, maxV - minV);
+  const yFor  = v => padT + (1 - (v - minV) / ySpan) * (H - padT - padB);
+
+  // ── SVG paths ────────────────────────────────────────────
+  const obsPath = dataPoints
+    .map((p, i) => `${i === 0 ? "M" : "L"}${xFor(p.elapsed).toFixed(1)} ${yFor(p.temp).toFixed(1)}`)
+    .join(" ");
   const areaPath = obsPath
-    + ` L${xFor(last.localHour).toFixed(1)} ${H - padB}`
-    + ` L${xFor(dataPoints[0].localHour).toFixed(1)} ${H - padB} Z`;
-  const fcPath = `M${xFor(last.localHour).toFixed(1)} ${yFor(last.temp).toFixed(1)}`
-    + ` L${xFor(forecastHour).toFixed(1)} ${yFor(forecastTemp).toFixed(1)}`;
+    + ` L${xFor(last.elapsed).toFixed(1)} ${H - padB}`
+    + ` L${xFor(0).toFixed(1)} ${H - padB} Z`;
+  const fcPath = `M${xFor(last.elapsed).toFixed(1)} ${yFor(last.temp).toFixed(1)}`
+    + ` L${xFor(fcElapsed).toFixed(1)} ${yFor(forecastTemp).toFixed(1)}`;
 
-  // Axis ticks
-  const yTicks = [], xTicks = [];
+  // ── X tick labels — every 3 elapsed hours, show local time ──
+  // Compute label by offsetting from first obs's localHour
+  const firstLocalH = dataPoints[0].localHour ?? 0;
+  const xTicks = [];
+  for (let e = 0; e <= xTotal; e += 3) {
+    const labelH = Math.floor((firstLocalH + e) % 24);
+    xTicks.push({ e, label: String(labelH).padStart(2, "0") + ":00" });
+  }
+
+  // ── Y ticks ──────────────────────────────────────────────
+  const yTicks = [];
   for (let v = minV; v <= maxV; v += 5) yTicks.push(v);
-  for (let h = Math.ceil(xMin / 2) * 2; h <= xMax; h += 2) xTicks.push(h);
 
-  // Stats
-  const openPt   = dataPoints[0];
-  const sixHAgo  = [...dataPoints].reverse().find(p => p.localHour <= last.localHour - 6);
-  const delta    = sixHAgo ? +(last.temp - sixHAgo.temp).toFixed(1) : null;
-  const lastHStr = `${String(Math.floor(last.localHour)).padStart(2,"0")}:${String(Math.round((last.localHour%1)*60)).padStart(2,"0")}`;
+  // ── Stats ────────────────────────────────────────────────
+  const openPt  = dataPoints[0];
+  const sixHAgo = [...dataPoints].reverse().find(p => p.elapsed <= last.elapsed - 6);
+  const delta   = sixHAgo ? +(last.temp - sixHAgo.temp).toFixed(1) : null;
+  const lastLocalStr = last.localHour != null
+    ? `${String(Math.floor(last.localHour)).padStart(2,"0")}:${String(Math.round((last.localHour % 1) * 60)).padStart(2,"0")}`
+    : "";
+  const openLocalStr = `${String(Math.floor(openPt.localHour ?? 0)).padStart(2,"0")}:00`;
 
   return (
     <div className="card">
@@ -1099,12 +1126,12 @@ function HourlyChart({ market, live }) {
         <div>
           <h3>
             Hourly Observation <em>小时观测</em>
-            {isLive && <span className="live-badge-sm" style={{ marginLeft: 8 }}>LIVE</span>}
+            {hasLive && <span className="live-badge-sm" style={{ marginLeft: 8 }}>LIVE</span>}
           </h3>
           <div className="sub">
-            {isLive
-              ? `NWS ASOS 实时逐小时观测 · ${dataPoints.length} 个观测点 · 虚线 = 集合修正预测峰值`
-              : "NOAA METAR 静态数据 · 开启分析页面后将加载实时数据"}
+            {hasLive
+              ? `NWS ASOS 实时逐小时观测 · ${dataPoints.length} 个观测点 · 虚线 = 集合修正预测峰值 ${forecastTemp}°F`
+              : "NOAA METAR 静态数据（加载 Analysis 后替换为实时数据）"}
           </div>
         </div>
       </div>
@@ -1113,12 +1140,12 @@ function HourlyChart({ market, live }) {
         <svg viewBox={`0 0 ${W} ${H}`} className="obs-chart" preserveAspectRatio="none">
           <defs>
             <linearGradient id="obsGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.18" />
+              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.20" />
               <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
             </linearGradient>
           </defs>
 
-          {/* Y gridlines */}
+          {/* Y gridlines + labels */}
           {yTicks.map(t => (
             <g key={t}>
               <line x1={padL} x2={W - padR} y1={yFor(t)} y2={yFor(t)}
@@ -1128,35 +1155,37 @@ function HourlyChart({ market, live }) {
             </g>
           ))}
 
-          {/* X labels */}
-          {xTicks.map(h => (
-            <text key={h} x={xFor(h)} y={H - 10} fontSize="10" textAnchor="middle"
-              fill="var(--ink-3)" fontFamily="var(--mono)">
-              {String(h % 24).padStart(2,"0")}:00
-            </text>
+          {/* X labels (local time) */}
+          {xTicks.map(({ e, label }) => (
+            <text key={e} x={xFor(e)} y={H - 10} fontSize="10" textAnchor="middle"
+              fill="var(--ink-3)" fontFamily="var(--mono)">{label}</text>
           ))}
 
-          {/* Area fill */}
+          {/* Area fill under observed line */}
           <path d={areaPath} fill="url(#obsGrad)" />
 
-          {/* Observed line */}
-          <path d={obsPath} fill="none" stroke="var(--ink-1)" strokeWidth="2"
+          {/* Observed temperature line */}
+          <path d={obsPath} fill="none" stroke="var(--ink-1)" strokeWidth="2.5"
             strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* Forecast dashed line */}
+          {/* Forecast dashed line to ensemble peak */}
           <path d={fcPath} fill="none" stroke="var(--accent)" strokeWidth="2"
             strokeDasharray="5 4" />
 
           {/* Latest obs dot */}
-          <circle cx={xFor(last.localHour)} cy={yFor(last.temp)} r="5"
+          <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="5"
             fill="var(--surface)" stroke="var(--ink-1)" strokeWidth="2" />
 
           {/* Forecast peak dot + label */}
-          <circle cx={xFor(forecastHour)} cy={yFor(forecastTemp)} r="5"
+          <circle cx={xFor(fcElapsed)} cy={yFor(forecastTemp)} r="5"
             fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" />
-          <text x={xFor(forecastHour) + 8} y={yFor(forecastTemp) + 4} fontSize="11"
-            textAnchor="start" fill="var(--accent)" fontFamily="var(--mono)" fontWeight="500">
-            预测 {forecastTemp}°F
+          <text x={xFor(fcElapsed) + 8} y={yFor(forecastTemp) - 6} fontSize="11"
+            textAnchor="start" fill="var(--accent)" fontFamily="var(--mono)" fontWeight="600">
+            {forecastTemp}°F
+          </text>
+          <text x={xFor(fcElapsed) + 8} y={yFor(forecastTemp) + 8} fontSize="9"
+            textAnchor="start" fill="var(--ink-4)" fontFamily="var(--mono)">
+            预测峰值
           </text>
         </svg>
       </div>
@@ -1164,28 +1193,30 @@ function HourlyChart({ market, live }) {
       <div className="obs-stats">
         <div className="obs-stat">
           <div className="l">Open · 今日起点</div>
-          <div className="v">{openPt.temp}°<span style={{ fontSize: 12, color:"var(--ink-3)" }}>F</span></div>
-          <div className="vs">{String(Math.floor(openPt.localHour)).padStart(2,"0")}:00 local</div>
+          <div className="v">{openPt.temp}°<span style={{ fontSize: 12, color: "var(--ink-3)" }}>F</span></div>
+          <div className="vs">{openLocalStr} local</div>
         </div>
         <div className="obs-stat">
-          <div className="l">Current · 当前{isLive ? " ✓ LIVE" : ""}</div>
-          <div className="v" style={isLive ? { color:"var(--accent)" } : {}}>{last.temp}°
-            <span style={{ fontSize: 12, color:"var(--ink-3)" }}>F</span></div>
-          <div className="vs">{isLive ? lastHStr + " local" : market.obsTime}</div>
+          <div className="l">Current{hasLive ? " · ✓ LIVE" : ""}</div>
+          <div className="v" style={hasLive ? { color: "var(--accent)" } : {}}>{last.temp}°
+            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>F</span>
+          </div>
+          <div className="vs">{hasLive ? lastLocalStr + " local" : market.obsTime}</div>
         </div>
         <div className="obs-stat">
           <div className="l">Δ 过去6h</div>
           <div className={`v ${delta == null ? "" : delta >= 0 ? "pos" : "neg"}`}>
             {delta != null ? `${delta > 0 ? "+" : ""}${delta}°` : "—"}
-            <span style={{ fontSize: 12, color:"var(--ink-3)" }}>F</span>
+            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>F</span>
           </div>
-          <div className="vs">过去6小时变化</div>
+          <div className="vs">过去6小时升温</div>
         </div>
         <div className="obs-stat">
           <div className="l">Forecast · 预测峰值</div>
-          <div className="v" style={{ color:"var(--accent)" }}>{forecastTemp}°
-            <span style={{ fontSize: 12, color:"var(--ink-3)" }}>F</span></div>
-          <div className="vs" title="模型集合标准差：约68%概率最终温度在 均值±σ 范围内">
+          <div className="v" style={{ color: "var(--accent)" }}>{forecastTemp}°
+            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>F</span>
+          </div>
+          <div className="vs" title="σ = 集合预测标准差，约68%概率最高温在均值±σ范围内">
             {live?.distribution?.adjustedStd
               ? `σ ±${live.distribution.adjustedStd}°F`
               : `conf ${Math.round(market.forecastConf * 100)}%`}
@@ -1586,8 +1617,8 @@ function AISummary({ market, aiData, onRefreshAI }) {
           <h3 style={{ fontSize: 15, margin: 0 }}>AI Summary</h3>
           <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
             {hasLive
-              ? `Claude ${aiData.model} · ${aiData.tokens?.input}in / ${aiData.tokens?.output}out tokens`
-              : "Claude Haiku 实时分析 · 等待市场数据加载"}
+              ? `${aiData.model} · ${aiData.tokens?.input}in / ${aiData.tokens?.output}out tokens`
+              : "Claude Sonnet 实时分析 · 等待市场数据加载"}
           </div>
         </div>
         <span className={`ai-tag ${hasLive ? "live-tag" : ""}`}>
@@ -1639,7 +1670,7 @@ function AISummary({ market, aiData, onRefreshAI }) {
       {genTime && (
         <div className="ai-meta">
           <span>Generated · {genTime}</span>
-          <span>claude-haiku-4-5 · {aiData.tokens?.input} in / {aiData.tokens?.output} out</span>
+          <span>{aiData.model} · {aiData.tokens?.input} in / {aiData.tokens?.output} out tokens</span>
         </div>
       )}
     </div>
