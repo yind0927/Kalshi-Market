@@ -852,7 +852,7 @@ input { font-family: inherit; }
 .prob-list { margin: 0; padding: 0; list-style: none; }
 .prob-row {
   display: grid;
-  grid-template-columns: 100px 1fr 70px 70px 80px;
+  grid-template-columns: 100px 1fr 70px 70px 80px 90px;
   gap: 18px;
   align-items: center;
   padding: 14px 0;
@@ -2703,6 +2703,73 @@ input { font-family: inherit; }
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+
+/* ── Correction Stack Panel ── */
+.corr-panel {
+  margin-top: 14px;
+  padding: 12px 16px 10px;
+  background: color-mix(in oklab, var(--accent) 5%, var(--bg-2));
+  border: 1px solid color-mix(in oklab, var(--accent) 18%, var(--border));
+  border-radius: 8px;
+}
+.corr-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 10px;
+}
+.corr-title em { font-style: normal; color: var(--ink-4); font-weight: 400; margin-left: 6px; }
+.corr-grid { display: flex; flex-direction: column; gap: 6px; }
+.corr-row {
+  display: grid;
+  grid-template-columns: 160px 70px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 12px;
+}
+.corr-label { font-weight: 500; color: var(--ink-2); }
+.corr-label .corr-sub { display: block; font-size: 10.5px; color: var(--ink-4); font-weight: 400; margin-top: 1px; }
+.corr-val { font-family: var(--mono); font-size: 13px; font-weight: 600; text-align: right; }
+.corr-val.pos { color: var(--pos); }
+.corr-val.neg { color: var(--neg); }
+.corr-val.flat { color: var(--ink-4); }
+.corr-note { font-size: 10.5px; color: var(--ink-4); }
+.corr-total {
+  display: grid;
+  grid-template-columns: 160px 70px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 12px;
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 4px;
+  color: var(--ink-1);
+}
+.corr-total span:first-child { color: var(--ink-2); }
+.corr-total span:nth-child(2) { font-family: var(--mono); font-size: 13px; text-align: right; }
+
+/* ── Probability Distribution — Signal column ── */
+.sig-buy { font-size: 11.5px; font-weight: 700; font-family: var(--mono); white-space: nowrap; }
+.sig-buy.yes { color: var(--pos); }
+.sig-buy.no  { color: var(--neg); }
+.sig-pass    { font-size: 11px; color: var(--ink-4); }
+.sig-settled { font-size: 11.5px; font-weight: 700; }
+.sig-settled.yes { color: var(--pos); }
+.sig-settled.no  { color: var(--ink-4); }
+.prob-signal-note {
+  font-size: 10.5px;
+  color: var(--ink-4);
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
+/* ── Reco card — adjusted mean callout ── */
+.reco-body .t { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.reco-body .s { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; line-height: 1.5; }
 
 /* ============================================================
  * TopBar — refresh stamp + live count

@@ -971,10 +971,29 @@ function ProbDistribution({ market, live, kalshiStatus }) {
           <div className="num head">Market {isLiveKalshi ? "↻" : ""}</div>
           <div className="num head">Model {isLiveModel ? "↻" : ""}</div>
           <div className="num head">Edge</div>
+          <div className="num head">Signal</div>
         </li>
         {buckets.map((b, i) => {
           const e = b.model - b.market;
           const hasBidAsk = b.yes_bid != null && b.yes_ask != null;
+          // Bid-ask aware net edge (after transaction cost of spread)
+          // Buy YES: pay ask; profit if model > ask
+          // Buy NO:  pay (1-bid); profit if (1-model) > (1-bid) → bid > model
+          const netYes = hasBidAsk ? +(b.model - b.yes_ask).toFixed(4)  : null;
+          const netNo  = hasBidAsk ? +(b.yes_bid - b.model).toFixed(4)  : null;
+          const MIN_NET = 0.03; // minimum actionable net edge (3pp after spread)
+          let signal = null;
+          if (b.result) {
+            signal = b.result === "yes"
+              ? <span className="sig-settled yes">✓ YES</span>
+              : <span className="sig-settled no">✗ NO</span>;
+          } else if (netYes != null && netYes > MIN_NET) {
+            signal = <span className="sig-buy yes">↑ YES +{Math.round(netYes*100)}¢</span>;
+          } else if (netNo != null && netNo > MIN_NET) {
+            signal = <span className="sig-buy no">↓ NO +{Math.round(netNo*100)}¢</span>;
+          } else if (hasBidAsk) {
+            signal = <span className="sig-pass">— 观望</span>;
+          }
           return (
             <li className="prob-row" key={i}>
               <div className="range">{b.range}</div>
@@ -997,10 +1016,16 @@ function ProbDistribution({ market, live, kalshiStatus }) {
               </div>
               <div className="num">{fmtPct(b.model)}</div>
               <div className="num"><EdgePill value={e} /></div>
+              <div className="num">{signal}</div>
             </li>
           );
         })}
       </ul>
+      {isLiveKalshi && isLiveModel && (
+        <div className="prob-signal-note">
+          Signal = 模型概率 vs Kalshi 买卖价差后净优势 ≥3pp 触发 · 价差内为观望
+        </div>
+      )}
     </div>
   );
 }
@@ -1101,6 +1126,25 @@ function HourlyChart({ market }) {
 }
 
 /* ─────────────────────────────────────────────────────────
+ * Correction row helper
+ * ───────────────────────────────────────────────────────── */
+function CorrRow({ label, sublabel, value, note }) {
+  const cls = value > 0.05 ? "pos" : value < -0.05 ? "neg" : "flat";
+  return (
+    <div className="corr-row">
+      <div className="corr-label">
+        <span>{label}</span>
+        <span className="corr-sub">{sublabel}</span>
+      </div>
+      <div className={`corr-val ${cls}`}>
+        {value > 0 ? "+" : ""}{value.toFixed(2)}°F
+      </div>
+      <div className="corr-note">{note}</div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
  * Live Model Ensemble Panel
  * ───────────────────────────────────────────────────────── */
 function ModelEnsemblePanel({ live, market, onRefresh }) {
@@ -1193,6 +1237,38 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
       {dist && (
         <div className="ens-note">
           加权均值 {dist.mean}°F（ECMWF×0.40 · HRRR×0.30 · GFS×0.20 · NAM×0.10）· 模型区间 {dist.modelMin}–{dist.modelMax}°F · 扩散度 {dist.spread}°F · 不可约误差 {dist.modelCount >= 3 ? "1.8" : "2.0"}°F → σ = {dist.std}°F
+        </div>
+      )}
+
+      {dist?.corrections && (
+        <div className="corr-panel">
+          <div className="corr-title">修正层 <em>Correction Stack</em></div>
+          <div className="corr-grid">
+            <CorrRow label="站点偏差" sublabel="NWS ASOS 微气候" value={dist.corrections.station}
+              note={dist.corrections.station > 0 ? "城市热岛↑" : "湖/海冷却↓"} />
+            {dist.windMean != null && (
+              <CorrRow label="峰时风速" sublabel={`${dist.windMean}kt 模型加权均值`} value={dist.corrections.wind}
+                note={dist.corrections.wind < 0 ? `>${10}kt 混合冷却` : "≤10kt 无修正"} />
+            )}
+            {dist.cloudMean != null && (
+              <CorrRow label="峰时云量" sublabel={`云覆盖 ${dist.cloudMean}%`} value={dist.corrections.cloud}
+                note={dist.corrections.cloud < 0 ? "太阳辐射遮挡↓" : "≤25% 无修正"} />
+            )}
+            {dist.impliedPeak != null && (
+              <CorrRow label="观测融合" sublabel={`NWS → 隐含峰值 ${dist.impliedPeak}°F (权重 ${Math.round(dist.obsBlendWeight*100)}%)`}
+                value={dist.corrections.observation} note="实测锚定约束" />
+            )}
+            <div className="corr-total">
+              <span>总修正</span>
+              <span className={dist.corrections.total > 0 ? "pos" : dist.corrections.total < 0 ? "neg" : ""}>
+                {dist.corrections.total > 0 ? "+" : ""}{dist.corrections.total}°F
+              </span>
+              <span style={{color:"var(--ink-3)"}}>
+                {dist.mean}°F → <strong style={{color:"var(--accent)"}}>{dist.adjustedMean}°F</strong>
+                &ensp;σ {dist.std}°F → <strong>{dist.adjustedStd}°F</strong>
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1354,7 +1430,7 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
 
       <div style={{ height: 16 }} />
       <div className="ana-row-2">
-        <SuggestedPosition market={market} edge={edge} maxE={maxE} />
+        <SuggestedPosition market={market} live={live} edge={edge} maxE={maxE} />
         <LocationCard market={market} />
       </div>
 
@@ -1395,28 +1471,84 @@ function AISummary({ market, edge, maxE }) {
   );
 }
 
-function SuggestedPosition({ market, edge, maxE }) {
+function SuggestedPosition({ market, live, edge, maxE }) {
+  // Prefer bid-ask-aware net edge over raw mid-price edge
+  const effectiveBuckets = live?.kalshiBuckets || market.buckets;
+  const liveBuckets = effectiveBuckets.map((b, i) => {
+    const lp = live?.distribution?.buckets?.[i]?.modelProb;
+    return { ...b, model: lp != null ? lp : b.model };
+  });
+
+  const MIN_NET = 0.03;
+  // Find best actionable bucket (highest net edge after spread)
+  let bestBuy = null;
+  for (const b of liveBuckets) {
+    if (b.result) continue;
+    const hasBidAsk = b.yes_bid != null && b.yes_ask != null;
+    const netYes = hasBidAsk ? b.model - b.yes_ask : null;
+    const netNo  = hasBidAsk ? b.yes_bid - b.model : null;
+    const bestNet = Math.max(netYes ?? -Infinity, netNo ?? -Infinity);
+    if (bestNet > MIN_NET) {
+      if (!bestBuy || bestNet > bestBuy.netEdge) {
+        const isYes = netYes >= (netNo ?? -Infinity);
+        bestBuy = {
+          bucket: b,
+          isYes,
+          netEdge: isYes ? netYes : netNo,
+          entryPrice: isYes ? b.yes_ask : (1 - b.yes_bid),
+          grossEdge: isYes ? (b.model - b.market) : (b.market - b.model),
+        };
+      }
+    }
+  }
+
+  // Fall back to raw mid-price edge if no bid-ask data
+  const useFallback = !bestBuy;
+  const displayBucket = bestBuy ? bestBuy.bucket : maxE;
+  const displayEdge   = bestBuy ? bestBuy.netEdge : Math.abs(edge);
+  const isYes         = bestBuy ? bestBuy.isYes : edge > 0;
+  const entryPrice    = bestBuy ? bestBuy.entryPrice
+    : (isYes ? displayBucket.market : 1 - displayBucket.market);
+
+  // Kelly fraction: f = edge / (1 - entryPrice) for YES, edge / entryPrice for NO
+  const kelly = isYes
+    ? (displayEdge / Math.max(0.01, 1 - entryPrice)).toFixed(2)
+    : (displayEdge / Math.max(0.01, entryPrice)).toFixed(2);
+
+  // Adjusted mean for display
+  const adjMean = live?.distribution?.adjustedMean;
+  const corrTotal = live?.distribution?.corrections?.total;
+
   return (
     <div className="card">
       <div className="card-head">
         <div>
           <h3>Suggested Position <em>建议仓位</em></h3>
-          <div className="sub">基于最大绝对偏差区间生成 · Not investment advice</div>
+          <div className="sub">
+            {useFallback ? "基于中间价偏差" : "基于买卖价差后净优势"} · Not investment advice
+          </div>
         </div>
       </div>
       <div className="reco">
-        <div className={`reco-icon ${edge > 0 ? "pos" : ""}`}>{edge > 0 ? "↑" : "↓"}</div>
+        <div className={`reco-icon ${isYes ? "pos" : "neg"}`}>{isYes ? "↑" : "↓"}</div>
         <div className="reco-body">
           <div className="t">
-            {edge > 0 ? "Buy YES" : "Buy NO"} · {maxE.range} @ {fmtCents(edge > 0 ? maxE.market : 1 - maxE.market)}
+            {isYes ? "Buy YES" : "Buy NO"} · {displayBucket.range}
+            &ensp;@ {fmtCents(entryPrice)}
           </div>
           <div className="s">
-            模型概率 <strong style={{ color: "var(--ink-1)" }}>{fmtPct(maxE.model, 1)}</strong> · 市场定价 <strong style={{ color: "var(--ink-1)" }}>{fmtPct(maxE.market, 1)}</strong>
+            模型概率 <strong style={{ color: "var(--accent)" }}>{fmtPct(displayBucket.model, 1)}</strong>
+            {adjMean != null && corrTotal != null && Math.abs(corrTotal) > 0.1 && (
+              <> · 修正后均值 <strong>{adjMean}°F</strong>（{corrTotal > 0 ? "+" : ""}{corrTotal}°F）</>
+            )}
             <br />
-            EV <strong style={{ color: "var(--pos)" }}>+{Math.abs(edge * 100).toFixed(1)}¢</strong> / 合约 · Kelly ~{(Math.abs(edge) * 4).toFixed(2)}× · liquidity ${fmtVolume(market.volume)}
+            净优势 <strong style={{ color: "var(--pos)" }}>+{Math.round(displayEdge * 100)}¢</strong>/合约
+            &ensp;· Kelly ~{kelly}×
+            &ensp;· 流动性 ${fmtVolume(live?.kalshi?.reduce((s, m) => s + (m.volume || 0), 0) || market.volume)}
+            {!useFallback && <> · <span style={{color:"var(--ink-3)",fontSize:10}}>价差后净值</span></>}
           </div>
         </div>
-        <button className="cta">
+        <button className="cta" onClick={() => window.open(`https://kalshi.com/markets/${displayBucket.ticker?.split("-")[0]?.toLowerCase() || ""}`, "_blank")}>
           View on Kalshi
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M7 17 17 7M7 7h10v10" />
