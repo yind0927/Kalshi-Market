@@ -22,9 +22,9 @@ window.KW_API = (() => {
 
   const MODELS = [
     { key: "GFS",   id: "gfs_seamless"    },
-    { key: "HRRR",  id: "hrrr_conus"      },
-    { key: "ECMWF", id: "ecmwf_seamless"  },
-    { key: "NAM",   id: "nam_conus"       },
+    { key: "HRRR",  id: "gfs_hrrr"        },
+    { key: "ECMWF", id: "ecmwf_ifs04"     },
+    { key: "NAM",   id: "ncep_nam_conus"  },
   ];
 
   /* ── Helpers ────────────────────────────────────────────── */
