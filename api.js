@@ -22,10 +22,8 @@ window.KW_API = (() => {
 
   // Open-Meteo NWP models (all use /v1/forecast, same variable names)
   const OM_MODELS = [
-    { key: "GFS",  id: "gfs_seamless"   },
     { key: "HRRR", id: "gfs_hrrr"       },
-    { key: "ICON", id: "icon_seamless"  },
-    { key: "NAM",  id: "ncep_nam_conus" },
+    { key: "GFS",  id: "gfs_seamless"   },
   ];
 
   // Cache NWS gridpoint forecast URLs — stable per lat/lon, no need to re-fetch
@@ -368,13 +366,11 @@ window.KW_API = (() => {
   }
 
   /* ── 3. Probability Distribution from Ensemble ──────────── */
-  // Model weights based on CONUS 12–24h forecast skill:
-  //   NWS   0.30 — official human-QC'd blend (NBM), calibrated to settlement station
-  //   HRRR  0.25 — best raw NWP short-range, hourly updates  (~2.1°F RMSE)
-  //   ICON  0.20 — DWD ICON global, world-class accuracy     (~2.0°F RMSE)
-  //   GFS   0.15 — reliable global NWP backbone              (~2.4°F RMSE)
-  //   NAM   0.10 — US regional, coarser resolution           (~2.9°F RMSE)
-  const MODEL_WEIGHTS = { NWS: 0.30, HRRR: 0.25, ICON: 0.20, GFS: 0.15, NAM: 0.10 };
+  // Model weights — 3-model ensemble anchored on NWS official:
+  //   NWS   0.50 — official human-QC'd forecast, calibrated to the settlement station
+  //   HRRR  0.30 — best US short-range NWP, 3 km, hourly updates
+  //   GFS   0.20 — global NWP backbone and reference
+  const MODEL_WEIGHTS = { NWS: 0.50, HRRR: 0.30, GFS: 0.20 };
 
   // ── Station-specific bias: NWS ASOS station vs Open-Meteo grid ──
   // Each ASOS station has microclimate characteristics that cause systematic
@@ -436,9 +432,8 @@ window.KW_API = (() => {
     const spread   = Math.sqrt(variance);
 
     // Irreducible forecast error (CONUS 12–24h)
-    // 1.8 when NWS official or ICON is present; 2.0 for raw NWP-only ensembles
-    const hasPremium  = entries.some(e => e.key === "NWS" || e.key === "ICON");
-    const irreducible = hasPremium ? 1.8 : 2.0;
+    // 1.8 when NWS official forecast is present (already post-processed/calibrated)
+    const irreducible = entries.some(e => e.key === "NWS") ? 1.8 : 2.0;
     const std         = Math.sqrt(spread ** 2 + irreducible ** 2);
 
     const modelMin = Math.min(...entries.map(e => e.val));

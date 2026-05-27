@@ -40,7 +40,7 @@ module.exports = async function handler(req, res) {
   }).join("\n");
 
   const modelLines = Object.entries(models || {}).map(([k, m]) => {
-    const w = { NWS: "30%", HRRR: "25%", ICON: "20%", GFS: "15%", NAM: "10%" }[k] || "?%";
+    const w = { NWS: "50%", HRRR: "30%", GFS: "20%" }[k] || "?%";
     return `  ${k}(${w}): ${m.dailyMax}°F 峰值${m.peakHour}:00`;
   }).join("\n");
 
