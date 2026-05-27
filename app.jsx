@@ -653,8 +653,18 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
         </div>
         <span className="mkt-temp-arrow">→</span>
         <div className="mkt-temp-block">
-          <div className="l">Forecast 预测</div>
-          <div className="v">{market.forecastHigh}<span className="deg">°F</span></div>
+          <div className="l">
+            Forecast 预测
+            {market._liveModel && <span className="live-badge-sm" style={{ marginLeft: 4 }}>LIVE</span>}
+          </div>
+          <div className="v" style={market._liveModel ? { color: "var(--accent)" } : {}}>
+            {market.forecastHigh}<span className="deg">°F</span>
+          </div>
+          {market._liveModel && market.forecastMin != null && (
+            <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 1 }}>
+              {market.forecastMin}–{market.forecastMax}°F 模型区间
+            </div>
+          )}
         </div>
         <div className="mkt-temp-spark">
           <Spark series={series} color="var(--accent)" w={84} h={36} />
@@ -788,6 +798,8 @@ function liveMarket(market, live) {
     buckets,
     currentObs:   obs?.temperature ?? market.currentObs,
     forecastHigh: dist?.mean        ?? market.forecastHigh,
+    forecastMin:  dist?.modelMin    ?? null,
+    forecastMax:  dist?.modelMax    ?? null,
     forecastConf: dist ? 0.5 + Math.min(0.45, 1/(dist.std+0.1)*0.45) : market.forecastConf,
     _liveObs:    !!(obs),
     _liveModel:  !!(dist),
@@ -1180,7 +1192,7 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
 
       {dist && (
         <div className="ens-note">
-          模型扩散度 {dist.spread}°F · 加入不可约误差 2.0°F → σ = {dist.std}°F · {dist.modelCount} 模型参与集成
+          加权均值 {dist.mean}°F（ECMWF×0.40 · HRRR×0.30 · GFS×0.20 · NAM×0.10）· 模型区间 {dist.modelMin}–{dist.modelMax}°F · 扩散度 {dist.spread}°F · 不可约误差 {dist.modelCount >= 3 ? "1.8" : "2.0"}°F → σ = {dist.std}°F
         </div>
       )}
     </div>
