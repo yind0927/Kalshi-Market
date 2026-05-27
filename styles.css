@@ -2692,8 +2692,8 @@ input { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 16px;
-  margin: 0 -20px 16px;
+  padding: 12px 28px;
+  margin: 0 -28px 16px;
   background: color-mix(in oklab, var(--pos) 6%, var(--bg-2));
   border-top: 1px solid color-mix(in oklab, var(--pos) 20%, var(--border));
   border-bottom: 1px solid color-mix(in oklab, var(--pos) 20%, var(--border));
