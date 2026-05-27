@@ -122,28 +122,74 @@ window.KW_API = (() => {
     const p    = data.features[0]?.properties;
     if (!p) throw new Error("No NWS observation");
 
-    // Cloud layers → plain text sky condition
-    const skyCode = { SKC:"晴空", FEW:"少云", SCT:"疏云", BKN:"多云", OVC:"阴天" };
-    const sky = p.cloudLayers?.map(l =>
-      `${skyCode[l.amount] || l.amount} ${l.base?.value != null
-        ? Math.round(l.base.value * 3.281) + "ft" : ""}`).join(" · ") || "—";
-
-    // Wind direction to compass
+    // Wind direction → compass
     const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
     const compass = p.windDirection?.value != null
       ? dirs[Math.round(p.windDirection.value / 22.5) % 16] : "—";
 
+    const windKt = msToKt(p.windSpeed?.value);
+
+    // Wind speed → Beaufort-based category (Chinese)
+    function windCategory(kt) {
+      if (kt == null) return "—";
+      if (kt < 1)  return "静风";
+      if (kt < 4)  return "软风";
+      if (kt < 7)  return "轻风";
+      if (kt < 11) return "微风";
+      if (kt < 17) return "和风";
+      if (kt < 22) return "清风";
+      if (kt < 28) return "强风";
+      if (kt < 34) return "疾风";
+      return "大风";
+    }
+
+    // Cloud layers → % coverage estimate + dominant code
+    // METAR okta codes: SKC/CLR=0  FEW≈15%  SCT≈44%  BKN≈75%  OVC=100%
+    const CLOUD_PCT = { SKC: 0, CLR: 0, CAVOK: 0, FEW: 15, SCT: 44, BKN: 75, OVC: 100 };
+    const CLOUD_CN  = { SKC:"晴空", CLR:"晴空", CAVOK:"晴空", FEW:"少云", SCT:"疏云", BKN:"多云", OVC:"阴天" };
+    let cloudCoverPct = null, cloudCode = null;
+    if (p.cloudLayers?.length) {
+      // Take the layer with highest coverage
+      const topLayer = p.cloudLayers.reduce((mx, l) =>
+        (CLOUD_PCT[l.amount] ?? 0) >= (CLOUD_PCT[mx.amount] ?? 0) ? l : mx,
+        p.cloudLayers[0]
+      );
+      cloudCode     = topLayer.amount;
+      cloudCoverPct = CLOUD_PCT[cloudCode] ?? null;
+    }
+    const cloudLabel = cloudCode ? (CLOUD_CN[cloudCode] || cloudCode) : "—";
+
+    // Relative humidity from temperature + dewpoint (Magnus formula)
+    const tempC = p.temperature?.value;
+    const dewC  = p.dewpoint?.value;
+    let humidity = null;
+    if (tempC != null && dewC != null) {
+      const es = Math.exp((17.625 * tempC) / (243.04 + tempC));
+      const ea = Math.exp((17.625 * dewC)  / (243.04 + dewC));
+      humidity = Math.round(Math.min(100, Math.max(0, 100 * ea / es)));
+    }
+
+    // Plain-text sky summary (for fallback display)
+    const sky = p.cloudLayers?.map(l =>
+      `${CLOUD_CN[l.amount] || l.amount}${l.base?.value != null
+        ? " " + Math.round(l.base.value * 3.281) + "ft" : ""}`).join(" · ") || "—";
+
     return {
-      temperature:  cToF(p.temperature?.value),
-      dewpoint:     cToF(p.dewpoint?.value),
+      temperature:   cToF(p.temperature?.value),
+      dewpoint:      cToF(p.dewpoint?.value),
+      humidity,                          // % RH (Magnus formula)
       windDirection: p.windDirection?.value,
       windCompass:   compass,
-      windSpeed:    msToKt(p.windSpeed?.value),
-      windGust:     msToKt(p.windGust?.value),
+      windSpeed:     windKt,
+      windGust:      msToKt(p.windGust?.value),
+      windCategory:  windCategory(windKt),
+      cloudCoverPct,                     // 0–100 estimated %
+      cloudCode,                         // METAR code: FEW/SCT/BKN/OVC
+      cloudLabel,                        // Chinese label
       sky,
-      rawMessage:   p.rawMessage,
-      timestamp:    p.timestamp,
-      source:       "NWS ASOS",
+      rawMessage:    p.rawMessage,
+      timestamp:     p.timestamp,
+      source:        "NWS ASOS",
     };
   }
 
