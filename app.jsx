@@ -1138,10 +1138,10 @@ function HourlyChart({ market, live }) {
   };
   const handleMouseLeave = () => setHovered(null);
 
-  // Minimal pill tooltip
-  const tipW = 88, tipH = 34;
+  // Square card tooltip
+  const tipW = 106, tipH = 52;
   const tipX = hovered ? (hovered.svgX + tipW + 14 > W - padR ? hovered.svgX - tipW - 10 : hovered.svgX + 10) : 0;
-  const tipY = hovered ? Math.max(padT, Math.min(hovered.svgY - tipH / 2 - 2, H - padB - tipH)) : 0;
+  const tipY = hovered ? Math.max(padT, Math.min(hovered.svgY - tipH / 2, H - padB - tipH)) : 0;
 
   // Hover time label
   const hovLH = hovered?.localHour;
@@ -1163,8 +1163,9 @@ function HourlyChart({ market, live }) {
   const yTicks = [];
   for (let v = minV; v <= maxV; v += 5) yTicks.push(v);
   const yMajor = new Set(yTicks.filter(t => t % 10 === 0));
+  const xStep  = xTotal > 30 ? 6 : 3;          // fewer ticks when chart spans 2+ days
   const xTicks = [];
-  for (let e = 0; e <= xTotal; e += 3)
+  for (let e = 0; e <= xTotal; e += xStep)
     xTicks.push({ e, label: String(Math.floor((firstLH + e) % 24)).padStart(2,"0") + ":00" });
 
   // ── Stats calculations ───────────────────────────────────
@@ -1262,13 +1263,18 @@ function HourlyChart({ market, live }) {
                 fill="var(--accent)" opacity="0.10" />
               <circle cx={hovered.svgX} cy={hovered.svgY} r="3.5"
                 fill="var(--accent)" />
-              {/* Pill tooltip */}
-              <rect x={tipX} y={tipY} width={tipW} height={tipH} rx={tipH / 2}
-                fill="var(--ink-1)" opacity="0.90" />
-              <text x={tipX + 14} y={tipY + 14} fontSize="13" fontWeight="700"
+              {/* Square card tooltip */}
+              <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="9"
+                fill="var(--ink-1)" opacity="0.93" />
+              {/* Top accent bar */}
+              <line x1={tipX + 10} x2={tipX + tipW - 10} y1={tipY + 1.5} y2={tipY + 1.5}
+                stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" opacity="0.75" />
+              {/* Temperature */}
+              <text x={tipX + 13} y={tipY + 26} fontSize="18" fontWeight="700"
                 fill="white" fontFamily="var(--mono)">{hovered.temp}°F</text>
-              <text x={tipX + 14} y={tipY + 27} fontSize="9.5"
-                fill="rgba(255,255,255,0.40)" fontFamily="var(--mono)">{hovTime}</text>
+              {/* Time */}
+              <text x={tipX + 13} y={tipY + 43} fontSize="11"
+                fill="rgba(255,255,255,0.42)" fontFamily="var(--mono)">{hovTime}</text>
             </g>
           )}
 
@@ -1276,30 +1282,41 @@ function HourlyChart({ market, live }) {
           <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="4.5"
             fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" />
 
-          {/* Forecast dot + compact label */}
+          {/* Forecast dot + styled label */}
           {(() => {
             const fcX = xFor(fcElapsed);
-            const goLeft = fcX + 62 > W - padR;
-            const lx = goLeft ? fcX - 60 : fcX + 8;
-            const ly = Math.max(padT + 16, Math.min(fcY + 2, H - padB - 18));
+            const goLeft = fcX + 68 > W - padR;
+            const lx = goLeft ? fcX - 66 : fcX + 9;
+            const ly = Math.max(padT + 20, Math.min(fcY - 4, H - padB - 24));
+            const lw = 64, lh = 26;
             return (
               <g>
                 <circle cx={fcX} cy={fcY} r="3.5"
                   fill="var(--surface)" stroke="var(--accent)" strokeWidth="1.8" opacity="0.7" />
-                <text x={lx} y={ly} fontSize="11" fontWeight="600"
+                {/* Label chip */}
+                <rect x={lx - 4} y={ly - 16} width={lw} height={lh} rx="6"
+                  fill="var(--accent)" opacity="0.10" />
+                <text x={lx} y={ly} fontSize="13" fontWeight="700"
                   fill="var(--accent)" fontFamily="var(--mono)">{forecastTemp}°F</text>
-                <text x={lx} y={ly + 11} fontSize="8.5"
-                  fill="var(--ink-4)" fontFamily="var(--mono)">预测峰值</text>
+                <text x={lx} y={ly + 10} fontSize="9" letterSpacing="0.02em"
+                  fill="var(--accent)" fontFamily="var(--mono)" opacity="0.6">预测峰值</text>
               </g>
             );
           })()}
 
-          {/* Max obs label */}
-          {maxPt && maxPt !== last && (
-            <text x={xFor(maxPt.elapsed)} y={yFor(maxPt.temp) - 7} fontSize="10"
-              textAnchor="middle" fill="var(--neg)"
-              fontFamily="var(--mono)" fontWeight="600" opacity="0.75">{maxPt.temp}°</text>
-          )}
+          {/* Max obs label — styled chip */}
+          {maxPt && maxPt !== last && (() => {
+            const mx = xFor(maxPt.elapsed);
+            const my = yFor(maxPt.temp);
+            return (
+              <g>
+                <rect x={mx - 18} y={my - 22} width={36} height={17} rx="5"
+                  fill="var(--neg)" opacity="0.10" />
+                <text x={mx} y={my - 9} fontSize="11.5" textAnchor="middle"
+                  fill="var(--neg)" fontFamily="var(--mono)" fontWeight="700">{maxPt.temp}°</text>
+              </g>
+            );
+          })()}
         </svg>
       </div>
 

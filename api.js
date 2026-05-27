@@ -135,9 +135,14 @@ window.KW_API = (() => {
       }
     }
 
-    return [...hourMap.values()].sort(
+    const sorted = [...hourMap.values()].sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
+
+    // Cap to last 27 hours so NYC (hourly station × 80 = 80h!) doesn't over-extend
+    if (sorted.length === 0) return [];
+    const cutoff = new Date(sorted[sorted.length - 1].timestamp).getTime() - 27 * 3_600_000;
+    return sorted.filter(obs => new Date(obs.timestamp).getTime() >= cutoff);
   }
 
   /* ── 2. Open-Meteo Multi-Model Forecast ─────────────────── */
