@@ -1040,8 +1040,8 @@ function HourlyChart({ market, live }) {
   const svgRef  = useRef(null);
   const [hovered, setHovered] = useState(null);
 
-  const W = 760, H = 380;
-  const padL = 48, padR = 32, padT = 32, padB = 50;
+  const W = 760, H = 320;
+  const padL = 44, padR = 20, padT = 16, padB = 36;
   const usableW = W - padL - padR;
   const usableH = H - padT - padB;
 
@@ -1138,10 +1138,10 @@ function HourlyChart({ market, live }) {
   };
   const handleMouseLeave = () => setHovered(null);
 
-  // Tooltip position: flip left if near right edge
-  const tipW = 130, tipH = 58;
-  const tipX = hovered ? (hovered.svgX + tipW + 16 > W - padR ? hovered.svgX - tipW - 14 : hovered.svgX + 14) : 0;
-  const tipY = hovered ? Math.max(padT, Math.min(hovered.svgY - tipH / 2, H - padB - tipH)) : 0;
+  // Minimal pill tooltip
+  const tipW = 88, tipH = 34;
+  const tipX = hovered ? (hovered.svgX + tipW + 14 > W - padR ? hovered.svgX - tipW - 10 : hovered.svgX + 10) : 0;
+  const tipY = hovered ? Math.max(padT, Math.min(hovered.svgY - tipH / 2 - 2, H - padB - tipH)) : 0;
 
   // Hover time label
   const hovLH = hovered?.localHour;
@@ -1162,6 +1162,7 @@ function HourlyChart({ market, live }) {
   // ── Axis ticks ────────────────────────────────────────────
   const yTicks = [];
   for (let v = minV; v <= maxV; v += 5) yTicks.push(v);
+  const yMajor = new Set(yTicks.filter(t => t % 10 === 0));
   const xTicks = [];
   for (let e = 0; e <= xTotal; e += 3)
     xTicks.push({ e, label: String(Math.floor((firstLH + e) % 24)).padStart(2,"0") + ":00" });
@@ -1208,126 +1209,96 @@ function HourlyChart({ market, live }) {
         >
           <defs>
             <linearGradient id="obsGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.30" />
-              <stop offset="55%"  stopColor="var(--accent)" stopOpacity="0.08" />
+              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.18" />
+              <stop offset="60%"  stopColor="var(--accent)" stopOpacity="0.04" />
               <stop offset="100%" stopColor="var(--accent)" stopOpacity="0"   />
             </linearGradient>
-            <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.7" />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity="1"   />
-            </linearGradient>
-            <filter id="glow">
-              <feGaussianBlur stdDeviation="3" result="b" />
-              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
           </defs>
 
-          {/* Y gridlines + labels */}
+          {/* Y gridlines — major (10°) solid, minor (5°) barely visible */}
           {yTicks.map(t => (
             <g key={t}>
               <line x1={padL} x2={W - padR} y1={yFor(t)} y2={yFor(t)}
                 stroke="var(--border)"
-                strokeWidth={t % 10 === 0 ? 1 : 0.5}
-                strokeOpacity={t % 10 === 0 ? 0.9 : 0.45}
-                strokeDasharray={t % 10 === 0 ? "" : "3 5"} />
-              <text x={padL - 10} y={yFor(t) + 4} fontSize="11" textAnchor="end"
-                fill={t % 10 === 0 ? "var(--ink-3)" : "var(--ink-4)"}
-                fontFamily="var(--mono)" fontWeight={t % 10 === 0 ? "500" : "400"}>{t}°</text>
+                strokeWidth={yMajor.has(t) ? 0.8 : 0.5}
+                strokeOpacity={yMajor.has(t) ? 0.7 : 0.25} />
+              {yMajor.has(t) && (
+                <text x={padL - 8} y={yFor(t) + 4} fontSize="10.5" textAnchor="end"
+                  fill="var(--ink-4)" fontFamily="var(--mono)">{t}°</text>
+              )}
             </g>
           ))}
 
           {/* X time labels */}
           {xTicks.map(({ e, label }) => (
-            <text key={e} x={xFor(e)} y={H - 10} fontSize="10.5" textAnchor="middle"
+            <text key={e} x={xFor(e)} y={H - 6} fontSize="10" textAnchor="middle"
               fill="var(--ink-4)" fontFamily="var(--mono)">{label}</text>
           ))}
 
-          {/* Midnight divider */}
+          {/* Midnight marker — subtle dotted line, no text */}
           {midnightElapsed != null && (
-            <g>
-              <line x1={xFor(midnightElapsed)} x2={xFor(midnightElapsed)}
-                y1={padT} y2={H - padB}
-                stroke="var(--accent)" strokeWidth="1" strokeDasharray="2 4" strokeOpacity="0.3" />
-              <text x={xFor(midnightElapsed) + 5} y={padT + 13} fontSize="9.5"
-                fill="var(--accent)" fontFamily="var(--mono)" opacity="0.5">今日 00:00</text>
-            </g>
+            <line x1={xFor(midnightElapsed)} x2={xFor(midnightElapsed)}
+              y1={padT} y2={H - padB}
+              stroke="var(--accent)" strokeWidth="1" strokeDasharray="2 5" strokeOpacity="0.2" />
           )}
 
           {/* Area fill */}
           <path d={areaSmooth} fill="url(#obsGrad)" />
 
-          {/* Glow layer */}
+          {/* Temperature curve — clean 2px line */}
           <path d={obsSmooth} fill="none" stroke="var(--accent)"
-            strokeWidth="6" strokeLinecap="round" opacity="0.10" />
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* Main temperature curve */}
-          <path d={obsSmooth} fill="none" stroke="url(#lineGrad)"
-            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-
-          {/* Forecast dashed projection */}
+          {/* Forecast projection */}
           <path d={fcPath} fill="none" stroke="var(--accent)"
-            strokeWidth="1.8" strokeDasharray="5 4" opacity="0.65" />
+            strokeWidth="1.5" strokeDasharray="4 4" opacity="0.45" />
 
-          {/* Hover crosshair + tooltip */}
+          {/* Hover */}
           {hovered && (
             <g>
-              {/* Vertical guide line */}
               <line x1={hovered.svgX} x2={hovered.svgX} y1={padT} y2={H - padB}
-                stroke="var(--ink-3)" strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
-              {/* Outer ring pulse */}
-              <circle cx={hovered.svgX} cy={hovered.svgY} r="10"
+                stroke="var(--ink-3)" strokeWidth="0.75" strokeOpacity="0.4" />
+              <circle cx={hovered.svgX} cy={hovered.svgY} r="8"
                 fill="var(--accent)" opacity="0.10" />
-              {/* Inner dot */}
-              <circle cx={hovered.svgX} cy={hovered.svgY} r="5"
-                fill="var(--surface)" stroke="var(--accent)" strokeWidth="2.5" />
-              {/* Tooltip — drop shadow */}
-              <rect x={tipX + 2} y={tipY + 3} width={tipW} height={tipH}
-                rx="11" fill="black" opacity="0.15" />
-              {/* Tooltip — card */}
-              <rect x={tipX} y={tipY} width={tipW} height={tipH}
-                rx="11" fill="var(--ink-1)" opacity="0.94" />
-              {/* Left accent bar */}
-              <rect x={tipX + 1.5} y={tipY + 11} width="3.5" height={tipH - 22}
-                rx="2" fill="var(--accent)" />
-              {/* Temperature */}
-              <text x={tipX + 16} y={tipY + 32} fontSize="22"
-                fill="white" fontFamily="var(--mono)" fontWeight="700">{hovered.temp}°F</text>
-              {/* Time */}
-              <text x={tipX + 16} y={tipY + 49} fontSize="11"
-                fill="rgba(255,255,255,0.42)" fontFamily="var(--mono)">{hovTime} local</text>
+              <circle cx={hovered.svgX} cy={hovered.svgY} r="3.5"
+                fill="var(--accent)" />
+              {/* Pill tooltip */}
+              <rect x={tipX} y={tipY} width={tipW} height={tipH} rx={tipH / 2}
+                fill="var(--ink-1)" opacity="0.90" />
+              <text x={tipX + 14} y={tipY + 14} fontSize="13" fontWeight="700"
+                fill="white" fontFamily="var(--mono)">{hovered.temp}°F</text>
+              <text x={tipX + 14} y={tipY + 27} fontSize="9.5"
+                fill="rgba(255,255,255,0.40)" fontFamily="var(--mono)">{hovTime}</text>
             </g>
           )}
 
-          {/* Latest obs dot (prominent ring) */}
-          <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="5"
-            fill="var(--surface)" stroke="var(--accent)" strokeWidth="2.5" />
-          <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="9"
-            fill="none" stroke="var(--accent)" strokeWidth="1" opacity="0.25" />
+          {/* Current obs dot */}
+          <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="4.5"
+            fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" />
 
-          {/* Forecast peak dot + label (flip left when near right edge) */}
+          {/* Forecast dot + compact label */}
           {(() => {
             const fcX = xFor(fcElapsed);
-            const goLeft = fcX + 80 > W - padR;
-            const lx = goLeft ? fcX - 78 : fcX + 8;
+            const goLeft = fcX + 62 > W - padR;
+            const lx = goLeft ? fcX - 60 : fcX + 8;
+            const ly = Math.max(padT + 16, Math.min(fcY + 2, H - padB - 18));
             return (
               <g>
-                <circle cx={fcX} cy={fcY} r="5"
-                  fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" opacity="0.75" />
-                <rect x={lx} y={fcY - 34} width={70} height={30}
-                  rx="5" fill="var(--accent)" opacity="0.09" />
-                <text x={lx + 6} y={fcY - 18} fontSize="14"
-                  fill="var(--accent)" fontFamily="var(--mono)" fontWeight="700">{forecastTemp}°F</text>
-                <text x={lx + 6} y={fcY - 6} fontSize="9.5"
+                <circle cx={fcX} cy={fcY} r="3.5"
+                  fill="var(--surface)" stroke="var(--accent)" strokeWidth="1.8" opacity="0.7" />
+                <text x={lx} y={ly} fontSize="11" fontWeight="600"
+                  fill="var(--accent)" fontFamily="var(--mono)">{forecastTemp}°F</text>
+                <text x={lx} y={ly + 11} fontSize="8.5"
                   fill="var(--ink-4)" fontFamily="var(--mono)">预测峰值</text>
               </g>
             );
           })()}
 
-          {/* Max obs dot label */}
+          {/* Max obs label */}
           {maxPt && maxPt !== last && (
-            <text x={xFor(maxPt.elapsed)} y={yFor(maxPt.temp) - 9} fontSize="10"
+            <text x={xFor(maxPt.elapsed)} y={yFor(maxPt.temp) - 7} fontSize="10"
               textAnchor="middle" fill="var(--neg)"
-              fontFamily="var(--mono)" fontWeight="600">{maxPt.temp}°</text>
+              fontFamily="var(--mono)" fontWeight="600" opacity="0.75">{maxPt.temp}°</text>
           )}
         </svg>
       </div>

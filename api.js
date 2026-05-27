@@ -79,13 +79,14 @@ window.KW_API = (() => {
 
   /* ── 1b. NWS Hourly Observation History (last 24h) ──────── */
   async function fetchHourlyObs(stationId, tz) {
-    const url = `https://api.weather.gov/stations/${stationId}/observations?limit=28`;
+    // Fetch 80 raw obs: at 20-min METAR intervals this covers ~26h
+    const url = `https://api.weather.gov/stations/${stationId}/observations?limit=80`;
     const res = await fetch(url, { headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error(`NWS hourly HTTP ${res.status}`);
     const data = await res.json();
 
     // Parse each observation; NWS returns newest-first → reverse to oldest-first
-    const obs = data.features
+    const raw = data.features
       .map(f => {
         const p = f.properties;
         const tempF = cToF(p.temperature?.value);
@@ -114,7 +115,29 @@ window.KW_API = (() => {
       .filter(Boolean)
       .reverse(); // oldest first
 
-    return obs;
+    if (raw.length === 0) return [];
+
+    // Deduplicate: keep one reading per UTC hour bucket (closest to top of hour)
+    // Prevents jagged lines from high-frequency METAR stations
+    const hourMap = new Map();
+    for (const obs of raw) {
+      const bucket = Math.floor(new Date(obs.timestamp).getTime() / 3_600_000);
+      const existing = hourMap.get(bucket);
+      if (!existing) {
+        hourMap.set(bucket, obs);
+      } else {
+        // Prefer reading closest to :00 min
+        const newMins  = (obs.localHour ?? 0) % 1 * 60;
+        const oldMins  = (existing.localHour ?? 0) % 1 * 60;
+        const newDist  = Math.min(newMins, 60 - newMins);
+        const oldDist  = Math.min(oldMins, 60 - oldMins);
+        if (newDist < oldDist) hourMap.set(bucket, obs);
+      }
+    }
+
+    return [...hourMap.values()].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
   }
 
   /* ── 2. Open-Meteo Multi-Model Forecast ─────────────────── */
