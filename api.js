@@ -156,6 +156,10 @@ window.KW_API = (() => {
       );
       cloudCode     = topLayer.amount;
       cloudCoverPct = CLOUD_PCT[cloudCode] ?? null;
+    } else if (Array.isArray(p.cloudLayers)) {
+      // Empty array = station reports clear sky (CAVOK / SKC)
+      cloudCode     = "SKC";
+      cloudCoverPct = 0;
     }
     const cloudLabel = cloudCode ? (CLOUD_CN[cloudCode] || cloudCode) : "—";
 
