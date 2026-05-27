@@ -568,8 +568,8 @@ function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec, lastRefres
           <div className="bjt-label">
             BJT 北京时间
             {lastRefresh && (
-              <span className="refresh-stamp" title={`Last refresh: ${lastRefresh.toLocaleTimeString()}`}>
-                · 更新 {lastRefresh.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}
+              <span className="refresh-stamp" title={`Kalshi refresh: every ${settings.refreshCadence}`}>
+                · 更新 {lastRefresh.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})} · ⟳{settings.refreshCadence}
               </span>
             )}
           </div>
@@ -1429,7 +1429,7 @@ function DataSources() {
         <div className="row"><span className="k">Obs</span><span className="v">NOAA METAR / ASOS · 60s</span></div>
         <div className="row"><span className="k">Forecast</span><span className="v">NWS NDFD hourly · 15m</span></div>
         <div className="row"><span className="k">Models</span><span className="v">GFS · ECMWF · HRRR · HWRF</span></div>
-        <div className="row"><span className="k">AI</span><span className="v">KW-Llm v0.4 · 15m refresh</span></div>
+        <div className="row"><span className="k">AI</span><span className="v">KW-Llm v0.4</span></div>
         <div className="row"><span className="k">Refresh</span><span className="v">{DATA.lastUpdated}</span></div>
       </div>
     </div>
@@ -1543,7 +1543,7 @@ function SettingsDrawer({ open, onClose, theme, setTheme }) {
     autoSuggest: true,
 
     models: { GFS: true, ECMWF: true, HRRR: true, NAM: true, HWRF: false },
-    refreshCadence: "15m",
+    refreshCadence: "30s",
 
     aiSummary: true,
     aiVerbosity: "concise",
@@ -1688,9 +1688,9 @@ function SettingsDrawer({ open, onClose, theme, setTheme }) {
               <PillToggle options={["GFS", "ECMWF", "HRRR", "NAM", "HWRF"]} value={s.models}
                 onChange={(v) => update("models", v)} />
             </SettingsRowStack>
-            <SettingsRow label="Refresh cadence" cn="刷新频率">
+            <SettingsRow label="Kalshi refresh" cn="行情刷新" desc="Kalshi 实时价格轮询频率 · 越快越及时但消耗更多 API 配额">
               <Segmented value={s.refreshCadence} onChange={(v) => update("refreshCadence", v)}
-                options={[{ value: "5m", label: "5m" }, { value: "15m", label: "15m" }, { value: "1h", label: "1h" }]} />
+                options={[{ value: "30s", label: "30s" }, { value: "60s", label: "60s" }, { value: "2m", label: "2m" }, { value: "5m", label: "5m" }]} />
             </SettingsRow>
           </div>
 
@@ -1787,14 +1787,15 @@ function App() {
     }
   };
 
-  // Auto-fetch: full refresh every 5 min, Kalshi-only every 90 sec
+  // Auto-fetch: full refresh every 5 min, Kalshi-only per user cadence setting
+  const CADENCE_MS = { "30s": 30_000, "60s": 60_000, "2m": 120_000, "5m": 300_000 };
+  const kalshiMs = CADENCE_MS[settings.refreshCadence] ?? 30_000;
+
   useEffect(() => {
     const runFetch = (kalshiOnly = false) => {
       if (typeof window.KW_API === "undefined") return;
       DATA.markets.forEach(m => {
         if (kalshiOnly) {
-          // Lightweight: only re-fetch Kalshi prices (fast, cheap)
-          if (!window.KW_API) return;
           fetch(`/api/kalshi?ticker=${encodeURIComponent(m.id)}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
@@ -1803,7 +1804,7 @@ function App() {
               const newBuckets = newKalshi.map(km => kalshiToBucket(km));
               setLiveData(prev => {
                 const old = prev[m.id];
-                if (!old) return prev;  // no base data yet, skip
+                if (!old) return prev;
                 return { ...prev, [m.id]: {
                   ...old,
                   kalshi:        newKalshi,
@@ -1811,6 +1812,7 @@ function App() {
                   fetchedAt:     data.fetchedAt,
                 }};
               });
+              setLastRefresh(new Date());
             })
             .catch(() => {});
         } else {
@@ -1819,11 +1821,11 @@ function App() {
       });
     };
 
-    const boot    = setTimeout(() => runFetch(false), 300);       // full fetch on start
-    const fullRef = setInterval(() => runFetch(false), 5 * 60 * 1000);  // full every 5 min
-    const fastRef = setInterval(() => runFetch(true),  90 * 1000);       // Kalshi only every 90 sec
+    const boot    = setTimeout(() => runFetch(false), 300);
+    const fullRef = setInterval(() => runFetch(false), 5 * 60 * 1000); // weather every 5 min
+    const fastRef = setInterval(() => runFetch(true),  kalshiMs);       // Kalshi per cadence
     return () => { clearTimeout(boot); clearInterval(fullRef); clearInterval(fastRef); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [kalshiMs]); // re-run when cadence changes
 
   useEffect(() => {
     const t = theme === "system"
