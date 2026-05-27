@@ -1392,7 +1392,7 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
           {dist && (
             <span className="ens-mean-tag">
               加权修正后 <strong>{dist.adjustedMean}°F</strong> ± {dist.adjustedStd}°F
-              {keys.length < 4 && <span className="ens-model-count"> · {keys.length}/4 模型</span>}
+              <span className="ens-model-count"> · {keys.length}/3 模型</span>
             </span>
           )}
           <button className={`ens-refresh-btn ${loading ? "spin" : ""}`}
@@ -1475,7 +1475,7 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
 
       {dist && (
         <div className="ens-note">
-          加权均值 {dist.mean}°F → 修正后 {dist.adjustedMean}°F（NWS×0.50 · HRRR×0.30 · GFS×0.20，共 {dist.modelCount}/3 模型）· 区间 {dist.modelMin}–{dist.modelMax}°F · σ {dist.adjustedStd}°F
+          均权均值 {dist.mean}°F → 修正后 {dist.adjustedMean}°F（NWS · HRRR · GFS 各 ⅓ 权重，共 {dist.modelCount}/3 模型）· 区间 {dist.modelMin}–{dist.modelMax}°F · σ {dist.adjustedStd}°F
         </div>
       )}
 

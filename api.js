@@ -366,11 +366,8 @@ window.KW_API = (() => {
   }
 
   /* ── 3. Probability Distribution from Ensemble ──────────── */
-  // Model weights — 3-model ensemble anchored on NWS official:
-  //   NWS   0.50 — official human-QC'd forecast, calibrated to the settlement station
-  //   HRRR  0.30 — best US short-range NWP, 3 km, hourly updates
-  //   GFS   0.20 — global NWP backbone and reference
-  const MODEL_WEIGHTS = { NWS: 0.50, HRRR: 0.30, GFS: 0.20 };
+  // Equal weights — 3-model ensemble, normalized in buildDistribution
+  const MODEL_WEIGHTS = { NWS: 1/3, HRRR: 1/3, GFS: 1/3 };
 
   // ── Station-specific bias: NWS ASOS station vs Open-Meteo grid ──
   // Each ASOS station has microclimate characteristics that cause systematic

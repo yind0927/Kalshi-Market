@@ -40,8 +40,7 @@ module.exports = async function handler(req, res) {
   }).join("\n");
 
   const modelLines = Object.entries(models || {}).map(([k, m]) => {
-    const w = { NWS: "50%", HRRR: "30%", GFS: "20%" }[k] || "?%";
-    return `  ${k}(${w}): ${m.dailyMax}°F 峰值${m.peakHour}:00`;
+    return `  ${k}: ${m.dailyMax}°F  peak ${m.peakHour != null ? String(m.peakHour).padStart(2,"0") + ":00" : "—"}`;
   }).join("\n");
 
   const corr = distribution?.corrections;
@@ -49,30 +48,30 @@ module.exports = async function handler(req, res) {
     ? `修正(站点${corr.station > 0 ? "+" : ""}${corr.station}°F · 风速${corr.wind}°F · 云量${corr.cloud}°F · 观测融合${corr.observation > 0 ? "+" : ""}${corr.observation}°F = 总${corr.total > 0 ? "+" : ""}${corr.total}°F)`
     : "";
 
-  const prompt = `${city} 今天最高温合约（Kalshi，NWS ASOS结算）
+  const prompt = `Kalshi Daily High Contract — ${city} (settles on NWS ASOS official max)
 
-现在实测：${observation?.temperature != null ? `${observation.temperature}°F` : "暂无"}${observation?.windSpeed != null ? `，风${observation.windCompass} ${observation.windSpeed}kt` : ""}
+Current observation: ${observation?.temperature != null ? `${observation.temperature}°F` : "unavailable"}${observation?.windSpeed != null ? `, wind ${observation.windCompass} ${observation.windSpeed}kt` : ""}
 
-各模型：
+Model forecasts (equal-weighted ensemble):
 ${modelLines}
-加权均值 ${distribution?.mean}°F → 修正后 ${distribution?.adjustedMean}°F（σ±${distribution?.adjustedStd}°F）
+Ensemble mean ${distribution?.mean}°F → corrected ${distribution?.adjustedMean}°F (σ ±${distribution?.adjustedStd}°F)
 ${corrLine}
 
-市场 vs 模型概率：
+Market vs model probability by bucket:
 ${bucketLines}
 
-用口语中文，像跟朋友说话，给我3条bullet point，每条以"•"开头，一条一行：
-• 下注点：哪个区间最值得下，买YES还是NO，净赚多少分（已扣价差）
-• 核心判断：哪个修正最影响结果，几个模型一不一致
-• 主要风险：σ范围意味着什么，什么情况会翻车
+Provide exactly 3 bullet points in Chinese, each starting with "•" on its own line:
+• 交易信号：最具优势的区间，方向（YES/NO），净边际（扣除价差后），用具体数字
+• 预报分析：模型一致性，关键修正因子及其影响幅度
+• 风险提示：σ范围含义，可能导致预测失效的主要气象因素
 
-每条1句话，数字要具体，总计不超过100字，不要废话。`;
+要求：每条不超过40字，专业客观，数字精确，不加主观评价词。`;
 
   const client  = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const message = await client.messages.create({
     model:      "claude-haiku-4-5-20251001",
-    max_tokens: 350,
-    system: "你是一个在交易圈混的朋友，熟悉Kalshi天气预测市场。说话直接、口语化，不废话，数字具体，不用'建议''推荐'这种词。",
+    max_tokens: 400,
+    system: "你是一位量化气象交易分析师，专注于Kalshi天气衍生品市场。输出风格：专业、简洁、数据驱动。直接陈述事实和数据，不使用主观评价或情绪化语言。中文输出。",
     messages:  [{ role: "user", content: prompt }],
   });
 
