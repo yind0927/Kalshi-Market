@@ -534,7 +534,7 @@ function CityTimeline({ markets, bjtDec }) {
 /* ─────────────────────────────────────────────────────────
  * Top bar
  * ───────────────────────────────────────────────────────── */
-function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec, lastRefresh, liveCount }) {
+function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec, lastRefresh, liveCount, refreshCadence }) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -1860,6 +1860,7 @@ function App() {
         bjtDec={bjtDec}
         lastRefresh={lastRefresh}
         liveCount={liveCount}
+        refreshCadence={refreshCadence}
       />
       {tab === "markets" ? (
         <MarketsView openAnalysis={openAnalysis} bjtDec={bjtDec} liveData={liveData} />
