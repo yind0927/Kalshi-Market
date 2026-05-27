@@ -1040,8 +1040,8 @@ function HourlyChart({ market, live }) {
   const svgRef  = useRef(null);
   const [hovered, setHovered] = useState(null);
 
-  const W = 760, H = 300;
-  const padL = 48, padR = 32, padT = 28, padB = 44;
+  const W = 760, H = 380;
+  const padL = 48, padR = 32, padT = 32, padB = 50;
   const usableW = W - padL - padR;
   const usableH = H - padT - padB;
 
@@ -1080,8 +1080,8 @@ function HourlyChart({ market, live }) {
   const obsMins  = dataPoints.map(p => p.temp);
   const obsMin   = Math.min(...obsMins);
   const obsMax   = Math.max(...obsMins);
-  const yCeiling = Math.max(obsMax + 8, Math.min(forecastTemp, obsMax + 20));
-  const minV  = Math.floor((obsMin - 3) / 5) * 5;
+  const yCeiling = Math.max(obsMax + 5, Math.min(forecastTemp, obsMax + 18));
+  const minV  = Math.floor((obsMin - 2) / 5) * 5;
   const maxV  = Math.ceil(yCeiling / 5) * 5;
   const ySpan = Math.max(10, maxV - minV);
   const yFor  = v => padT + (1 - (v - minV) / ySpan) * usableH;
@@ -1292,15 +1292,24 @@ function HourlyChart({ market, live }) {
           <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="9"
             fill="none" stroke="var(--accent)" strokeWidth="1" opacity="0.25" />
 
-          {/* Forecast peak dot + label */}
-          <circle cx={xFor(fcElapsed)} cy={fcY} r="5"
-            fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" opacity="0.75" />
-          <rect x={xFor(fcElapsed) + 8} y={fcY - 34} width={62} height={30}
-            rx="5" fill="var(--accent)" opacity="0.07" />
-          <text x={xFor(fcElapsed) + 12} y={fcY - 18} fontSize="14"
-            fill="var(--accent)" fontFamily="var(--mono)" fontWeight="700">{forecastTemp}°F</text>
-          <text x={xFor(fcElapsed) + 12} y={fcY - 6} fontSize="9.5"
-            fill="var(--ink-4)" fontFamily="var(--mono)">预测峰值</text>
+          {/* Forecast peak dot + label (flip left when near right edge) */}
+          {(() => {
+            const fcX = xFor(fcElapsed);
+            const goLeft = fcX + 80 > W - padR;
+            const lx = goLeft ? fcX - 78 : fcX + 8;
+            return (
+              <g>
+                <circle cx={fcX} cy={fcY} r="5"
+                  fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" opacity="0.75" />
+                <rect x={lx} y={fcY - 34} width={70} height={30}
+                  rx="5" fill="var(--accent)" opacity="0.09" />
+                <text x={lx + 6} y={fcY - 18} fontSize="14"
+                  fill="var(--accent)" fontFamily="var(--mono)" fontWeight="700">{forecastTemp}°F</text>
+                <text x={lx + 6} y={fcY - 6} fontSize="9.5"
+                  fill="var(--ink-4)" fontFamily="var(--mono)">预测峰值</text>
+              </g>
+            );
+          })()}
 
           {/* Max obs dot label */}
           {maxPt && maxPt !== last && (
@@ -1561,6 +1570,7 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
 
   // AI summary state: null | { loading } | { summary, model, tokens, generatedAt } | { error }
   const [aiData, setAiData] = useState(null);
+  const aiAutoFetchRef = useRef(false); // prevents double-trigger across re-renders
 
   // Use live Kalshi buckets (authoritative ranges + prices) when available,
   // fall back to static data.js buckets
@@ -1590,12 +1600,15 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
       onFetch(market);
     }
     setAiData(null); // reset AI when city changes
+    aiAutoFetchRef.current = false; // allow auto-fetch for the new city
   }, [market.id]);
 
   // Auto-generate AI summary once distribution data arrives
+  // Use a ref instead of checking aiData state to avoid stale closure bugs
   const distKey = live?.distribution?.adjustedMean;
   useEffect(() => {
-    if (!live?.distribution || aiData) return;
+    if (!live?.distribution || aiAutoFetchRef.current) return;
+    aiAutoFetchRef.current = true;
     setAiData({ loading: true });
     doFetchAISummary(live)
       .then(data => setAiData(data))
@@ -1724,6 +1737,17 @@ function AISummary({ market, aiData, onRefreshAI }) {
       }) + " BJT"
     : null;
 
+  // Cost estimate: Haiku pricing — $0.80/1M input, $2.50/1M output
+  const costUsd = aiData?.tokens
+    ? (aiData.tokens.input * 0.80 + aiData.tokens.output * 2.50) / 1_000_000
+    : null;
+  const costStr = costUsd != null ? `$${costUsd.toFixed(4)} / query` : null;
+
+  // Render multi-line bullet text
+  const summaryLines = hasLive
+    ? aiData.summary.split('\n').filter(l => l.trim())
+    : [];
+
   return (
     <div className="card ai-card">
       <div className="ai-head">
@@ -1736,12 +1760,14 @@ function AISummary({ market, aiData, onRefreshAI }) {
           <h3 style={{ fontSize: 15, margin: 0 }}>AI Summary</h3>
           <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
             {hasLive
-              ? `${aiData.model} · ${aiData.tokens?.input}in / ${aiData.tokens?.output}out tokens`
-              : "Claude Sonnet 实时分析 · 等待市场数据加载"}
+              ? `Haiku · ${aiData.tokens?.input}in / ${aiData.tokens?.output}out · ${costStr}`
+              : isLoading
+              ? "Claude Haiku 分析中…"
+              : "Claude Haiku · 等待市场数据加载"}
           </div>
         </div>
         <span className={`ai-tag ${hasLive ? "live-tag" : ""}`}>
-          {hasLive ? <><span className="live-badge-sm" style={{marginRight:3}}>LIVE</span>AI</> : "Beta"}
+          {hasLive ? <><span className="live-badge-sm" style={{marginRight:3}}>LIVE</span>AI</> : "Auto"}
         </span>
         <button
           className={`ens-refresh-btn ${isLoading ? "spin" : ""}`}
@@ -1774,14 +1800,18 @@ function AISummary({ market, aiData, onRefreshAI }) {
       )}
 
       {hasLive && !isLoading && (
-        <div className="ai-body">{aiData.summary}</div>
+        <div className="ai-body">
+          {summaryLines.length > 1
+            ? summaryLines.map((line, i) => <div key={i} className="ai-line">{line}</div>)
+            : aiData.summary}
+        </div>
       )}
 
       {!isLoading && !hasLive && !hasError && (
         <div className="ai-body" style={{ color: "var(--ink-4)" }}>
           {market.aiSummary}
           <div style={{ fontSize: 10, color: "var(--ink-4)", marginTop: 6, fontStyle: "italic" }}>
-            ↑ 静态占位文本 — 实时数据加载后将由 Claude 替换
+            ↑ 静态占位文本 — 数据加载后 Claude 自动替换
           </div>
         </div>
       )}
@@ -1789,7 +1819,7 @@ function AISummary({ market, aiData, onRefreshAI }) {
       {genTime && (
         <div className="ai-meta">
           <span>Generated · {genTime}</span>
-          <span>{aiData.model} · {aiData.tokens?.input} in / {aiData.tokens?.output} out tokens</span>
+          <span>{costStr} · {aiData.tokens?.input}+{aiData.tokens?.output} tokens</span>
         </div>
       )}
     </div>

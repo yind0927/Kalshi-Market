@@ -53,20 +53,20 @@ module.exports = async function handler(req, res) {
 
 现在实测：${observation?.temperature != null ? `${observation.temperature}°F` : "暂无"}${observation?.windSpeed != null ? `，风${observation.windCompass} ${observation.windSpeed}kt` : ""}
 
-各模型怎么说：
+各模型：
 ${modelLines}
-加权后均值 ${distribution?.mean}°F，修正完 ${distribution?.adjustedMean}°F，误差范围 σ±${distribution?.adjustedStd}°F
+加权均值 ${distribution?.mean}°F → 修正后 ${distribution?.adjustedMean}°F（σ±${distribution?.adjustedStd}°F）
 ${corrLine}
 
-市场价 vs 我们模型的概率：
+市场 vs 模型概率：
 ${bucketLines}
 
-帮我分析一下：
-第一句：哪个区间最值得下注，买YES还是NO，净赚多少分（扣完买卖价差的）
-第二句：凭什么这么判断——哪个修正最关键，几个模型是不是一致
-第三句：主要风险是什么，σ这么大意味着什么，什么情况会翻车
+用口语中文，像跟朋友说话，给我3条bullet point，每条以"•"开头，一条一行：
+• 下注点：哪个区间最值得下，买YES还是NO，净赚多少分（已扣价差）
+• 核心判断：哪个修正最影响结果，几个模型一不一致
+• 主要风险：σ范围意味着什么，什么情况会翻车
 
-口语化，像跟朋友说话，3句话，数字要具体，控制在80字内。`;
+每条1句话，数字要具体，总计不超过100字，不要废话。`;
 
   const client  = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const message = await client.messages.create({
