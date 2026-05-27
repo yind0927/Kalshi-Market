@@ -2692,11 +2692,11 @@ input { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 28px;
-  margin: 0 -28px 16px;
+  padding: 12px 16px;
+  margin: 0 0 16px;
   background: color-mix(in oklab, var(--pos) 6%, var(--bg-2));
-  border-top: 1px solid color-mix(in oklab, var(--pos) 20%, var(--border));
-  border-bottom: 1px solid color-mix(in oklab, var(--pos) 20%, var(--border));
+  border: 1px solid color-mix(in oklab, var(--pos) 20%, var(--border));
+  border-radius: 8px;
   flex-wrap: wrap;
   gap: 8px 16px;
 }
@@ -2776,6 +2776,21 @@ input { font-family: inherit; }
 .ens-model-diff.pos { color: var(--pos); }
 .ens-model-diff.neg { color: var(--neg); }
 .ens-model-diff.flat { color: var(--ink-4); }
+
+/* Consensus card — accent-tinted, wider, always first */
+.ens-consensus {
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 30%, var(--border));
+}
+.ens-consensus .ens-model-name { color: var(--accent-ink); }
+.ens-consensus .ens-model-temp { color: var(--accent); }
+.ens-consensus .ens-model-peak { color: var(--accent-ink); opacity: 0.65; }
+
+/* Model count badge inside ens-mean-tag */
+.ens-model-count {
+  opacity: 0.75;
+  font-weight: 400;
+}
 
 /* Loading skeleton */
 .ens-loading {

@@ -1391,7 +1391,8 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
         <div className="ens-head-right">
           {dist && (
             <span className="ens-mean-tag">
-              均值 <strong>{dist.mean}°F</strong> ± {dist.std}°F
+              加权修正后 <strong>{dist.adjustedMean}°F</strong> ± {dist.adjustedStd}°F
+              {keys.length < 4 && <span className="ens-model-count"> · {keys.length}/4 模型</span>}
             </span>
           )}
           <button className={`ens-refresh-btn ${loading ? "spin" : ""}`}
@@ -1432,9 +1433,20 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
       {/* Model cards */}
       {!loading && keys.length > 0 && (
         <div className="ens-grid">
+          {/* Consensus card — weighted + corrected ensemble mean */}
+          {dist && (
+            <div className="ens-model ens-consensus">
+              <div className="ens-model-name">集合 ENSEMBLE</div>
+              <div className="ens-model-temp">{dist.adjustedMean}<span>°F</span></div>
+              <div className="ens-model-peak">σ ±{dist.adjustedStd}°F</div>
+              <div className="ens-model-diff flat">
+                {dist.modelMin}–{dist.modelMax}°F 区间
+              </div>
+            </div>
+          )}
           {keys.map(key => {
             const m = models[key];
-            const diff = dist ? +(m.dailyMax - dist.mean).toFixed(1) : null;
+            const diff = dist ? +(m.dailyMax - dist.adjustedMean).toFixed(1) : null;
             const cls  = diff == null ? "flat" : diff > 0.5 ? "pos" : diff < -0.5 ? "neg" : "flat";
             return (
               <div className="ens-model" key={key}>
