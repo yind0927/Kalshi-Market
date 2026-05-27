@@ -1246,77 +1246,74 @@ function HourlyChart({ market, live }) {
           {/* Area fill */}
           <path d={areaSmooth} fill="url(#obsGrad)" />
 
-          {/* Temperature curve — clean 2px line */}
+          {/* Temperature curve */}
           <path d={obsSmooth} fill="none" stroke="var(--accent)"
             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* Forecast projection */}
+          {/* Forecast dashed projection */}
           <path d={fcPath} fill="none" stroke="var(--accent)"
             strokeWidth="1.5" strokeDasharray="4 4" opacity="0.45" />
 
-          {/* Hover */}
-          {hovered && (
-            <g>
-              <line x1={hovered.svgX} x2={hovered.svgX} y1={padT} y2={H - padB}
-                stroke="var(--ink-3)" strokeWidth="0.75" strokeOpacity="0.4" />
-              <circle cx={hovered.svgX} cy={hovered.svgY} r="8"
-                fill="var(--accent)" opacity="0.10" />
-              <circle cx={hovered.svgX} cy={hovered.svgY} r="3.5"
-                fill="var(--accent)" />
-              {/* Square card tooltip */}
-              <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="9"
-                fill="var(--ink-1)" opacity="0.93" />
-              {/* Top accent bar */}
-              <line x1={tipX + 10} x2={tipX + tipW - 10} y1={tipY + 1.5} y2={tipY + 1.5}
-                stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" opacity="0.75" />
-              {/* Temperature */}
-              <text x={tipX + 13} y={tipY + 26} fontSize="18" fontWeight="700"
-                fill="white" fontFamily="var(--mono)">{hovered.temp}°F</text>
-              {/* Time */}
-              <text x={tipX + 13} y={tipY + 43} fontSize="11"
-                fill="rgba(255,255,255,0.42)" fontFamily="var(--mono)">{hovTime}</text>
-            </g>
-          )}
+          {/* ── Persistent annotations (rendered before hover so hover is on top) ── */}
 
           {/* Current obs dot */}
           <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="4.5"
             fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" />
 
-          {/* Forecast dot + styled label */}
+          {/* Forecast dot + label — text uses white halo (no background rect) */}
           {(() => {
             const fcX = xFor(fcElapsed);
-            const goLeft = fcX + 68 > W - padR;
-            const lx = goLeft ? fcX - 66 : fcX + 9;
-            const ly = Math.max(padT + 20, Math.min(fcY - 4, H - padB - 24));
-            const lw = 64, lh = 26;
+            const goLeft = fcX + 58 > W - padR;
+            const lx = goLeft ? fcX - 56 : fcX + 9;
             return (
               <g>
                 <circle cx={fcX} cy={fcY} r="3.5"
                   fill="var(--surface)" stroke="var(--accent)" strokeWidth="1.8" opacity="0.7" />
-                {/* Label chip */}
-                <rect x={lx - 4} y={ly - 16} width={lw} height={lh} rx="6"
-                  fill="var(--accent)" opacity="0.10" />
-                <text x={lx} y={ly} fontSize="13" fontWeight="700"
-                  fill="var(--accent)" fontFamily="var(--mono)">{forecastTemp}°F</text>
-                <text x={lx} y={ly + 10} fontSize="9" letterSpacing="0.02em"
-                  fill="var(--accent)" fontFamily="var(--mono)" opacity="0.6">预测峰值</text>
+                <text x={lx} y={fcY - 2} fontSize="13" fontWeight="700"
+                  fill="var(--accent)" fontFamily="var(--mono)"
+                  stroke="var(--surface)" strokeWidth="5" paintOrder="stroke fill">
+                  {forecastTemp}°F
+                </text>
+                <text x={lx} y={fcY + 11} fontSize="9.5"
+                  fill="var(--accent)" fontFamily="var(--mono)" opacity="0.65"
+                  stroke="var(--surface)" strokeWidth="4" paintOrder="stroke fill">
+                  预测峰值
+                </text>
               </g>
             );
           })()}
 
-          {/* Max obs label — styled chip */}
-          {maxPt && maxPt !== last && (() => {
-            const mx = xFor(maxPt.elapsed);
-            const my = yFor(maxPt.temp);
-            return (
-              <g>
-                <rect x={mx - 18} y={my - 22} width={36} height={17} rx="5"
-                  fill="var(--neg)" opacity="0.10" />
-                <text x={mx} y={my - 9} fontSize="11.5" textAnchor="middle"
-                  fill="var(--neg)" fontFamily="var(--mono)" fontWeight="700">{maxPt.temp}°</text>
-              </g>
-            );
-          })()}
+          {/* Max obs label — white halo, no background rect */}
+          {maxPt && maxPt !== last && (
+            <text
+              x={xFor(maxPt.elapsed)} y={yFor(maxPt.temp) - 8}
+              fontSize="12" textAnchor="middle"
+              fill="var(--neg)" fontFamily="var(--mono)" fontWeight="700"
+              stroke="var(--surface)" strokeWidth="5" paintOrder="stroke fill">
+              {maxPt.temp}°
+            </text>
+          )}
+
+          {/* ── Hover overlay — LAST so it renders above everything ── */}
+          {hovered && (
+            <g>
+              <line x1={hovered.svgX} x2={hovered.svgX} y1={padT} y2={H - padB}
+                stroke="var(--ink-3)" strokeWidth="0.75" strokeOpacity="0.35" />
+              <circle cx={hovered.svgX} cy={hovered.svgY} r="7"
+                fill="var(--accent)" opacity="0.10" />
+              <circle cx={hovered.svgX} cy={hovered.svgY} r="3.5"
+                fill="var(--accent)" />
+              {/* Card tooltip */}
+              <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="9"
+                fill="var(--ink-1)" opacity="0.93" />
+              <line x1={tipX + 10} x2={tipX + tipW - 10} y1={tipY + 1.5} y2={tipY + 1.5}
+                stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" />
+              <text x={tipX + 13} y={tipY + 26} fontSize="18" fontWeight="700"
+                fill="white" fontFamily="var(--mono)">{hovered.temp}°F</text>
+              <text x={tipX + 13} y={tipY + 43} fontSize="11"
+                fill="rgba(255,255,255,0.4)" fontFamily="var(--mono)">{hovTime}</text>
+            </g>
+          )}
         </svg>
       </div>
 
