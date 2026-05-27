@@ -1408,46 +1408,25 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
       {/* Live Observation Strip */}
       {obs && (
         <div className="obs-live-strip">
-          {/* Hero: temperature */}
           <div className="obs-live-temp">
             <span className="live-badge-sm">LIVE</span>
             {obs.temperature != null ? `${obs.temperature}°F` : "—"}
           </div>
-
-          {/* Metric grid */}
-          <div className="obs-metrics">
-            <div className="obs-metric">
-              <span className="obs-metric-label">湿度</span>
-              <span className="obs-metric-val">{obs.humidity != null ? `${obs.humidity}%` : "—"}</span>
-              <span className="obs-metric-sub">露点 {obs.dewpoint != null ? `${obs.dewpoint}°F` : "—"}</span>
+          <div className="obs-live-stats">
+            <div className="obs-stat">
+              <span className="obs-stat-label">湿度</span>
+              <span className="obs-stat-val">{obs.humidity != null ? `${obs.humidity}%` : "—"}</span>
             </div>
-            <div className="obs-metric">
-              <span className="obs-metric-label">风速</span>
-              <span className="obs-metric-val">
-                {obs.windCompass} {obs.windSpeed != null ? `${obs.windSpeed}kt` : "—"}{obs.windGust ? ` G${obs.windGust}` : ""}
-              </span>
-              <span className="obs-metric-sub">{obs.windCategory || "—"}</span>
+            <div className="obs-stat">
+              <span className="obs-stat-label">风速</span>
+              <span className="obs-stat-val">{obs.windCompass} {obs.windSpeed != null ? `${obs.windSpeed}kt` : "—"}{obs.windGust ? ` G${obs.windGust}` : ""}</span>
+              <span className="obs-stat-sub">{obs.windCategory || "—"}</span>
             </div>
-            <div className="obs-metric">
-              <span className="obs-metric-label">云量</span>
-              <span className="obs-metric-val">{obs.cloudCoverPct != null ? `${obs.cloudCoverPct}%` : "—"}</span>
-              <span className="obs-metric-sub">{obs.cloudLabel || obs.sky || "—"}</span>
+            <div className="obs-stat">
+              <span className="obs-stat-label">天气</span>
+              <span className="obs-stat-val">{obs.cloudLabel || obs.sky || "—"}</span>
             </div>
           </div>
-
-          {/* Calculation impact note */}
-          <div className="obs-impact-note">
-            <span className="obs-impact-item used" title="当前实测温度通过加权融合直接修正集合均值">温度 ✓ 融合预测</span>
-            <span className="obs-impact-sep">·</span>
-            <span className="obs-impact-item partial" title="使用峰值时刻的模型预报风速修正，非当前实测">风速 ↻ 峰值模型</span>
-            <span className="obs-impact-sep">·</span>
-            <span className="obs-impact-item partial" title="使用峰值时刻的模型预报云量修正，非当前实测">云量 ↻ 峰值模型</span>
-            <span className="obs-impact-sep">·</span>
-            <span className="obs-impact-item unused" title="湿度影响加热速率，当前未纳入修正层">湿度 — 未使用</span>
-          </div>
-
-          {/* Raw METAR */}
-          <div className="obs-live-raw">{obs.source} · {obs.rawMessage || ""}</div>
         </div>
       )}
 
