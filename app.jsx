@@ -568,8 +568,8 @@ function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec, lastRefres
           <div className="bjt-label">
             BJT 北京时间
             {lastRefresh && (
-              <span className="refresh-stamp" title={`Kalshi refresh: every ${settings.refreshCadence}`}>
-                · 更新 {lastRefresh.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})} · ⟳{settings.refreshCadence}
+              <span className="refresh-stamp" title={`Kalshi refresh: every ${refreshCadence}`}>
+                · 更新 {lastRefresh.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})} · ⟳{refreshCadence}
               </span>
             )}
           </div>
@@ -1523,7 +1523,7 @@ function SectionHead({ icon, title, cn, badge }) {
 /* ─────────────────────────────────────────────────────────
  * Settings drawer
  * ───────────────────────────────────────────────────────── */
-function SettingsDrawer({ open, onClose, theme, setTheme }) {
+function SettingsDrawer({ open, onClose, theme, setTheme, refreshCadence, setRefreshCadence }) {
   const [s, setS] = useState({
     language: "auto",
     density: "comfortable",
@@ -1543,7 +1543,6 @@ function SettingsDrawer({ open, onClose, theme, setTheme }) {
     autoSuggest: true,
 
     models: { GFS: true, ECMWF: true, HRRR: true, NAM: true, HWRF: false },
-    refreshCadence: "30s",
 
     aiSummary: true,
     aiVerbosity: "concise",
@@ -1689,7 +1688,7 @@ function SettingsDrawer({ open, onClose, theme, setTheme }) {
                 onChange={(v) => update("models", v)} />
             </SettingsRowStack>
             <SettingsRow label="Kalshi refresh" cn="行情刷新" desc="Kalshi 实时价格轮询频率 · 越快越及时但消耗更多 API 配额">
-              <Segmented value={s.refreshCadence} onChange={(v) => update("refreshCadence", v)}
+              <Segmented value={refreshCadence} onChange={(v) => setRefreshCadence(v)}
                 options={[{ value: "30s", label: "30s" }, { value: "60s", label: "60s" }, { value: "2m", label: "2m" }, { value: "5m", label: "5m" }]} />
             </SettingsRow>
           </div>
@@ -1756,7 +1755,8 @@ function App() {
   const [bjtDec, setBjtDec] = useState(getCurrentBJTDecimal());
   const [liveData, setLiveData] = useState({});
   const [lastRefresh, setLastRefresh] = useState(null);
-  const [kalshiStatus, setKalshiStatus] = useState(null); // null | "ok" | "error" | "unconfigured"
+  const [kalshiStatus, setKalshiStatus] = useState(null);
+  const [refreshCadence, setRefreshCadence] = useState("30s"); // lifted from SettingsDrawer
 
   // Check Kalshi credential status once on mount
   useEffect(() => {
@@ -1788,8 +1788,8 @@ function App() {
   };
 
   // Auto-fetch: full refresh every 5 min, Kalshi-only per user cadence setting
-  const CADENCE_MS = { "30s": 30_000, "60s": 60_000, "2m": 120_000, "5m": 300_000 };
-  const kalshiMs = CADENCE_MS[settings.refreshCadence] ?? 30_000;
+  const CADENCE_MS = { "30s": 30000, "60s": 60000, "2m": 120000, "5m": 300000 };
+  const kalshiMs = CADENCE_MS[refreshCadence] ?? 30000;
 
   useEffect(() => {
     const runFetch = (kalshiOnly = false) => {
@@ -1873,7 +1873,8 @@ function App() {
           kalshiStatus={kalshiStatus}
         />
       )}
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} setTheme={setTheme} />
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} setTheme={setTheme}
+        refreshCadence={refreshCadence} setRefreshCadence={setRefreshCadence} />
     </div>
   );
 }
