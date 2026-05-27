@@ -1138,8 +1138,8 @@ function HourlyChart({ market, live }) {
   };
   const handleMouseLeave = () => setHovered(null);
 
-  // Square card tooltip
-  const tipW = 106, tipH = 52;
+  // Card tooltip — slightly compact
+  const tipW = 94, tipH = 44;
   const tipX = hovered ? (hovered.svgX + tipW + 14 > W - padR ? hovered.svgX - tipW - 10 : hovered.svgX + 10) : 0;
   const tipY = hovered ? Math.max(padT, Math.min(hovered.svgY - tipH / 2, H - padB - tipH)) : 0;
 
@@ -1306,11 +1306,11 @@ function HourlyChart({ market, live }) {
               {/* Card tooltip */}
               <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="9"
                 fill="var(--ink-1)" opacity="0.93" />
-              <line x1={tipX + 10} x2={tipX + tipW - 10} y1={tipY + 1.5} y2={tipY + 1.5}
-                stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" />
-              <text x={tipX + 13} y={tipY + 26} fontSize="18" fontWeight="700"
+              <line x1={tipX + 8} x2={tipX + tipW - 8} y1={tipY + 1.5} y2={tipY + 1.5}
+                stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" />
+              <text x={tipX + 11} y={tipY + 22} fontSize="16" fontWeight="700"
                 fill="white" fontFamily="var(--mono)">{hovered.temp}°F</text>
-              <text x={tipX + 13} y={tipY + 43} fontSize="11"
+              <text x={tipX + 11} y={tipY + 36} fontSize="10"
                 fill="rgba(255,255,255,0.4)" fontFamily="var(--mono)">{hovTime}</text>
             </g>
           )}
