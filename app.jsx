@@ -1,5 +1,5 @@
 /* global React, ReactDOM */
-const { useState, useMemo, useEffect } = React;
+const { useState, useMemo, useEffect, useRef, useCallback } = React;
 const DATA = window.KW_DATA;
 
 /* ─────────────────────────────────────────────────────────
@@ -1032,13 +1032,16 @@ function ProbDistribution({ market, live, kalshiStatus }) {
 
 /* ─────────────────────────────────────────────────────────
  * Hourly chart — live NWS 24h obs + ensemble forecast
+ * Interactive: hover crosshair + tooltip, smooth Catmull-Rom curve
  * ───────────────────────────────────────────────────────── */
 function HourlyChart({ market, live }) {
-  const rawObs = live?.hourlyObs;
+  const rawObs  = live?.hourlyObs;
   const hasLive = !!(rawObs?.length > 1);
+  const svgRef  = useRef(null);
+  const [hovered, setHovered] = useState(null);
 
   const W = 760, H = 300;
-  const padL = 44, padR = 28, padT = 24, padB = 40;
+  const padL = 48, padR = 32, padT = 28, padB = 44;
   const usableW = W - padL - padR;
   const usableH = H - padT - padB;
 
@@ -1068,72 +1071,110 @@ function HourlyChart({ market, live }) {
     forecastTemp = market.forecastHigh;
   }
 
-  const last      = dataPoints[dataPoints.length - 1];
-  const firstLH   = dataPoints[0].localHour ?? 0;
-  const xTotal    = Math.max(last.elapsed + 0.5, fcElapsed) + 0.5;
-  const xFor      = e  => padL + (e / xTotal) * usableW;
+  const last    = dataPoints[dataPoints.length - 1];
+  const firstLH = dataPoints[0].localHour ?? 0;
+  const xTotal  = Math.max(last.elapsed + 0.5, fcElapsed) + 0.5;
+  const xFor    = e => padL + (e / xTotal) * usableW;
 
-  // ── Y axis: observed data range + small pad; forecast
-  //    as an annotation rather than expanding Y range heavily
+  // ── Y axis ────────────────────────────────────────────────
   const obsMins  = dataPoints.map(p => p.temp);
   const obsMin   = Math.min(...obsMins);
   const obsMax   = Math.max(...obsMins);
-  // Allow up to 8°F above observed max in the main chart area;
-  // if forecast > that ceiling, the forecast dot will clip slightly
-  // but we clamp to keep the observed curve prominent
   const yCeiling = Math.max(obsMax + 8, Math.min(forecastTemp, obsMax + 20));
-  const minV = Math.floor((obsMin - 3) / 5) * 5;
-  const maxV = Math.ceil (yCeiling      / 5) * 5;
+  const minV  = Math.floor((obsMin - 3) / 5) * 5;
+  const maxV  = Math.ceil(yCeiling / 5) * 5;
   const ySpan = Math.max(10, maxV - minV);
-  const yFor = v => padT + (1 - (v - minV) / ySpan) * usableH;
-  // Clamp forecast dot position to chart top if forecast > maxV
-  const fcY  = Math.max(padT + 4, yFor(forecastTemp));
+  const yFor  = v => padT + (1 - (v - minV) / ySpan) * usableH;
+  const fcY   = Math.max(padT + 4, yFor(forecastTemp));
 
-  // ── SVG paths ────────────────────────────────────────────
-  const obsPath  = dataPoints
-    .map((p, i) => `${i === 0 ? "M" : "L"}${xFor(p.elapsed).toFixed(1)} ${yFor(p.temp).toFixed(1)}`)
-    .join(" ");
-  const areaPath = obsPath
-    + ` L${xFor(last.elapsed).toFixed(1)} ${H - padB}`
-    + ` L${xFor(0).toFixed(1)} ${H - padB} Z`;
-  const fcPath   = `M${xFor(last.elapsed).toFixed(1)} ${yFor(last.temp).toFixed(1)}`
-    + ` L${xFor(fcElapsed).toFixed(1)} ${fcY.toFixed(1)}`;
+  // ── Catmull-Rom smooth curve ──────────────────────────────
+  const catmullRomPath = pts => {
+    if (pts.length < 2) return "";
+    const coords = pts.map(p => [xFor(p.elapsed), yFor(p.temp)]);
+    let d = `M${coords[0][0].toFixed(1)},${coords[0][1].toFixed(1)}`;
+    const t = 0.38;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const p0 = coords[Math.max(0, i - 1)];
+      const p1 = coords[i];
+      const p2 = coords[i + 1];
+      const p3 = coords[Math.min(coords.length - 1, i + 2)];
+      const cp1x = p1[0] + (p2[0] - p0[0]) * t;
+      const cp1y = p1[1] + (p2[1] - p0[1]) * t;
+      const cp2x = p2[0] - (p3[0] - p1[0]) * t;
+      const cp2y = p2[1] - (p3[1] - p1[1]) * t;
+      d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+    }
+    return d;
+  };
 
-  // ── Midnight crossing marker (where localHour resets 23→0) ──
+  const obsSmooth  = catmullRomPath(dataPoints);
+  const areaSmooth = obsSmooth
+    + ` L${xFor(last.elapsed).toFixed(1)},${H - padB}`
+    + ` L${xFor(0).toFixed(1)},${H - padB} Z`;
+  const fcPath = `M${xFor(last.elapsed).toFixed(1)},${yFor(last.temp).toFixed(1)}`
+    + ` L${xFor(fcElapsed).toFixed(1)},${fcY.toFixed(1)}`;
+
+  // ── Interactive hover ─────────────────────────────────────
+  const handleMouseMove = e => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect  = svg.getBoundingClientRect();
+    const svgX  = ((e.clientX - rect.left)  / rect.width)  * W;
+    const svgY  = ((e.clientY - rect.top)   / rect.height) * H;
+    if (svgX < padL || svgX > W - padR || svgY < padT - 4 || svgY > H - padB + 4) {
+      setHovered(null); return;
+    }
+    const elapsed = ((svgX - padL) / usableW) * xTotal;
+    let closest = dataPoints[0], minDist = Infinity;
+    for (const p of dataPoints) {
+      const d = Math.abs(p.elapsed - elapsed);
+      if (d < minDist) { minDist = d; closest = p; }
+    }
+    setHovered({ svgX: xFor(closest.elapsed), svgY: yFor(closest.temp), temp: closest.temp, localHour: closest.localHour });
+  };
+  const handleMouseLeave = () => setHovered(null);
+
+  // Tooltip position: flip left if near right edge
+  const tipW = 110, tipH = 42;
+  const tipX = hovered ? (hovered.svgX + tipW + 14 > W - padR ? hovered.svgX - tipW - 10 : hovered.svgX + 10) : 0;
+  const tipY = hovered ? Math.max(padT, Math.min(hovered.svgY - tipH / 2, H - padB - tipH)) : 0;
+
+  // Hover time label
+  const hovLH = hovered?.localHour;
+  const hovTime = hovLH != null
+    ? `${String(Math.floor(hovLH)).padStart(2,"0")}:${String(Math.round((hovLH % 1) * 60)).padStart(2,"0")}`
+    : "—";
+
+  // ── Midnight marker ───────────────────────────────────────
   const midnightElapsed = (() => {
     for (let i = 1; i < dataPoints.length; i++) {
       const prev = dataPoints[i - 1].localHour, cur = dataPoints[i].localHour;
-      if (prev != null && cur != null && prev > 20 && cur < 4) {
+      if (prev != null && cur != null && prev > 20 && cur < 4)
         return (dataPoints[i - 1].elapsed + dataPoints[i].elapsed) / 2;
-      }
     }
     return null;
   })();
 
-  // ── Axis ticks ───────────────────────────────────────────
+  // ── Axis ticks ────────────────────────────────────────────
   const yTicks = [];
   for (let v = minV; v <= maxV; v += 5) yTicks.push(v);
-
   const xTicks = [];
-  for (let e = 0; e <= xTotal; e += 3) {
-    xTicks.push({ e, label: String(Math.floor((firstLH + e) % 24)).padStart(2, "0") + ":00" });
-  }
+  for (let e = 0; e <= xTotal; e += 3)
+    xTicks.push({ e, label: String(Math.floor((firstLH + e) % 24)).padStart(2,"0") + ":00" });
 
   // ── Stats calculations ───────────────────────────────────
-  const maxPt    = dataPoints.reduce((a, b) => b.temp > a.temp ? b : a, dataPoints[0]);
-  const minPt    = dataPoints.reduce((a, b) => b.temp < a.temp ? b : a, dataPoints[0]);
-  const fmtHour  = lh => lh != null
+  const maxPt   = dataPoints.reduce((a, b) => b.temp > a.temp ? b : a, dataPoints[0]);
+  const minPt   = dataPoints.reduce((a, b) => b.temp < a.temp ? b : a, dataPoints[0]);
+  const fmtHour = lh => lh != null
     ? `${String(Math.floor(lh)).padStart(2,"0")}:${String(Math.round((lh%1)*60)).padStart(2,"0")}`
     : "—";
-
-  // Δ from best available reference (up to 6h back, else use first point)
-  const sixHBack    = last.elapsed - 6;
-  const deltaRefPt  = sixHBack >= 0
+  const sixHBack   = last.elapsed - 6;
+  const deltaRefPt = sixHBack >= 0
     ? ([...dataPoints].reverse().find(p => p.elapsed <= sixHBack) || dataPoints[0])
     : dataPoints[0];
-  const deltaHrs    = +(last.elapsed - deltaRefPt.elapsed).toFixed(1);
-  const delta       = +(last.temp - deltaRefPt.temp).toFixed(1);
-  const deltaLabel  = deltaHrs >= 5.5 ? "过去6小时" : `过去${deltaHrs}h`;
+  const deltaHrs  = +(last.elapsed - deltaRefPt.elapsed).toFixed(1);
+  const delta     = +(last.temp - deltaRefPt.temp).toFixed(1);
+  const deltaLabel = deltaHrs >= 5.5 ? "过去6小时" : `过去${deltaHrs}h`;
 
   return (
     <div className="card chart-card">
@@ -1152,32 +1193,48 @@ function HourlyChart({ market, live }) {
       </div>
 
       <div className="obs-chart-wrap">
-        <svg viewBox={`0 0 ${W} ${H}`} className="obs-chart" preserveAspectRatio="none">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          className="obs-chart"
+          preserveAspectRatio="none"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          style={{ cursor: "crosshair" }}
+        >
           <defs>
             <linearGradient id="obsGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.22" />
-              <stop offset="75%"  stopColor="var(--accent)" stopOpacity="0.06" />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.30" />
+              <stop offset="55%"  stopColor="var(--accent)" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0"   />
             </linearGradient>
-            <linearGradient id="fcGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity="1" />
+            <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.7" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="1"   />
             </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="3" result="b" />
+              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
           </defs>
 
           {/* Y gridlines + labels */}
           {yTicks.map(t => (
             <g key={t}>
               <line x1={padL} x2={W - padR} y1={yFor(t)} y2={yFor(t)}
-                stroke="var(--border)" strokeWidth={t % 10 === 0 ? 1.5 : 1} strokeOpacity={t % 10 === 0 ? 0.7 : 0.45} />
-              <text x={padL - 9} y={yFor(t) + 4} fontSize="11" textAnchor="end"
-                fill="var(--ink-3)" fontFamily="var(--mono)">{t}°</text>
+                stroke="var(--border)"
+                strokeWidth={t % 10 === 0 ? 1 : 0.5}
+                strokeOpacity={t % 10 === 0 ? 0.9 : 0.45}
+                strokeDasharray={t % 10 === 0 ? "" : "3 5"} />
+              <text x={padL - 10} y={yFor(t) + 4} fontSize="11" textAnchor="end"
+                fill={t % 10 === 0 ? "var(--ink-3)" : "var(--ink-4)"}
+                fontFamily="var(--mono)" fontWeight={t % 10 === 0 ? "500" : "400"}>{t}°</text>
             </g>
           ))}
 
-          {/* X labels (local time) */}
+          {/* X time labels */}
           {xTicks.map(({ e, label }) => (
-            <text key={e} x={xFor(e)} y={H - 12} fontSize="10.5" textAnchor="middle"
+            <text key={e} x={xFor(e)} y={H - 10} fontSize="10.5" textAnchor="middle"
               fill="var(--ink-4)" fontFamily="var(--mono)">{label}</text>
           ))}
 
@@ -1186,51 +1243,70 @@ function HourlyChart({ market, live }) {
             <g>
               <line x1={xFor(midnightElapsed)} x2={xFor(midnightElapsed)}
                 y1={padT} y2={H - padB}
-                stroke="var(--accent)" strokeWidth="1" strokeDasharray="2 3" strokeOpacity="0.4" />
+                stroke="var(--accent)" strokeWidth="1" strokeDasharray="2 4" strokeOpacity="0.3" />
               <text x={xFor(midnightElapsed) + 5} y={padT + 13} fontSize="9.5"
-                fill="var(--accent)" fontFamily="var(--mono)" opacity="0.6">今日 00:00</text>
+                fill="var(--accent)" fontFamily="var(--mono)" opacity="0.5">今日 00:00</text>
             </g>
           )}
 
           {/* Area fill */}
-          <path d={areaPath} fill="url(#obsGrad)" />
+          <path d={areaSmooth} fill="url(#obsGrad)" />
 
-          {/* Observed temperature line */}
-          <path d={obsPath} fill="none" stroke="var(--ink-1)" strokeWidth="2.5"
-            strokeLinecap="round" strokeLinejoin="round" />
+          {/* Glow layer */}
+          <path d={obsSmooth} fill="none" stroke="var(--accent)"
+            strokeWidth="6" strokeLinecap="round" opacity="0.10" />
 
-          {/* Individual observation dots (every 3rd to avoid clutter) */}
-          {dataPoints.filter((_, i) => i % 3 === 0 || i === dataPoints.length - 1).map((p, i) => (
-            <circle key={i} cx={xFor(p.elapsed)} cy={yFor(p.temp)} r="2.5"
-              fill="var(--ink-1)" opacity="0.5" />
-          ))}
+          {/* Main temperature curve */}
+          <path d={obsSmooth} fill="none" stroke="url(#lineGrad)"
+            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* Forecast dashed line */}
-          <path d={fcPath} fill="none" stroke="url(#fcGrad)" strokeWidth="2"
-            strokeDasharray="6 4" />
+          {/* Forecast dashed projection */}
+          <path d={fcPath} fill="none" stroke="var(--accent)"
+            strokeWidth="1.8" strokeDasharray="5 4" opacity="0.65" />
 
-          {/* Latest obs dot (prominent) */}
-          <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="6"
-            fill="var(--surface)" stroke="var(--ink-1)" strokeWidth="2.5" />
+          {/* Hover crosshair + tooltip */}
+          {hovered && (
+            <g>
+              {/* Vertical guide line */}
+              <line x1={hovered.svgX} x2={hovered.svgX} y1={padT} y2={H - padB}
+                stroke="var(--ink-3)" strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
+              {/* Outer ring pulse */}
+              <circle cx={hovered.svgX} cy={hovered.svgY} r="10"
+                fill="var(--accent)" opacity="0.10" />
+              {/* Inner dot */}
+              <circle cx={hovered.svgX} cy={hovered.svgY} r="5"
+                fill="var(--surface)" stroke="var(--accent)" strokeWidth="2.5" />
+              {/* Tooltip bubble */}
+              <rect x={tipX} y={tipY} width={tipW} height={tipH}
+                rx="7" fill="var(--ink-1)" opacity="0.90" />
+              <text x={tipX + 11} y={tipY + 16} fontSize="11"
+                fill="rgba(255,255,255,0.6)" fontFamily="var(--mono)">{hovTime}</text>
+              <text x={tipX + 11} y={tipY + 33} fontSize="15"
+                fill="white" fontFamily="var(--mono)" fontWeight="700">{hovered.temp}°F</text>
+            </g>
+          )}
+
+          {/* Latest obs dot (prominent ring) */}
+          <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="5"
+            fill="var(--surface)" stroke="var(--accent)" strokeWidth="2.5" />
+          <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="9"
+            fill="none" stroke="var(--accent)" strokeWidth="1" opacity="0.25" />
 
           {/* Forecast peak dot + label */}
-          <circle cx={xFor(fcElapsed)} cy={fcY} r="6"
-            fill="var(--surface)" stroke="var(--accent)" strokeWidth="2.5" />
-          <rect x={xFor(fcElapsed) - 4} y={fcY - 36} width={56} height={32}
-            rx="5" fill="var(--accent)" opacity="0.08" />
-          <text x={xFor(fcElapsed) + 4} y={fcY - 20} fontSize="13"
-            fill="var(--accent)" fontFamily="var(--mono)" fontWeight="700">
-            {forecastTemp}°F
-          </text>
-          <text x={xFor(fcElapsed) + 4} y={fcY - 7} fontSize="9.5"
+          <circle cx={xFor(fcElapsed)} cy={fcY} r="5"
+            fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" opacity="0.75" />
+          <rect x={xFor(fcElapsed) + 8} y={fcY - 34} width={62} height={30}
+            rx="5" fill="var(--accent)" opacity="0.07" />
+          <text x={xFor(fcElapsed) + 12} y={fcY - 18} fontSize="14"
+            fill="var(--accent)" fontFamily="var(--mono)" fontWeight="700">{forecastTemp}°F</text>
+          <text x={xFor(fcElapsed) + 12} y={fcY - 6} fontSize="9.5"
             fill="var(--ink-4)" fontFamily="var(--mono)">预测峰值</text>
 
-          {/* Max point label */}
+          {/* Max obs dot label */}
           {maxPt && maxPt !== last && (
             <text x={xFor(maxPt.elapsed)} y={yFor(maxPt.temp) - 9} fontSize="10"
-              textAnchor="middle" fill="var(--neg)" fontFamily="var(--mono)" fontWeight="600">
-              {maxPt.temp}°
-            </text>
+              textAnchor="middle" fill="var(--neg)"
+              fontFamily="var(--mono)" fontWeight="600">{maxPt.temp}°</text>
           )}
         </svg>
       </div>

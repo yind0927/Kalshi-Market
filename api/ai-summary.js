@@ -49,32 +49,30 @@ module.exports = async function handler(req, res) {
     ? `修正(站点${corr.station > 0 ? "+" : ""}${corr.station}°F · 风速${corr.wind}°F · 云量${corr.cloud}°F · 观测融合${corr.observation > 0 ? "+" : ""}${corr.observation}°F = 总${corr.total > 0 ? "+" : ""}${corr.total}°F)`
     : "";
 
-  const prompt = `你是Kalshi天气预测市场的量化分析师，为中文用户提供简洁交易参考。
+  const prompt = `${city} 今天最高温合约（Kalshi，NWS ASOS结算）
 
-【${city} 今日最高气温合约】结算依据：NWS ASOS官方观测站读数
+现在实测：${observation?.temperature != null ? `${observation.temperature}°F` : "暂无"}${observation?.windSpeed != null ? `，风${observation.windCompass} ${observation.windSpeed}kt` : ""}
 
-当前NWS实测：${observation?.temperature != null ? `${observation.temperature}°F` : "暂无"}${observation?.windSpeed != null ? ` · 风${observation.windCompass} ${observation.windSpeed}kt` : ""}
-
-模型集合预测：
+各模型怎么说：
 ${modelLines}
-加权均值：${distribution?.mean}°F → 修正后：${distribution?.adjustedMean}°F (σ=±${distribution?.adjustedStd}°F)
+加权后均值 ${distribution?.mean}°F，修正完 ${distribution?.adjustedMean}°F，误差范围 σ±${distribution?.adjustedStd}°F
 ${corrLine}
 
-各区间市场定价 vs 模型概率：
+市场价 vs 我们模型的概率：
 ${bucketLines}
 
-请用中文3句话给出：
-1）最大Edge机会在哪个区间，买YES还是NO，净优势多少（已扣价差）
-2）核心判断依据（哪项修正影响最大，模型是否有分歧）
-3）主要风险（σ意味着什么，可能让预测失效的因素）
+帮我分析一下：
+第一句：哪个区间最值得下注，买YES还是NO，净赚多少分（扣完买卖价差的）
+第二句：凭什么这么判断——哪个修正最关键，几个模型是不是一致
+第三句：主要风险是什么，σ这么大意味着什么，什么情况会翻车
 
-要求：数字具体，不超过80字，专业直接，不用"建议"/"推荐"等措辞。`;
+口语化，像跟朋友说话，3句话，数字要具体，控制在80字内。`;
 
   const client  = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const message = await client.messages.create({
-    model:      "claude-sonnet-4-6",   // Sonnet for higher-quality analysis
+    model:      "claude-haiku-4-5-20251001",
     max_tokens: 350,
-    system: "你是一位专业的天气预测市场量化分析师，擅长从气象模型数据中提取交易信号。你的分析简洁、数字具体、不含废话。",
+    system: "你是一个在交易圈混的朋友，熟悉Kalshi天气预测市场。说话直接、口语化，不废话，数字具体，不用'建议''推荐'这种词。",
     messages:  [{ role: "user", content: prompt }],
   });
 
