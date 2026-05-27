@@ -77,6 +77,46 @@ window.KW_API = (() => {
     };
   }
 
+  /* ── 1b. NWS Hourly Observation History (last 24h) ──────── */
+  async function fetchHourlyObs(stationId, tz) {
+    const url = `https://api.weather.gov/stations/${stationId}/observations?limit=28`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error(`NWS hourly HTTP ${res.status}`);
+    const data = await res.json();
+
+    // Parse each observation; NWS returns newest-first → reverse to oldest-first
+    const obs = data.features
+      .map(f => {
+        const p = f.properties;
+        const tempF = cToF(p.temperature?.value);
+        if (tempF == null || !p.timestamp) return null;
+
+        // Get local hour using Intl
+        let localHour = null;
+        try {
+          const fmt = new Intl.DateTimeFormat("en-US", {
+            timeZone: tz,
+            hour: "numeric", minute: "numeric", hour12: false,
+          });
+          const parts = fmt.formatToParts(new Date(p.timestamp));
+          const h = parseInt(parts.find(x => x.type === "hour")?.value   || "0");
+          const m = parseInt(parts.find(x => x.type === "minute")?.value || "0");
+          localHour = h + m / 60;
+        } catch (_) {}
+
+        return {
+          timestamp: p.timestamp,
+          localHour,
+          temp:      tempF,
+          windSpeed: msToKt(p.windSpeed?.value),
+        };
+      })
+      .filter(Boolean)
+      .reverse(); // oldest first
+
+    return obs;
+  }
+
   /* ── 2. Open-Meteo Multi-Model Forecast ─────────────────── */
   async function fetchModels(city) {
     const cfg = CITIES[city];
@@ -395,15 +435,17 @@ window.KW_API = (() => {
     const cfg = CITIES[cityName];
     if (!cfg) return { error: `No config for ${cityName}` };
 
-    const [obsResult, modelsResult, kalshiResult] = await Promise.allSettled([
+    const [obsResult, modelsResult, kalshiResult, hourlyResult] = await Promise.allSettled([
       fetchObservation(cfg.stationId),
       fetchModels(cityName),
       kalshiEventTicker ? fetchKalshi(kalshiEventTicker) : Promise.reject("no ticker"),
+      fetchHourlyObs(cfg.stationId, cfg.tz),
     ]);
 
-    const observation = obsResult.status  === "fulfilled" ? obsResult.value  : null;
+    const observation = obsResult.status   === "fulfilled" ? obsResult.value   : null;
     const modelsData  = modelsResult.status === "fulfilled" ? modelsResult.value : null;
     const kalshi      = kalshiResult.status === "fulfilled" ? kalshiResult.value : null;
+    const hourlyObs   = hourlyResult.status === "fulfilled" ? hourlyResult.value : null;
 
     // Build dynamic buckets from Kalshi subtitles when available.
     // These become the authoritative bucket structure — no more hardcoded
@@ -425,6 +467,8 @@ window.KW_API = (() => {
       city: cityName,
       observation,
       obsError:    obsResult.status    === "rejected" ? String(obsResult.reason)    : null,
+      hourlyObs,
+      hourlyError: hourlyResult.status === "rejected" ? String(hourlyResult.reason) : null,
       models:      modelsData?.models  ?? null,
       modelsErrors:modelsData?.errors  ?? null,
       modelsError: modelsResult.status === "rejected" ? String(modelsResult.reason) : null,
@@ -440,6 +484,7 @@ window.KW_API = (() => {
   return {
     CITIES,
     fetchObservation,
+    fetchHourlyObs,
     fetchModels,
     buildDistribution,
     fetchKalshi,

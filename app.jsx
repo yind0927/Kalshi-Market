@@ -1031,41 +1031,81 @@ function ProbDistribution({ market, live, kalshiStatus }) {
 }
 
 /* ─────────────────────────────────────────────────────────
- * Hourly chart (analysis)
+ * Hourly chart (analysis) — live NWS obs + ensemble forecast
  * ───────────────────────────────────────────────────────── */
-function HourlyChart({ market }) {
-  const series = DATA.hourlySeries[market.city];
+function HourlyChart({ market, live }) {
+  const hourlyObs = live?.hourlyObs;
+  const isLive    = !!(hourlyObs?.length > 1);
+
+  // ── Build data points ─────────────────────────────────────
+  let dataPoints, forecastHour, forecastTemp;
+
+  if (isLive) {
+    // Filter to today's observations only (localHour 0–24) and valid temps
+    dataPoints  = hourlyObs.filter(o => o.localHour != null && o.temp != null);
+    forecastHour = 14.5; // typical peak hour
+    forecastTemp = live?.distribution?.adjustedMean ?? market.forecastHigh;
+  } else {
+    // Static fallback
+    const series = DATA.hourlySeries[market.city] || [];
+    dataPoints   = series.map((v, i) => v != null ? { localHour: i, temp: v } : null).filter(Boolean);
+    forecastHour = 16;
+    forecastTemp = market.forecastHigh;
+  }
+
+  if (!dataPoints.length) return null;
+
   const W = 720, H = 220;
   const padL = 40, padR = 24, padT = 20, padB = 36;
-  const allVals = series.filter((v) => v != null).concat([market.forecastHigh, market.forecastHigh - 4]);
-  const minV = Math.floor(Math.min(...allVals) / 5) * 5;
-  const maxV = Math.ceil(Math.max(...allVals) / 5) * 5;
-  const yRange = maxV - minV;
-  const xStep = (W - padL - padR) / (series.length - 1);
-  const yFor = (v) => padT + (1 - (v - minV) / yRange) * (H - padT - padB);
-  const xFor = (i) => padL + i * xStep;
 
-  const obsPoints = series.map((v, i) => (v != null ? [xFor(i), yFor(v)] : null)).filter(Boolean);
-  const obsPath = obsPoints.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
-  const areaPath = obsPath + ` L${obsPoints[obsPoints.length - 1][0]} ${H - padB} L${obsPoints[0][0]} ${H - padB} Z`;
+  // X range: span from first obs hour to 1h past forecast hour
+  const xMin = Math.max(0, Math.floor(dataPoints[0].localHour));
+  const xMax = Math.min(24, Math.ceil(Math.max(dataPoints[dataPoints.length-1].localHour, forecastHour)) + 1);
+  const xRange = Math.max(1, xMax - xMin);
+  const xFor = h => padL + ((h - xMin) / xRange) * (W - padL - padR);
 
-  const lastIdx = series.findLastIndex ? series.findLastIndex((v) => v != null) : series.reduce((acc, v, i) => (v != null ? i : acc), 0);
-  const forecastIdx = 16;
-  const fcPath = `M${xFor(lastIdx)} ${yFor(market.currentObs)} L${xFor(forecastIdx)} ${yFor(market.forecastHigh)}`;
+  // Y range: round to nearest 5°F with padding
+  const allT = dataPoints.map(p => p.temp).concat([forecastTemp]);
+  const minV = Math.floor((Math.min(...allT) - 2) / 5) * 5;
+  const maxV = Math.ceil ((Math.max(...allT) + 2) / 5) * 5;
+  const yRange = Math.max(1, maxV - minV);
+  const yFor = v => padT + (1 - (v - minV) / yRange) * (H - padT - padB);
 
-  const ticks = [];
-  for (let v = minV; v <= maxV; v += 5) ticks.push(v);
+  // SVG paths
+  const obsPath  = dataPoints.map((p, i) =>
+    `${i === 0 ? "M" : "L"}${xFor(p.localHour).toFixed(1)} ${yFor(p.temp).toFixed(1)}`
+  ).join(" ");
+  const last = dataPoints[dataPoints.length - 1];
+  const areaPath = obsPath
+    + ` L${xFor(last.localHour).toFixed(1)} ${H - padB}`
+    + ` L${xFor(dataPoints[0].localHour).toFixed(1)} ${H - padB} Z`;
+  const fcPath = `M${xFor(last.localHour).toFixed(1)} ${yFor(last.temp).toFixed(1)}`
+    + ` L${xFor(forecastHour).toFixed(1)} ${yFor(forecastTemp).toFixed(1)}`;
 
-  const open = series[0];
-  const sixHourIdx = Math.min(6, lastIdx);
-  const delta = market.currentObs - (series[sixHourIdx] || series[0]);
+  // Axis ticks
+  const yTicks = [], xTicks = [];
+  for (let v = minV; v <= maxV; v += 5) yTicks.push(v);
+  for (let h = Math.ceil(xMin / 2) * 2; h <= xMax; h += 2) xTicks.push(h);
+
+  // Stats
+  const openPt   = dataPoints[0];
+  const sixHAgo  = [...dataPoints].reverse().find(p => p.localHour <= last.localHour - 6);
+  const delta    = sixHAgo ? +(last.temp - sixHAgo.temp).toFixed(1) : null;
+  const lastHStr = `${String(Math.floor(last.localHour)).padStart(2,"0")}:${String(Math.round((last.localHour%1)*60)).padStart(2,"0")}`;
 
   return (
     <div className="card">
       <div className="card-head">
         <div>
-          <h3>Hourly Observation <em>小时观测</em></h3>
-          <div className="sub">NOAA METAR · past 14h + ensemble forecast 预测延伸</div>
+          <h3>
+            Hourly Observation <em>小时观测</em>
+            {isLive && <span className="live-badge-sm" style={{ marginLeft: 8 }}>LIVE</span>}
+          </h3>
+          <div className="sub">
+            {isLive
+              ? `NWS ASOS 实时逐小时观测 · ${dataPoints.length} 个观测点 · 虚线 = 集合修正预测峰值`
+              : "NOAA METAR 静态数据 · 开启分析页面后将加载实时数据"}
+          </div>
         </div>
       </div>
 
@@ -1077,48 +1117,79 @@ function HourlyChart({ market }) {
               <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
             </linearGradient>
           </defs>
-          {ticks.map((t) => (
+
+          {/* Y gridlines */}
+          {yTicks.map(t => (
             <g key={t}>
-              <line x1={padL} x2={W - padR} y1={yFor(t)} y2={yFor(t)} stroke="var(--border)" strokeWidth="1" />
-              <text x={padL - 8} y={yFor(t) + 4} fontSize="10" textAnchor="end" fill="var(--ink-3)" fontFamily="var(--mono)">{t}°</text>
+              <line x1={padL} x2={W - padR} y1={yFor(t)} y2={yFor(t)}
+                stroke="var(--border)" strokeWidth="1" />
+              <text x={padL - 8} y={yFor(t) + 4} fontSize="10" textAnchor="end"
+                fill="var(--ink-3)" fontFamily="var(--mono)">{t}°</text>
             </g>
           ))}
-          {[0, 4, 8, 12, 16].map((i) => (
-            <text key={i} x={xFor(i)} y={H - 10} fontSize="10" textAnchor="middle" fill="var(--ink-3)" fontFamily="var(--mono)">
-              {String(i).padStart(2, "0")}:00
+
+          {/* X labels */}
+          {xTicks.map(h => (
+            <text key={h} x={xFor(h)} y={H - 10} fontSize="10" textAnchor="middle"
+              fill="var(--ink-3)" fontFamily="var(--mono)">
+              {String(h % 24).padStart(2,"0")}:00
             </text>
           ))}
+
+          {/* Area fill */}
           <path d={areaPath} fill="url(#obsGrad)" />
-          <path d={obsPath} fill="none" stroke="var(--ink-1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          <path d={fcPath} fill="none" stroke="var(--accent)" strokeWidth="2" strokeDasharray="4 4" />
-          <circle cx={xFor(lastIdx)} cy={yFor(market.currentObs)} r="5" fill="var(--surface)" stroke="var(--ink-1)" strokeWidth="2" />
-          <circle cx={xFor(forecastIdx)} cy={yFor(market.forecastHigh)} r="5" fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" />
-          <text x={xFor(forecastIdx) + 8} y={yFor(market.forecastHigh) + 4} fontSize="11" textAnchor="start" fill="var(--accent)" fontFamily="var(--mono)" fontWeight="500">
-            预测 {market.forecastHigh}°F
+
+          {/* Observed line */}
+          <path d={obsPath} fill="none" stroke="var(--ink-1)" strokeWidth="2"
+            strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Forecast dashed line */}
+          <path d={fcPath} fill="none" stroke="var(--accent)" strokeWidth="2"
+            strokeDasharray="5 4" />
+
+          {/* Latest obs dot */}
+          <circle cx={xFor(last.localHour)} cy={yFor(last.temp)} r="5"
+            fill="var(--surface)" stroke="var(--ink-1)" strokeWidth="2" />
+
+          {/* Forecast peak dot + label */}
+          <circle cx={xFor(forecastHour)} cy={yFor(forecastTemp)} r="5"
+            fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" />
+          <text x={xFor(forecastHour) + 8} y={yFor(forecastTemp) + 4} fontSize="11"
+            textAnchor="start" fill="var(--accent)" fontFamily="var(--mono)" fontWeight="500">
+            预测 {forecastTemp}°F
           </text>
         </svg>
       </div>
 
       <div className="obs-stats">
         <div className="obs-stat">
-          <div className="l">Open · 开盘</div>
-          <div className="v">{open}°<span style={{ fontSize: 12, color: "var(--ink-3)" }}>F</span></div>
-          <div className="vs">00:00 local</div>
+          <div className="l">Open · 今日起点</div>
+          <div className="v">{openPt.temp}°<span style={{ fontSize: 12, color:"var(--ink-3)" }}>F</span></div>
+          <div className="vs">{String(Math.floor(openPt.localHour)).padStart(2,"0")}:00 local</div>
         </div>
         <div className="obs-stat">
-          <div className="l">Current · 当前</div>
-          <div className="v">{market.currentObs}°<span style={{ fontSize: 12, color: "var(--ink-3)" }}>F</span></div>
-          <div className="vs">as of {market.obsTime}</div>
+          <div className="l">Current · 当前{isLive ? " ✓ LIVE" : ""}</div>
+          <div className="v" style={isLive ? { color:"var(--accent)" } : {}}>{last.temp}°
+            <span style={{ fontSize: 12, color:"var(--ink-3)" }}>F</span></div>
+          <div className="vs">{isLive ? lastHStr + " local" : market.obsTime}</div>
         </div>
         <div className="obs-stat">
-          <div className="l">Δ since 06:00</div>
-          <div className="v pos">+{delta}°<span style={{ fontSize: 12, color: "var(--ink-3)" }}>F</span></div>
-          <div className="vs">past 6 hours</div>
+          <div className="l">Δ 过去6h</div>
+          <div className={`v ${delta == null ? "" : delta >= 0 ? "pos" : "neg"}`}>
+            {delta != null ? `${delta > 0 ? "+" : ""}${delta}°` : "—"}
+            <span style={{ fontSize: 12, color:"var(--ink-3)" }}>F</span>
+          </div>
+          <div className="vs">过去6小时变化</div>
         </div>
         <div className="obs-stat">
           <div className="l">Forecast · 预测峰值</div>
-          <div className="v" style={{ color: "var(--accent)" }}>{market.forecastHigh}°<span style={{ fontSize: 12, color: "var(--ink-3)" }}>F</span></div>
-          <div className="vs">conf {Math.round(market.forecastConf * 100)}%</div>
+          <div className="v" style={{ color:"var(--accent)" }}>{forecastTemp}°
+            <span style={{ fontSize: 12, color:"var(--ink-3)" }}>F</span></div>
+          <div className="vs" title="模型集合标准差：约68%概率最终温度在 均值±σ 范围内">
+            {live?.distribution?.adjustedStd
+              ? `σ ±${live.distribution.adjustedStd}°F`
+              : `conf ${Math.round(market.forecastConf * 100)}%`}
+          </div>
         </div>
       </div>
     </div>
@@ -1316,9 +1387,30 @@ function ApiStatusRow({ live }) {
 /* ─────────────────────────────────────────────────────────
  * Analysis view
  * ───────────────────────────────────────────────────────── */
+// ── AI Summary fetch helper (module-level) ─────────────────
+async function doFetchAISummary(live) {
+  const res = await fetch("/api/ai-summary", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      city:         live.city,
+      distribution: live.distribution,
+      observation:  live.observation,
+      models:       live.models,
+    }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
 function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshiStatus }) {
   const market = DATA.markets.find((m) => m.id === marketId) || DATA.markets[0];
   const live   = liveData?.[market.id];
+
+  // AI summary state: null | { loading } | { summary, model, tokens, generatedAt } | { error }
+  const [aiData, setAiData] = useState(null);
 
   // Use live Kalshi buckets (authoritative ranges + prices) when available,
   // fall back to static data.js buckets
@@ -1342,12 +1434,31 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
   const currentTemp = liveTemp != null ? liveTemp : market.currentObs;
   const isLiveObs = liveTemp != null;
 
-  // Auto-fetch when this market is opened for the first time
+  // Auto-fetch market data when this city is opened for the first time
   useEffect(() => {
     if (!live && typeof window.KW_API !== "undefined") {
       onFetch(market);
     }
+    setAiData(null); // reset AI when city changes
   }, [market.id]);
+
+  // Auto-generate AI summary once distribution data arrives
+  const distKey = live?.distribution?.adjustedMean;
+  useEffect(() => {
+    if (!live?.distribution || aiData) return;
+    setAiData({ loading: true });
+    doFetchAISummary(live)
+      .then(data => setAiData(data))
+      .catch(e  => setAiData({ error: e.message }));
+  }, [distKey, market.id]);
+
+  const handleRefreshAI = () => {
+    if (!live?.distribution) return;
+    setAiData({ loading: true });
+    doFetchAISummary(live)
+      .then(data => setAiData(data))
+      .catch(e  => setAiData({ error: e.message }));
+  };
 
   return (
     <div className="view" data-screen-label="analysis">
@@ -1381,7 +1492,12 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
             <span className="ana-tag">{market.airport}</span>
             <span className="ana-tag">{market.timezone} · {market.tzLabel}</span>
             <span className="ana-tag">{market.modelConsensus}</span>
-            <span className="ana-tag">conf {Math.round(market.forecastConf * 100)}%</span>
+            <span className="ana-tag"
+              title="σ = 集合预测标准差。约68%概率最高温在 均值±σ 范围内。σ越小 = 模型越一致 = 预测越可信。">
+              {live?.distribution?.adjustedStd
+                ? `σ ±${live.distribution.adjustedStd}°F`
+                : `conf ${Math.round(market.forecastConf * 100)}%`}
+            </span>
             <span className={`ana-tag${isLiveKalshi ? " live-tag" : ""}`}>
               {isLiveKalshi && <span className="live-badge-sm" style={{marginRight:4}}>LIVE</span>}
               vol ${fmtVolume(liveVolume)}
@@ -1422,11 +1538,11 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
       <div style={{ height: 16 }} />
       <div className="ana-row-3-2">
         <ProbDistribution market={market} live={live} kalshiStatus={kalshiStatus} />
-        <AISummary market={market} edge={edge} maxE={maxE} />
+        <AISummary market={market} aiData={aiData} onRefreshAI={handleRefreshAI} />
       </div>
 
       <div style={{ height: 16 }} />
-      <HourlyChart market={market} />
+      <HourlyChart market={market} live={live} />
 
       <div style={{ height: 16 }} />
       <div className="ana-row-2">
@@ -1447,7 +1563,17 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
   );
 }
 
-function AISummary({ market, edge, maxE }) {
+function AISummary({ market, aiData, onRefreshAI }) {
+  const isLoading = aiData?.loading;
+  const hasLive   = !!(aiData?.summary);
+  const hasError  = !!(aiData?.error);
+
+  const genTime = aiData?.generatedAt
+    ? new Date(aiData.generatedAt).toLocaleTimeString("zh-CN", {
+        timeZone: "Asia/Shanghai", hour12: false, hour: "2-digit", minute: "2-digit",
+      }) + " BJT"
+    : null;
+
   return (
     <div className="card ai-card">
       <div className="ai-head">
@@ -1458,15 +1584,64 @@ function AISummary({ market, edge, maxE }) {
         </div>
         <div>
           <h3 style={{ fontSize: 15, margin: 0 }}>AI Summary</h3>
-          <div style={{ fontSize: 11, color: "var(--ink-3)" }}>模型综合解读 · KW-Llm v0.4</div>
+          <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+            {hasLive
+              ? `Claude ${aiData.model} · ${aiData.tokens?.input}in / ${aiData.tokens?.output}out tokens`
+              : "Claude Haiku 实时分析 · 等待市场数据加载"}
+          </div>
         </div>
-        <span className="ai-tag">Beta</span>
+        <span className={`ai-tag ${hasLive ? "live-tag" : ""}`}>
+          {hasLive ? <><span className="live-badge-sm" style={{marginRight:3}}>LIVE</span>AI</> : "Beta"}
+        </span>
+        <button
+          className={`ens-refresh-btn ${isLoading ? "spin" : ""}`}
+          onClick={onRefreshAI}
+          disabled={isLoading}
+          title="重新生成 AI 分析"
+          style={{ marginLeft: "auto" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M23 4v6h-6M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
       </div>
-      <div className="ai-body">{market.aiSummary}</div>
-      <div className="ai-meta">
-        <span>Generated · {DATA.lastUpdated}</span>
-        <span>tokens · 320 in / 142 out</span>
-      </div>
+
+      {isLoading && (
+        <div className="ai-generating">
+          <span className="ai-spinner" />
+          Claude 正在分析市场数据…
+        </div>
+      )}
+
+      {hasError && (
+        <div className="ai-body" style={{ color: "var(--neg)", fontSize: 13 }}>
+          生成失败：{aiData.error}
+          <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 4 }}>
+            请检查 Vercel 环境变量 ANTHROPIC_API_KEY 是否已配置。
+          </div>
+        </div>
+      )}
+
+      {hasLive && !isLoading && (
+        <div className="ai-body">{aiData.summary}</div>
+      )}
+
+      {!isLoading && !hasLive && !hasError && (
+        <div className="ai-body" style={{ color: "var(--ink-4)" }}>
+          {market.aiSummary}
+          <div style={{ fontSize: 10, color: "var(--ink-4)", marginTop: 6, fontStyle: "italic" }}>
+            ↑ 静态占位文本 — 实时数据加载后将由 Claude 替换
+          </div>
+        </div>
+      )}
+
+      {genTime && (
+        <div className="ai-meta">
+          <span>Generated · {genTime}</span>
+          <span>claude-haiku-4-5 · {aiData.tokens?.input} in / {aiData.tokens?.output} out</span>
+        </div>
+      )}
     </div>
   );
 }
