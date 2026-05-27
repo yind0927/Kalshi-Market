@@ -1452,7 +1452,7 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
               <div className="ens-model" key={key}>
                 <div className="ens-model-name">{key}</div>
                 <div className="ens-model-temp">{m.dailyMax}<span>°F</span></div>
-                <div className="ens-model-peak">峰值 {String(m.peakHour).padStart(2,"0")}:00</div>
+                <div className="ens-model-peak">{m.peakHour != null ? `峰值 ${String(m.peakHour).padStart(2,"0")}:00` : "峰值 —"}</div>
                 {diff != null && (
                   <div className={`ens-model-diff ${cls}`}>
                     {diff > 0 ? "+" : ""}{diff}°
@@ -1475,7 +1475,7 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
 
       {dist && (
         <div className="ens-note">
-          加权均值 {dist.mean}°F（ECMWF×0.40 · HRRR×0.30 · GFS×0.20 · NAM×0.10）· 模型区间 {dist.modelMin}–{dist.modelMax}°F · 扩散度 {dist.spread}°F · 不可约误差 {dist.modelCount >= 3 ? "1.8" : "2.0"}°F → σ = {dist.std}°F
+          加权均值 {dist.mean}°F → 修正后 {dist.adjustedMean}°F（ECMWF×0.40 · HRRR×0.30 · GFS×0.20 · NAM×0.10，共 {dist.modelCount}/4 模型）· 模型区间 {dist.modelMin}–{dist.modelMax}°F · σ原始 {dist.std}°F → 修正后 {dist.adjustedStd}°F
         </div>
       )}
 

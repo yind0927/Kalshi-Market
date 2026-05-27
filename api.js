@@ -176,26 +176,40 @@ window.KW_API = (() => {
         const wdirs = data.hourly.winddirection_10m;
         const cloud = data.hourly.cloudcover || [];
 
-        // Build hourly array; find daily max between 08:00–22:00
+        // Build hourly array
         const hourly = times.map((t, i) => ({
-          hour:    parseInt(t.slice(11, 13)),
-          temp:    temps[i],
-          wind:    winds[i],
-          windDir: wdirs[i],
-          cloud:   cloud[i] ?? null,
-        }));
+          hour:    parseInt(t.slice(11, 13), 10),
+          temp:    temps[i] != null ? +temps[i] : null,
+          wind:    winds?.[i] != null ? +winds[i] : null,
+          windDir: wdirs?.[i] ?? null,
+          cloud:   cloud[i]  != null ? +cloud[i] : null,
+        })).filter(h => isFinite(h.hour));
 
-        const peak = hourly
-          .filter(h => h.hour >= 8 && h.hour <= 22 && h.temp != null)
-          .reduce((mx, h) => h.temp > mx.temp ? h : mx, { temp: -999 });
+        if (hourly.length === 0) throw new Error(`Empty hourly array from ${id}`);
+
+        // Peak window: 08:00–22:00 local. If model is coarse (6-hourly ECMWF)
+        // and returns nulls inside that window, fall back to the full day.
+        const inWindow   = hourly.filter(h => h.hour >= 8 && h.hour <= 22 && h.temp != null);
+        const candidates = inWindow.length > 0
+          ? inWindow
+          : hourly.filter(h => h.temp != null);
+
+        if (candidates.length === 0) throw new Error(`No valid temperature data from ${id}`);
+
+        const peak = candidates.reduce((mx, h) => h.temp > mx.temp ? h : mx);
+
+        // Sanity guard — reject fill-values / clearly broken responses
+        if (!isFinite(peak.temp) || peak.temp < -60 || peak.temp > 140) {
+          throw new Error(`Implausible temperature ${peak.temp}°F from ${id} — skipping`);
+        }
 
         results[key] = {
-          dailyMax:   +peak.temp.toFixed(1),
-          peakHour:   peak.hour,
-          windAtPeak: peak.wind ? +peak.wind.toFixed(1) : null,
-          cloudAtPeak:peak.cloud,
+          dailyMax:    +peak.temp.toFixed(1),
+          peakHour:    peak.hour ?? null,
+          windAtPeak:  peak.wind  != null ? +peak.wind.toFixed(1)  : null,
+          cloudAtPeak: peak.cloud != null ? +peak.cloud            : null,
           hourly,
-          updatedAt:  new Date().toISOString(),
+          updatedAt:   new Date().toISOString(),
         };
       }).map((p, i) => p.catch(e => { errs[MODELS[i].key] = e.message; }))
     );
