@@ -1741,7 +1741,7 @@ function AISummary({ market, aiData, onRefreshAI }) {
   const costUsd = aiData?.tokens
     ? (aiData.tokens.input * 0.80 + aiData.tokens.output * 2.50) / 1_000_000
     : null;
-  const costStr = costUsd != null ? `$${costUsd.toFixed(4)} / query` : null;
+  const costStr = costUsd != null ? `¥${(costUsd * 7.25).toFixed(4)}（$${costUsd.toFixed(4)}）` : null;
 
   // Render multi-line bullet text
   const summaryLines = hasLive
@@ -1760,7 +1760,7 @@ function AISummary({ market, aiData, onRefreshAI }) {
           <h3 style={{ fontSize: 15, margin: 0 }}>AI Summary</h3>
           <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
             {hasLive
-              ? `Haiku · ${aiData.tokens?.input}in / ${aiData.tokens?.output}out · ${costStr}`
+              ? `Haiku · 输入${aiData.tokens?.input} / 输出${aiData.tokens?.output} tokens · 本次成本 ${costStr}`
               : isLoading
               ? "Claude Haiku 分析中…"
               : "Claude Haiku · 等待市场数据加载"}
@@ -1818,8 +1818,8 @@ function AISummary({ market, aiData, onRefreshAI }) {
 
       {genTime && (
         <div className="ai-meta">
-          <span>Generated · {genTime}</span>
-          <span>{costStr} · {aiData.tokens?.input}+{aiData.tokens?.output} tokens</span>
+          <span>生成时间 · {genTime}</span>
+          <span>成本 {costStr} · {aiData.tokens?.input}+{aiData.tokens?.output} tokens</span>
         </div>
       )}
     </div>
