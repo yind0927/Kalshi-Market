@@ -1076,16 +1076,20 @@ function HourlyChart({ market, live }) {
   const xTotal  = Math.max(last.elapsed + 0.5, fcElapsed) + 0.5;
   const xFor    = e => padL + (e / xTotal) * usableW;
 
-  // ── Y axis ────────────────────────────────────────────────
-  const obsMins  = dataPoints.map(p => p.temp);
-  const obsMin   = Math.min(...obsMins);
-  const obsMax   = Math.max(...obsMins);
-  const yCeiling = Math.max(obsMax + 5, Math.min(forecastTemp, obsMax + 18));
-  const minV  = Math.floor((obsMin - 2) / 5) * 5;
-  const maxV  = Math.ceil(yCeiling / 5) * 5;
-  const ySpan = Math.max(10, maxV - minV);
+  // ── Y axis: tight around observed data only ───────────────
+  // Forecast is shown as an annotation (dot+label) and never expands the Y range
+  const obsMins = dataPoints.map(p => p.temp);
+  const obsMin  = Math.min(...obsMins);
+  const obsMax  = Math.max(...obsMins);
+  // Center-symmetric range with minimum ±12°F half-span so small variations are visible
+  const obsMid    = (obsMin + obsMax) / 2;
+  const halfSpan  = Math.max(12, (obsMax - obsMin) / 2 + 4);
+  const minV  = Math.floor((obsMid - halfSpan) / 5) * 5;
+  const maxV  = Math.ceil ((obsMid + halfSpan) / 5) * 5;
+  const ySpan = maxV - minV;
   const yFor  = v => padT + (1 - (v - minV) / ySpan) * usableH;
-  const fcY   = Math.max(padT + 4, yFor(forecastTemp));
+  // Forecast dot: clamp to chart area so it never drags the axis
+  const fcY   = Math.max(padT + 6, Math.min(H - padB - 6, yFor(forecastTemp)));
 
   // ── Catmull-Rom smooth curve ──────────────────────────────
   const catmullRomPath = pts => {
@@ -1135,8 +1139,8 @@ function HourlyChart({ market, live }) {
   const handleMouseLeave = () => setHovered(null);
 
   // Tooltip position: flip left if near right edge
-  const tipW = 110, tipH = 42;
-  const tipX = hovered ? (hovered.svgX + tipW + 14 > W - padR ? hovered.svgX - tipW - 10 : hovered.svgX + 10) : 0;
+  const tipW = 130, tipH = 58;
+  const tipX = hovered ? (hovered.svgX + tipW + 16 > W - padR ? hovered.svgX - tipW - 14 : hovered.svgX + 14) : 0;
   const tipY = hovered ? Math.max(padT, Math.min(hovered.svgY - tipH / 2, H - padB - tipH)) : 0;
 
   // Hover time label
@@ -1276,13 +1280,21 @@ function HourlyChart({ market, live }) {
               {/* Inner dot */}
               <circle cx={hovered.svgX} cy={hovered.svgY} r="5"
                 fill="var(--surface)" stroke="var(--accent)" strokeWidth="2.5" />
-              {/* Tooltip bubble */}
+              {/* Tooltip — drop shadow */}
+              <rect x={tipX + 2} y={tipY + 3} width={tipW} height={tipH}
+                rx="11" fill="black" opacity="0.15" />
+              {/* Tooltip — card */}
               <rect x={tipX} y={tipY} width={tipW} height={tipH}
-                rx="7" fill="var(--ink-1)" opacity="0.90" />
-              <text x={tipX + 11} y={tipY + 16} fontSize="11"
-                fill="rgba(255,255,255,0.6)" fontFamily="var(--mono)">{hovTime}</text>
-              <text x={tipX + 11} y={tipY + 33} fontSize="15"
+                rx="11" fill="var(--ink-1)" opacity="0.94" />
+              {/* Left accent bar */}
+              <rect x={tipX + 1.5} y={tipY + 11} width="3.5" height={tipH - 22}
+                rx="2" fill="var(--accent)" />
+              {/* Temperature */}
+              <text x={tipX + 16} y={tipY + 32} fontSize="22"
                 fill="white" fontFamily="var(--mono)" fontWeight="700">{hovered.temp}°F</text>
+              {/* Time */}
+              <text x={tipX + 16} y={tipY + 49} fontSize="11"
+                fill="rgba(255,255,255,0.42)" fontFamily="var(--mono)">{hovTime} local</text>
             </g>
           )}
 
@@ -1570,7 +1582,6 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
 
   // AI summary state: null | { loading } | { summary, model, tokens, generatedAt } | { error }
   const [aiData, setAiData] = useState(null);
-  const aiAutoFetchRef = useRef(false); // prevents double-trigger across re-renders
 
   // Use live Kalshi buckets (authoritative ranges + prices) when available,
   // fall back to static data.js buckets
@@ -1600,20 +1611,7 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
       onFetch(market);
     }
     setAiData(null); // reset AI when city changes
-    aiAutoFetchRef.current = false; // allow auto-fetch for the new city
   }, [market.id]);
-
-  // Auto-generate AI summary once distribution data arrives
-  // Use a ref instead of checking aiData state to avoid stale closure bugs
-  const distKey = live?.distribution?.adjustedMean;
-  useEffect(() => {
-    if (!live?.distribution || aiAutoFetchRef.current) return;
-    aiAutoFetchRef.current = true;
-    setAiData({ loading: true });
-    doFetchAISummary(live)
-      .then(data => setAiData(data))
-      .catch(e  => setAiData({ error: e.message }));
-  }, [distKey, market.id]);
 
   const handleRefreshAI = () => {
     if (!live?.distribution) return;
@@ -1701,7 +1699,7 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
       <div style={{ height: 16 }} />
       <div className="ana-row-3-2">
         <ProbDistribution market={market} live={live} kalshiStatus={kalshiStatus} />
-        <AISummary market={market} aiData={aiData} onRefreshAI={handleRefreshAI} />
+        <AISummary market={market} aiData={aiData} onRefreshAI={handleRefreshAI} hasDistribution={!!live?.distribution} />
       </div>
 
       <div style={{ height: 16 }} />
@@ -1726,10 +1724,11 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
   );
 }
 
-function AISummary({ market, aiData, onRefreshAI }) {
+function AISummary({ market, aiData, onRefreshAI, hasDistribution }) {
   const isLoading = aiData?.loading;
   const hasLive   = !!(aiData?.summary);
   const hasError  = !!(aiData?.error);
+  const isEmpty   = !isLoading && !hasLive && !hasError;
 
   const genTime = aiData?.generatedAt
     ? new Date(aiData.generatedAt).toLocaleTimeString("zh-CN", {
@@ -1737,13 +1736,13 @@ function AISummary({ market, aiData, onRefreshAI }) {
       }) + " BJT"
     : null;
 
-  // Render multi-line bullet text
   const summaryLines = hasLive
     ? aiData.summary.split('\n').filter(l => l.trim())
     : [];
 
   return (
     <div className="card ai-card">
+      {/* Header row */}
       <div className="ai-head">
         <div className="ai-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1751,48 +1750,56 @@ function AISummary({ market, aiData, onRefreshAI }) {
           </svg>
         </div>
         <div>
-          <h3 style={{ fontSize: 15, margin: 0 }}>AI Summary</h3>
+          <h3 style={{ fontSize: 15, margin: 0 }}>AI 市场分析</h3>
           <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
             {hasLive
-              ? `Haiku · 输入${aiData.tokens?.input} / 输出${aiData.tokens?.output} tokens`
-              : isLoading
-              ? "Claude Haiku 分析中…"
-              : "Claude Haiku · 等待市场数据加载"}
+              ? `Claude Haiku · ${aiData.tokens?.input}+${aiData.tokens?.output} tokens`
+              : isLoading ? "Claude Haiku 分析中…"
+              : "Claude Haiku · 点击生成实时分析"}
           </div>
         </div>
-        <span className={`ai-tag ${hasLive ? "live-tag" : ""}`}>
-          {hasLive ? <><span className="live-badge-sm" style={{marginRight:3}}>LIVE</span>AI</> : "Auto"}
-        </span>
-        <button
-          className={`ens-refresh-btn ${isLoading ? "spin" : ""}`}
-          onClick={onRefreshAI}
-          disabled={isLoading}
-          title="重新生成 AI 分析"
-          style={{ marginLeft: "auto" }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M23 4v6h-6M1 20v-6h6"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
-        </button>
+        {hasLive && (
+          <span className="ai-tag live-tag" style={{ marginLeft: "auto" }}>
+            <span className="live-badge-sm" style={{marginRight:3}}>LIVE</span>AI
+          </span>
+        )}
+        {hasLive && (
+          <button
+            className={`ens-refresh-btn ${isLoading ? "spin" : ""}`}
+            onClick={onRefreshAI} disabled={isLoading}
+            title="重新生成"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M23 4v6h-6M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+          </button>
+        )}
       </div>
 
+      {/* Loading */}
       {isLoading && (
         <div className="ai-generating">
           <span className="ai-spinner" />
-          Claude 正在分析市场数据…
+          Claude 正在分析市场数据，约 1–2 秒…
         </div>
       )}
 
+      {/* Error */}
       {hasError && (
-        <div className="ai-body" style={{ color: "var(--neg)", fontSize: 13 }}>
+        <div style={{ fontSize: 13, color: "var(--neg)", marginBottom: 12 }}>
           生成失败：{aiData.error}
           <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 4 }}>
-            请检查 Vercel 环境变量 ANTHROPIC_API_KEY 是否已配置。
+            请确认 Vercel 已配置 ANTHROPIC_API_KEY。
           </div>
+          <button className="ai-generate-btn" onClick={onRefreshAI}
+            style={{ marginTop: 12, fontSize: 13, padding: "8px 18px" }}>
+            重试
+          </button>
         </div>
       )}
 
+      {/* Result */}
       {hasLive && !isLoading && (
         <div className="ai-body">
           {summaryLines.length > 1
@@ -1801,18 +1808,32 @@ function AISummary({ market, aiData, onRefreshAI }) {
         </div>
       )}
 
-      {!isLoading && !hasLive && !hasError && (
-        <div className="ai-body" style={{ color: "var(--ink-4)" }}>
-          {market.aiSummary}
-          <div style={{ fontSize: 10, color: "var(--ink-4)", marginTop: 6, fontStyle: "italic" }}>
-            ↑ 静态占位文本 — 数据加载后 Claude 自动替换
+      {/* Empty state — Generate CTA */}
+      {isEmpty && (
+        <div className="ai-generate-cta">
+          <button
+            className="ai-generate-btn"
+            onClick={onRefreshAI}
+            disabled={!hasDistribution}
+            title={hasDistribution ? "生成 AI 分析" : "请先加载市场数据"}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M12 2 9.5 8.5 3 11l6.5 2.5L12 20l2.5-6.5L21 11l-6.5-2.5L12 2z" />
+            </svg>
+            生成 AI 分析
+          </button>
+          <div className="ai-generate-sub">
+            {hasDistribution
+              ? "基于实时模型数据 · Claude Haiku · 约 1–2 秒"
+              : "请先点击右上角刷新按钮加载市场数据"}
           </div>
         </div>
       )}
 
+      {/* Footer meta */}
       {genTime && (
         <div className="ai-meta">
-          <span>生成时间 · {genTime}</span>
+          <span>生成于 {genTime}</span>
           <span>{aiData.tokens?.input}+{aiData.tokens?.output} tokens</span>
         </div>
       )}
