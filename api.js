@@ -21,10 +21,10 @@ window.KW_API = (() => {
   };
 
   const MODELS = [
-    { key: "GFS",   id: "gfs_seamless"    },
-    { key: "HRRR",  id: "gfs_hrrr"        },
-    { key: "ECMWF", id: "ecmwf_ifs04"     },
-    { key: "NAM",   id: "ncep_nam_conus"  },
+    { key: "GFS",   id: "gfs_seamless"   },
+    { key: "HRRR",  id: "gfs_hrrr"       },
+    { key: "ICON",  id: "icon_seamless"  },  // DWD ICON — replaces ECMWF (wrong endpoint/vars)
+    { key: "NAM",   id: "ncep_nam_conus" },
   ];
 
   /* ── Helpers ────────────────────────────────────────────── */
@@ -290,11 +290,12 @@ window.KW_API = (() => {
 
   /* ── 3. Probability Distribution from Ensemble ──────────── */
   // Model weights based on verified CONUS 12–24h RMSE performance:
-  //   ECMWF 0.40 — consistently best global model (~1.8°F RMSE)
-  //   HRRR  0.30 — best short-range, hourly updates   (~2.1°F RMSE)
-  //   GFS   0.20 — reliable global model              (~2.4°F RMSE)
-  //   NAM   0.10 — coarser resolution, least accurate (~2.9°F RMSE)
-  const MODEL_WEIGHTS = { GFS: 0.20, HRRR: 0.30, ECMWF: 0.40, NAM: 0.10 };
+  //   HRRR  0.35 — best short-range US model, hourly updates (~2.1°F RMSE)
+  //   GFS   0.30 — reliable global model                     (~2.4°F RMSE)
+  //   ICON  0.25 — DWD ICON global, world-class accuracy     (~2.0°F RMSE)
+  //   NAM   0.10 — coarser US regional, least accurate       (~2.9°F RMSE)
+  // (ECMWF removed: requires dedicated endpoint + different variable names)
+  const MODEL_WEIGHTS = { GFS: 0.30, HRRR: 0.35, ICON: 0.25, NAM: 0.10 };
 
   // ── Station-specific bias: NWS ASOS station vs Open-Meteo grid ──
   // Each ASOS station has microclimate characteristics that cause systematic
@@ -356,8 +357,9 @@ window.KW_API = (() => {
     const spread   = Math.sqrt(variance);
 
     // Irreducible forecast error (CONUS 12–24h)
-    const hasECMWF    = entries.some(e => e.key === "ECMWF");
-    const irreducible = hasECMWF ? 1.8 : 2.0;
+    // Lower bound 1.8 when a premium global model (ICON or old ECMWF) is present
+    const hasPremium  = entries.some(e => e.key === "ICON" || e.key === "ECMWF");
+    const irreducible = hasPremium ? 1.8 : 2.0;
     const std         = Math.sqrt(spread ** 2 + irreducible ** 2);
 
     const modelMin = Math.min(...entries.map(e => e.val));
