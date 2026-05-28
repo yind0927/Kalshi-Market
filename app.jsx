@@ -80,7 +80,7 @@ const US_PATH = "M 90 95 L 180 82 L 300 78 L 420 80 L 490 95 L 560 105 L 615 100
 
 const CITY_COORDS = {
   "New York":    [645, 198],
-  "Miami":       [617, 365],
+  "Miami":       [617, 348],
   "Chicago":     [470, 145],
   "Austin":      [365, 308],
   "Dallas":      [400, 268],
@@ -903,11 +903,14 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
   const top = markets
     .map((m) => ({ m, e: Math.max(...m.buckets.map((b) => b.model - b.market)) }))
     .sort((a, b) => b.e - a.e)[0];
-  const activeCount = markets.filter(m => {
+  const windowActiveCount = markets.filter(m => {
     const [es, ee] = m.entryWindowBJT;
     const now = normH(bjtDec);
     return now >= normH(es) && now < normH(ee);
   }).length;
+  const pbGroupCount = pbFilter ? markets.filter(m => pbStatus(m) === pbFilter).length : null;
+  const activeCount = pbGroupCount ?? windowActiveCount;
+  const activePbGroup = pbFilter ? PB_GROUPS.find(g => g.key === pbFilter) : null;
   const liveCount = DATA.markets.filter(m => liveData?.[m.id]?.observation).length;
 
   return (
@@ -950,13 +953,17 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
           <div className="kpi-value" style={{ color: "var(--pos)" }}>+{(top.e * 100).toFixed(1)}<span className="small">pp</span></div>
           <div className="kpi-foot">{top.m.city} · {top.m.cnCity}</div>
         </div>
-        <div className="kpi">
+        <div className="kpi" style={activePbGroup ? { outline: "1.5px solid var(--accent)", borderRadius: 10 } : {}}>
           <div className="kpi-label">
-            <span className="en">Active Cities</span>
-            <span className="cn">活跃城市</span>
+            <span className="en">{activePbGroup ? activePbGroup.en : "Active Cities"}</span>
+            <span className="cn">{activePbGroup ? activePbGroup.label : "活跃城市"}</span>
           </div>
-          <div className="kpi-value">{activeCount}</div>
-          <div className="kpi-foot">窗口内 · {markets.length - activeCount} 待入场</div>
+          <div className="kpi-value" style={activePbGroup ? { color: "var(--accent)" } : {}}>{activeCount}</div>
+          <div className="kpi-foot">
+            {activePbGroup
+              ? <span className="kpi-delta" style={{ color: "var(--accent)" }}>操作板筛选 · {markets.length - activeCount} 其他</span>
+              : `窗口内 · ${markets.length - windowActiveCount} 待入场`}
+          </div>
         </div>
       </div>
 
