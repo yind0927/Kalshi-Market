@@ -599,11 +599,13 @@ function CityTimeline({ markets, bjtDec, liveData }) {
                   </span>
                 )}
               </div>
-              <div className="tl-track">
-                <div
-                  className={`tl-bar entry ${wsInfo.cls}`}
-                  style={{ left: toX(es), width: barW + "%" }}
-                />
+              <div className="tl-track-outer">
+                <div className="tl-track">
+                  <div
+                    className={`tl-bar entry ${wsInfo.cls}`}
+                    style={{ left: toX(es), width: barW + "%" }}
+                  />
+                </div>
                 {peakX && (
                   <div
                     className={`tl-peak-marker${livePeak ? " live" : ""}`}
@@ -2307,21 +2309,8 @@ function App() {
   const openAnalysis = (id) => {
     setMarketId(id);
     setTab("analysis");
-    window.history.pushState({ tab: "analysis", marketId: id }, "");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
-  const goBack = useCallback(() => {
-    setTab("markets");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, []);
-
-  // Intercept browser back button so it navigates within the app, not away
-  useEffect(() => {
-    const onPop = () => { setTab("markets"); };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
 
   const liveCount = DATA.markets.filter(m => liveData[m.id]?.observation).length;
 
@@ -2348,7 +2337,7 @@ function App() {
           liveData={liveData}
           onFetch={fetchLiveForMarket}
           kalshiStatus={kalshiStatus}
-          onBack={goBack}
+          onBack={() => window.history.back()}
         />
       )}
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} setTheme={setTheme}

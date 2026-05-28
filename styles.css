@@ -2374,7 +2374,7 @@ input { font-family: inherit; }
 .tl-axis {
   position: absolute;
   top: 0;
-  left: 160px;
+  left: 210px;
   right: 0;
   height: 26px;
   border-bottom: 1px solid var(--border);
@@ -2403,7 +2403,7 @@ input { font-family: inherit; }
   position: relative;
   display: flex;
   align-items: center;
-  height: 38px;
+  height: 40px;
   z-index: 2;
 }
 .tl-row-label {
@@ -2437,8 +2437,16 @@ input { font-family: inherit; }
   border-radius: 3px;
   margin-left: 2px;
 }
-.tl-track {
+.tl-track-outer {
   flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+}
+.tl-track {
+  width: 100%;
   position: relative;
   height: 13px;
   background: var(--bg-2);
@@ -2465,8 +2473,8 @@ input { font-family: inherit; }
 }
 .tl-peak-marker {
   position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  top: calc(100% + 2px);
+  transform: translateX(-50%);
   z-index: 2;
   opacity: 0.6;
   pointer-events: none;
@@ -2476,7 +2484,7 @@ input { font-family: inherit; }
 }
 @media (max-width: 880px) {
   .tl-row-label { width: 100px; }
-  .tl-cn, .tl-tz { display: none; }
+  .tl-cn, .tl-tz, .tl-nws-tag { display: none; }
   .tl-axis { left: 100px; }
 }
 
