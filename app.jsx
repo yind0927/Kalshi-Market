@@ -306,19 +306,6 @@ function MapHero({ markets, onOpen }) {
     </div>
   );
 }
-        <filter id="markerGlow" x="-120%" y="-120%" width="340%" height="340%">
-          <feGaussianBlur stdDeviation="9" result="b1" />
-          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b2" />
-          <feMerge><feMergeNode in="b1" /><feMergeNode in="b2" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
-        <filter id="labelShadow" x="-20%" y="-40%" width="140%" height="200%">
-          <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#000" floodOpacity="0.35" />
-        </filter>
-        <clipPath id="usClip"><path d={US_PATH} /></clipPath>
-        <pattern id="dotGrid" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
-          <circle cx="12" cy="12" r="0.9" className="dot-pattern" />
-        </pattern>
-
 
 /* ─────────────────────────────────────────────────────────
  * Location Card — Analysis page
