@@ -539,14 +539,6 @@ function CityTimeline({ markets, bjtDec, liveData }) {
       </div>
 
       <div className="tl-wrap">
-        {/* Trading window background */}
-        <div
-          className="tl-window-bg"
-          style={{
-            left: toX(19),
-            width: `${((26 - 19) / TL_SPAN * 100).toFixed(2)}%`,
-          }}
-        />
         {/* Now line */}
         {now >= TL_S && now <= TL_E && (
           <div
@@ -2309,8 +2301,17 @@ function App() {
   const openAnalysis = (id) => {
     setMarketId(id);
     setTab("analysis");
+    // Push a history entry so browser/app back button returns to markets, not exits
+    window.history.pushState({ view: "analysis", id }, "");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  // Intercept browser back so it navigates within the app rather than leaving
+  useEffect(() => {
+    const onPop = () => setTab("markets");
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const liveCount = DATA.markets.filter(m => liveData[m.id]?.observation).length;
 
