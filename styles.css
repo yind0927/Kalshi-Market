@@ -3194,171 +3194,165 @@ input { font-family: inherit; }
 }
 
 /* ============================================================
- * Mobile — ≤ 640px
- * ============================================================ */
+ * Bottom Tab Bar — mobile only (≤640px)
+ * ========================================================== */
+.bottom-tab-bar { display: none; }
+
 @media (max-width: 640px) {
-
-  /* ── Top bar ── */
-  .topbar {
-    height: auto;
-    padding: 10px 16px;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .brand-name em { display: none; }
-  .brand-name { font-size: 13px; }
-  .tabs { gap: 4px; }
-  .tab { padding: 6px 10px; font-size: 12px; gap: 5px; }
-  .tab svg { display: none; }
-  .tab .cn { display: none; }
-  .bjt-clock { display: none; }
-  .live-count-badge { display: none; }
-  .window-badge { font-size: 10px; padding: 3px 8px; }
-  .divider-v { display: none; }
-  .refresh-stamp { display: none; }
-  .topbar-right { gap: 6px; }
-
-  /* ── Layout ── */
-  .view { padding: 16px 12px 72px; }
-  .card { padding: 16px; border-radius: 12px; }
-  .card-head { margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
-  .card-head h3 { font-size: 13px; }
-  .card-head .sub { font-size: 11px; }
-
-  /* ── Map hero ── */
-  .map-card { padding: 16px; }
-  .map-card-head { flex-direction: column; gap: 8px; }
-  .map-body { flex-direction: column; gap: 16px; }
-  .map-viz { flex-direction: column; gap: 12px; }
-  .map-legend { display: none; }
-  .map-detail { padding: 14px 16px; }
-  .map-detail-city { font-size: 20px; }
-  .map-detail-stats { gap: 16px; }
-  .map-detail-stats .ms .v { font-size: 22px; }
-  .map-detail-cta { width: 100%; text-align: center; }
-  .us-map { height: 180px; }
-
-  /* ── KPIs ── */
-  .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .kpi { padding: 14px 16px; }
-  .kpi-value { font-size: 28px; }
-
-  /* ── Market cards ── */
-  .card-grid { grid-template-columns: 1fr; gap: 10px; }
-  .mkt-card { padding: 16px; }
-  .mkt-card-top { gap: 8px; }
-  .mkt-card-title { font-size: 15px; }
-  .mkt-temp-row { gap: 10px; }
-  .mkt-temp-block .v { font-size: 22px; }
-  .mkt-temp-spark { display: none; }
-
-  /* ── Tonight Playbook ── */
-  .playbook-card { padding: 16px; }
-  .playbook-head { flex-direction: column; gap: 8px; }
-  .pb-nums { display: none; }
-  .pb-bucket { font-size: 11px; }
-  .pb-tag-selector { display: none; }
-  .pb-city-row { gap: 6px; flex-wrap: wrap; }
-
-  /* ── City Timeline ── */
-  .tl-card { padding: 16px; }
-  .tl-row-label { min-width: 80px; }
-  .tl-city { font-size: 11px; }
-  .tl-cn, .tl-tz { display: none; }
-
-  /* ── Analysis hero ── */
-  .ana-hero { padding: 20px 16px; border-radius: 12px; }
-  .ana-hero-title { font-size: 22px; }
-  .ana-hero-title .cn { display: block; font-size: 13px; margin-top: 2px; }
-  .ana-hero-sub { font-size: 12px; }
-  .ana-hero-tags { flex-wrap: wrap; gap: 6px; }
-  .ana-hero-edge .v { font-size: 36px; }
-  .ana-selector { flex-wrap: wrap; font-size: 12px; }
-  .ana-selector select { font-size: 12px; padding: 5px 24px 5px 8px; }
-
-  /* ── Prob distribution ── */
-  .prob-list { font-size: 12px; }
-  .prob-row { gap: 6px; grid-template-columns: 60px 1fr 44px 44px 52px 52px; }
-  .prob-row.head { display: none; }
-  .prob-bars { display: none; }
-  .prob-row { display: flex; flex-wrap: wrap; padding: 10px 0; gap: 4px 12px; }
-  .prob-row .range { width: 100%; font-weight: 600; font-size: 12px; margin-bottom: 2px; }
-  .prob-row .num { font-size: 11px; }
-
-  /* ── Chart ── */
-  .obs-chart-wrap { height: 220px; }
-  .chart-stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .chart-stat-div:nth-child(4) { display: none; }
-  .chart-stat .cs-value { font-size: 20px; }
-
-  /* ── Live obs strip ── */
-  .obs-live-strip { flex-wrap: wrap; gap: 12px; padding: 12px 14px; }
-  .obs-live-temp { font-size: 24px; }
-  .obs-live-stats { gap: 16px; }
-
-  /* ── Ensemble panel ── */
-  .ens-card { padding: 16px; }
-  .ens-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .ens-model { padding: 12px 14px; }
-  .ens-model-temp { font-size: 22px; }
-  .ens-mean-tag { font-size: 11px; padding: 3px 8px; }
-  .ens-head-right { gap: 6px; }
-
-  /* ── Correction panel ── */
-  .corr-panel { padding: 12px; }
-  .corr-row { flex-wrap: wrap; gap: 4px; }
-  .corr-note { width: 100%; font-size: 10px; }
-
-  /* ── AI summary ── */
-  .ai-card { padding: 16px; }
-  .ai-generate-btn { width: 100%; }
-  .ai-line { font-size: 13px; padding: 8px 0; }
-
-  /* ── Location card ── */
-  .location-body { flex-direction: column; gap: 16px; }
-  .us-map.compact { height: 140px; }
-
-  /* ── Prob signal note ── */
-  .prob-signal-note { font-size: 10px; }
-
-  /* ── Bottom nav feel: tab bar ── */
-  .tabs {
+  /* ── Bottom nav ── */
+  .bottom-tab-bar {
+    display: flex;
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    z-index: 20;
-    background: color-mix(in oklab, var(--surface) 90%, transparent);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    z-index: 100;
+    background: color-mix(in oklab, var(--surface) 94%, transparent);
+    backdrop-filter: saturate(180%) blur(16px);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
     border-top: 1px solid var(--border);
-    border-radius: 0;
-    padding: 8px 24px 16px;
-    justify-content: center;
-    gap: 40px;
-    height: auto;
+    align-items: stretch;
+    justify-content: space-around;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-  .tab {
+  .btab {
+    display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    font-size: 10px;
-    padding: 4px 8px;
-    border-radius: 8px;
+    justify-content: center;
+    gap: 3px;
+    flex: 1;
+    padding: 8px 0 6px;
+    background: none;
     border: none;
+    cursor: pointer;
+    color: var(--ink-4);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    transition: color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    min-width: 0;
   }
-  .tab svg { display: block; width: 18px; height: 18px; }
-  .tab .cn { display: block; font-size: 10px; }
-  .tab span:not(.cn) { display: none; }
-  .tab.active { background: var(--accent-soft); color: var(--accent); }
-  .tab.active::after { display: none; }
-  /* Push content above fixed bottom tabs */
-  .view { padding-bottom: 88px; }
+  .btab.active { color: var(--accent); }
+  .btab svg { opacity: 0.5; transition: opacity 0.15s; }
+  .btab.active svg { opacity: 1; }
+  .btab-center-pill {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 4px;
+  }
+  .btab-window {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 5px 11px;
+    border-radius: 20px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--ink-3);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .btab-window.active {
+    background: var(--pos-soft);
+    border-color: color-mix(in oklab, var(--pos) 30%, transparent);
+    color: var(--pos);
+  }
 
-  /* ── Settings drawer full-screen on mobile ── */
-  .settings-drawer { width: 100%; border-left: none; }
-  .settings-head { padding: 20px 16px 14px; }
-  .settings-body { padding: 16px; }
+  /* ── TopBar: strip to essentials ── */
+  .tabs { display: none !important; }
+  .topbar { padding: 0 14px; height: 50px; gap: 10px; }
+  .brand-name em { display: none; }
+  .brand-name { font-size: 13px; }
+  .topbar-right { gap: 6px; }
+  .bjt-clock .bjt-label { display: none; }
+  .bjt-time { font-size: 15px; }
+  .live-count-badge { display: none; }
+  .divider-v { display: none; }
+  .refresh-stamp { display: none; }
 
-  /* ── Hourly list mobile ── */
-  .hourly-row { grid-template-columns: 46px 56px 1fr 80px; gap: 6px; }
-  .hl-cond { display: none; }
+  /* ── View padding (above bottom bar) ── */
+  .view { padding: 14px 12px calc(72px + env(safe-area-inset-bottom, 0px)); }
+
+  /* ── MapHero: no SVG, city chips in grid ── */
+  .mapm-canvas { display: none; }
+  .mapm-head { flex-direction: column; gap: 10px; }
+  .mapm-title { font-size: 17px; }
+  .mapm-active-top { flex-wrap: wrap; gap: 6px; }
+  .mapm-chips { display: grid !important; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .mapm-chip { flex-direction: column; gap: 2px; padding: 8px 6px; text-align: center; align-items: center; }
+  .mapm-chip-en { display: none; }
+  .mapm-footer { flex-direction: column; gap: 8px; }
+  .mapm-legend { display: none; }
+
+  /* ── CityTimeline: horizontal scroll ── */
+  .tl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tl-inner-scroll { min-width: 560px; position: relative; }
+  .tl-row-label { width: 88px; min-width: 88px; }
+  .tl-cn, .tl-tz, .tl-nws-tag { display: none; }
+  .tl-city { font-size: 11px; }
+  .tl-axis { left: 88px; }
+  .tl-card-head { flex-direction: column; gap: 8px; }
+  .tl-legend { flex-wrap: wrap; gap: 6px; }
+
+  /* ── KPIs 2-col grid ── */
+  .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi { padding: 14px 14px; }
+  .kpi-value { font-size: 26px; }
+  .kpi-label .en { display: none; }
+  .kpi-foot { font-size: 10px; }
+
+  /* ── Market cards: single column ── */
+  .card-grid { grid-template-columns: 1fr; gap: 10px; }
+  .mkt-card { padding: 14px; }
+  .mkt-card-title { font-size: 15px; }
+  .mkt-temp-row { gap: 8px; }
+  .mkt-temp-block .v { font-size: 22px; }
+  .mkt-temp-spark { display: none; }
+  .mkt-dist { gap: 3px; }
+
+  /* ── Playbook ── */
+  .playbook-head { flex-direction: column; gap: 8px; }
+  .pb-nums { display: none; }
+  .pb-bucket { font-size: 11px; max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pb-tag-selector { display: none; }
+  .pb-city-row { gap: 5px; flex-wrap: wrap; }
+  .pb-time { flex-direction: row; gap: 8px; align-items: center; }
+
+  /* ── Analysis page ── */
+  .ana-hero { flex-direction: column; gap: 14px; border-radius: 12px; padding: 18px 14px; }
+  .ana-hero-right { width: 100%; }
+  .ana-hero-title { font-size: 20px; }
+  .ana-hero-title .cn { display: block; font-size: 12px; margin-top: 2px; }
+  .ana-hero-sub { font-size: 11px; }
+  .ana-hero-tags { flex-wrap: wrap; gap: 5px; }
+  .ana-selector { flex-wrap: wrap; font-size: 12px; gap: 6px; margin-bottom: 14px; }
+  .ana-selector select { font-size: 12px; padding: 5px 24px 5px 8px; }
+  .ana-back-btn { padding: 4px 8px; font-size: 11px; }
+
+  /* ── Prob distribution ── */
+  .prob-row.head { display: none; }
+  .prob-row { display: flex; flex-wrap: wrap; padding: 10px 0; gap: 4px 10px; }
+  .prob-row .range { width: 100%; font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+  .prob-row .num { font-size: 11px; }
+  .prob-bars { display: none; }
+
+  /* ── Ensemble ── */
+  .ens-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ens-model { padding: 12px; }
+  .ens-model-temp { font-size: 22px; }
+
+  /* ── Chart ── */
+  .obs-chart-wrap { height: 200px; }
+  .chart-stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .chart-stat-div:nth-child(4) { display: none; }
+
+  /* ── Cards base ── */
+  .card { padding: 16px; border-radius: 12px; }
+  .card-head { margin-bottom: 12px; flex-wrap: wrap; gap: 6px; }
+  .card-head h3 { font-size: 13px; }
+  .card-head .sub { font-size: 11px; }
 }

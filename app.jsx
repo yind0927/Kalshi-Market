@@ -539,6 +539,7 @@ function CityTimeline({ markets, bjtDec, liveData }) {
       </div>
 
       <div className="tl-wrap">
+        <div className="tl-inner-scroll">
         {/* Now line */}
         {now >= TL_S && now <= TL_E && (
           <div
@@ -614,6 +615,7 @@ function CityTimeline({ markets, bjtDec, liveData }) {
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
@@ -2197,6 +2199,34 @@ function SettingsDrawer({ open, onClose, theme, setTheme, refreshCadence, setRef
 }
 
 /* ─────────────────────────────────────────────────────────
+ * Bottom Tab Bar
+ * ───────────────────────────────────────────────────────── */
+function BottomTabBar({ tab, setTab, bjtDec, marketCity }) {
+  const inWindow = isInWindow(bjtDec);
+  return (
+    <nav className="bottom-tab-bar">
+      <button className={`btab${tab === "markets" ? " active" : ""}`} onClick={() => setTab("markets")}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" />
+        </svg>
+        <span>市场</span>
+      </button>
+      <div className="btab-center-pill">
+        <div className={`btab-window${inWindow ? " active" : ""}`}>
+          {inWindow ? <><span className="wd" />交易中</> : "窗口外"}
+        </div>
+      </div>
+      <button className={`btab${tab === "analysis" ? " active" : ""}`} onClick={() => setTab("analysis")}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M3 3v18h18" /><path d="m7 14 4-4 4 4 5-7" />
+        </svg>
+        <span>{tab === "analysis" && marketCity ? marketCity : "分析"}</span>
+      </button>
+    </nav>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
  * App
  * ───────────────────────────────────────────────────────── */
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -2301,23 +2331,8 @@ function App() {
   const openAnalysis = (id) => {
     setMarketId(id);
     setTab("analysis");
-    window.history.pushState({ view: "analysis", id }, "", "#/analysis");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
-  // Hash-based history floor: #/ entries are genuinely distinct navigable entries
-  // in all browsers, unlike pushState with the same URL which some browsers collapse.
-  useEffect(() => {
-    window.history.replaceState({ view: "markets" }, "", "#/");
-    window.history.pushState({ view: "markets" }, "", "#/");
-
-    const onPop = () => {
-      setTab("markets");
-      window.history.pushState({ view: "markets" }, "", "#/");
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
 
   const liveCount = DATA.markets.filter(m => liveData[m.id]?.observation).length;
 
@@ -2344,11 +2359,17 @@ function App() {
           liveData={liveData}
           onFetch={fetchLiveForMarket}
           kalshiStatus={kalshiStatus}
-          onBack={() => window.history.back()}
+          onBack={() => setTab("markets")}
         />
       )}
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} setTheme={setTheme}
         refreshCadence={refreshCadence} setRefreshCadence={setRefreshCadence} />
+      <BottomTabBar
+        tab={tab}
+        setTab={setTab}
+        bjtDec={bjtDec}
+        marketCity={tab === "analysis" ? DATA.markets.find(m => m.id === marketId)?.cnCity : null}
+      />
     </div>
   );
 }
