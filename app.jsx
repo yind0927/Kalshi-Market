@@ -477,10 +477,24 @@ function TonightPlaybook({ markets, bjtDec, openAnalysis, pbFilter, setPbFilter,
 /* ─────────────────────────────────────────────────────────
  * City Timeline
  * ───────────────────────────────────────────────────────── */
-function CityTimeline({ markets, bjtDec }) {
+function CityTimeline({ markets, bjtDec, liveData }) {
   const TL_S = 19, TL_E = 31, TL_SPAN = 12;
   const toX = (h) => ((normH(h) - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
   const now = normH(bjtDec);
+
+  // Compute today's NWS peak hour in BJT from live hourly data.
+  // Falls back to null so caller uses static peakTimeBJT estimate.
+  const getLivePeak = (m) => {
+    const hourly = liveData?.[m.id]?.nwsHourly;
+    if (!hourly?.length) return null;
+    const tz = window.KW_API?.CITIES?.[m.city]?.tz || "America/New_York";
+    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+    const today = hourly.filter(h => h.localDate === todayStr && h.isDaytime !== false);
+    if (!today.length) return null;
+    const peak = today.reduce((mx, h) => h.temp > mx.temp ? h : mx);
+    // BJT = local peak hour − bjtOffset (bjtOffset is negative for US cities)
+    return { bjtH: peak.localHour - m.bjtOffset, temp: peak.temp };
+  };
   const ticks = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
 
   // 12z GFS: initialized at 12:00 UTC = 20:00 BJT; products available ~15:00 UTC = 23:00 BJT
@@ -493,7 +507,7 @@ function CityTimeline({ markets, bjtDec }) {
       <div className="tl-card-head">
         <div>
           <h3>City Trading Timeline <em>城市交易时间轴</em></h3>
-          <div className="sub">北京时间 (BJT) · 绿色 = 最佳入场窗口 · ▲ = 高温峰值</div>
+          <div className="sub">北京时间 (BJT) · 绿色 = 入场窗口 (本地 08:00–12:00 峰前 2–6h) · ▲ = 高温峰值 (红=NWS实时 · 灰=静态估算)</div>
         </div>
         <div className="tl-legend">
           <span><i className="tl-i entry" /> 入场窗口</span>
@@ -563,8 +577,10 @@ function CityTimeline({ markets, bjtDec }) {
           const esN = normH(es);
           const eeN = normH(eeClamp);
           const barW = ((eeN - esN) / TL_SPAN * 100).toFixed(2);
-          const peakN = normH(ps);
-          const peakX = peakN <= TL_E ? `${((peakN - TL_S) / TL_SPAN * 100).toFixed(2)}%` : null;
+          const livePeak = getLivePeak(m);
+          const peakBJT = livePeak ? normH(livePeak.bjtH) : normH(ps);
+          const peakX = peakBJT <= TL_E ? `${((peakBJT - TL_S) / TL_SPAN * 100).toFixed(2)}%` : null;
+          const wsInfo = windowStatusLabel(m, bjtDec);
           return (
             <div className="tl-row" key={m.id}>
               <div className="tl-row-label">
@@ -574,13 +590,18 @@ function CityTimeline({ markets, bjtDec }) {
               </div>
               <div className="tl-track">
                 <div
-                  className={`tl-bar entry ${m.windowStatus}`}
+                  className={`tl-bar entry ${wsInfo.cls}`}
                   style={{ left: toX(es), width: barW + "%" }}
                 />
                 {peakX && (
-                  <div className="tl-peak-marker" style={{ left: peakX }}>
+                  <div
+                    className={`tl-peak-marker${livePeak ? " live" : ""}`}
+                    style={{ left: peakX }}
+                    title={livePeak ? `NWS 实时峰值 ${livePeak.temp}°F` : `预测峰值 (静态估算)`}
+                  >
                     <svg width="9" height="9" viewBox="0 0 9 9">
-                      <polygon points="4.5,0 9,9 0,9" fill="var(--ink-2)" />
+                      <polygon points="4.5,0 9,9 0,9"
+                        fill={livePeak ? "var(--neg)" : "var(--ink-3)"} />
                     </svg>
                   </div>
                 )}
@@ -967,7 +988,7 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
         </div>
       </div>
 
-      <CityTimeline markets={DATA.markets} bjtDec={bjtDec} />
+      <CityTimeline markets={markets} bjtDec={bjtDec} liveData={liveData} />
 
       <div className="section-head">
         <div>
