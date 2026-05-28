@@ -547,18 +547,6 @@ function CityTimeline({ markets, bjtDec, liveData }) {
             width: `${((26 - 19) / TL_SPAN * 100).toFixed(2)}%`,
           }}
         />
-        {/* NWS morning forecast update reference lines — one per timezone */}
-        {nwsUpdateLines.map(({ bjtH, label, title }) => {
-          const n = normH(bjtH);
-          if (n < TL_S || n > TL_E) return null;
-          const isPast = now >= n;
-          return (
-            <div key={label} className={`tl-nws-line${isPast ? " past" : ""}`}
-              style={{ left: toX(bjtH) }} title={title}>
-              <div className="tl-nws-label">{label}{isPast ? " ✓" : ""}</div>
-            </div>
-          );
-        })}
         {/* Now line */}
         {now >= TL_S && now <= TL_E && (
           <div
@@ -1532,7 +1520,7 @@ async function doFetchAISummary(live) {
   return data;
 }
 
-function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshiStatus }) {
+function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshiStatus, onBack }) {
   const market = DATA.markets.find((m) => m.id === marketId) || DATA.markets[0];
   const live   = liveData?.[market.id];
 
@@ -1580,9 +1568,14 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
   return (
     <div className="view" data-screen-label="analysis">
       <div className="ana-selector">
-        <span className="crumb">Analysis · 深度分析</span>
+        <button className="ana-back-btn" onClick={onBack} title="返回市场列表">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
+          返回
+        </button>
         <span className="sep">/</span>
-        <span className="crumb">Daily High</span>
+        <span className="crumb">Analysis · 深度分析</span>
         <span className="sep">/</span>
         <select value={market.id} onChange={(e) => setMarketId(e.target.value)}>
           {DATA.markets.map((m) => (
@@ -2314,8 +2307,21 @@ function App() {
   const openAnalysis = (id) => {
     setMarketId(id);
     setTab("analysis");
+    window.history.pushState({ tab: "analysis", marketId: id }, "");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const goBack = useCallback(() => {
+    setTab("markets");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  // Intercept browser back button so it navigates within the app, not away
+  useEffect(() => {
+    const onPop = () => { setTab("markets"); };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const liveCount = DATA.markets.filter(m => liveData[m.id]?.observation).length;
 
@@ -2342,6 +2348,7 @@ function App() {
           liveData={liveData}
           onFetch={fetchLiveForMarket}
           kalshiStatus={kalshiStatus}
+          onBack={goBack}
         />
       )}
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} setTheme={setTheme}
