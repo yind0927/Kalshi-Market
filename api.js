@@ -26,8 +26,26 @@ window.KW_API = (() => {
     { key: "GFS",  id: "gfs_seamless"   },
   ];
 
-  // Cache NWS gridpoint forecast URLs — stable per lat/lon, no need to re-fetch
-  const NWS_FC_URL_CACHE = new Map();
+  // Cache NWS gridpoint URLs — stable per lat/lon; stores { daily, hourly }
+  const NWS_GRIDPOINT_CACHE = new Map();
+
+  async function getNWSGridpointUrls(lat, lon) {
+    const key = `${lat},${lon}`;
+    if (NWS_GRIDPOINT_CACHE.has(key)) return NWS_GRIDPOINT_CACHE.get(key);
+    const res = await fetch(
+      `https://api.weather.gov/points/${lat},${lon}`,
+      { headers: { Accept: "application/json" } }
+    );
+    if (!res.ok) throw new Error(`NWS points ${res.status}`);
+    const data = await res.json();
+    const urls = {
+      daily:  data.properties?.forecast,
+      hourly: data.properties?.forecastHourly,
+    };
+    if (!urls.daily) throw new Error("NWS: missing forecast URLs from /points/");
+    NWS_GRIDPOINT_CACHE.set(key, urls);
+    return urls;
+  }
 
   /* ── Helpers ────────────────────────────────────────────── */
   const cToF = c  => c  != null ? +(c  * 9/5 + 32).toFixed(1) : null;
@@ -54,24 +72,11 @@ window.KW_API = (() => {
   // matches weather.gov "High: XX°F" — the official forecaster-issued max
   // that Kalshi contracts reference at settlement.
   async function fetchNWSForecast(lat, lon, tz) {
-    const cacheKey = `${lat},${lon}`;
-
-    // Step 1: resolve gridpoint daily forecast URL (cached after first call)
-    let fcUrl = NWS_FC_URL_CACHE.get(cacheKey);
-    if (!fcUrl) {
-      const ptRes = await fetch(
-        `https://api.weather.gov/points/${lat},${lon}`,
-        { headers: { Accept: "application/json" } }
-      );
-      if (!ptRes.ok) throw new Error(`NWS points ${ptRes.status}`);
-      const ptData = await ptRes.json();
-      fcUrl = ptData.properties?.forecast;   // daily, not forecastHourly
-      if (!fcUrl) throw new Error("NWS: no forecast URL in response");
-      NWS_FC_URL_CACHE.set(cacheKey, fcUrl);
-    }
+    // Step 1: resolve gridpoint URLs (shared cache with hourly display fetch)
+    const urls = await getNWSGridpointUrls(lat, lon);
 
     // Step 2: fetch daily forecast
-    const fcRes = await fetch(fcUrl, { headers: { Accept: "application/json" } });
+    const fcRes = await fetch(urls.daily, { headers: { Accept: "application/json" } });
     if (!fcRes.ok) throw new Error(`NWS daily forecast ${fcRes.status}`);
     const fcData = await fcRes.json();
 
@@ -102,6 +107,43 @@ window.KW_API = (() => {
       cloudAtPeak: null,
       updatedAt:   new Date().toISOString(),
     };
+  }
+
+  /* ── 0b. NWS Hourly Forecast — for display list ────────── */
+  // Returns today + tomorrow's hourly periods for the table view.
+  // Peak calculation still uses the daily endpoint above.
+  async function fetchNWSHourlyForecast(lat, lon, tz) {
+    const urls = await getNWSGridpointUrls(lat, lon);
+    const res = await fetch(urls.hourly, { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error(`NWS hourly forecast ${res.status}`);
+    const data = await res.json();
+    const periods = data.properties?.periods;
+    if (!periods?.length) throw new Error("NWS: empty hourly periods");
+
+    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(tomorrow);
+
+    const toLocalDate = iso =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(iso));
+    const toLocalHour = iso =>
+      parseInt(new Intl.DateTimeFormat("en-US", {
+        timeZone: tz, hour: "numeric", hour12: false,
+      }).format(new Date(iso)), 10);
+
+    return periods
+      .filter(p => { const d = toLocalDate(p.startTime); return d === todayStr || d === tomorrowStr; })
+      .slice(0, 48)
+      .map(p => ({
+        localDate:     toLocalDate(p.startTime),
+        localHour:     toLocalHour(p.startTime),
+        temp:          p.temperature,
+        windSpeed:     p.windSpeed,
+        windDirection: p.windDirection,
+        shortForecast: p.shortForecast,
+        isDaytime:     p.isDaytime,
+      }));
   }
 
   /* ── 1. NWS Current Observation ────────────────────────── */
@@ -659,17 +701,19 @@ window.KW_API = (() => {
     const cfg = CITIES[cityName];
     if (!cfg) return { error: `No config for ${cityName}` };
 
-    const [obsResult, modelsResult, kalshiResult, hourlyResult] = await Promise.allSettled([
+    const [obsResult, modelsResult, kalshiResult, hourlyResult, nwsHourlyResult] = await Promise.allSettled([
       fetchObservation(cfg.stationId),
       fetchModels(cityName),
       kalshiEventTicker ? fetchKalshi(kalshiEventTicker) : Promise.reject("no ticker"),
       fetchHourlyObs(cfg.stationId, cfg.tz),
+      fetchNWSHourlyForecast(cfg.lat, cfg.lon, cfg.tz),
     ]);
 
-    const observation = obsResult.status   === "fulfilled" ? obsResult.value   : null;
-    const modelsData  = modelsResult.status === "fulfilled" ? modelsResult.value : null;
-    const kalshi      = kalshiResult.status === "fulfilled" ? kalshiResult.value : null;
-    const hourlyObs   = hourlyResult.status === "fulfilled" ? hourlyResult.value : null;
+    const observation = obsResult.status      === "fulfilled" ? obsResult.value      : null;
+    const modelsData  = modelsResult.status   === "fulfilled" ? modelsResult.value   : null;
+    const kalshi      = kalshiResult.status   === "fulfilled" ? kalshiResult.value   : null;
+    const hourlyObs   = hourlyResult.status   === "fulfilled" ? hourlyResult.value   : null;
+    const nwsHourly   = nwsHourlyResult.status === "fulfilled" ? nwsHourlyResult.value : null;
 
     // Build dynamic buckets from Kalshi subtitles when available.
     // These become the authoritative bucket structure — no more hardcoded
@@ -698,9 +742,11 @@ window.KW_API = (() => {
       modelsError: modelsResult.status === "rejected" ? String(modelsResult.reason) : null,
       distribution,
       kalshi,
-      kalshiBuckets,    // parsed bucket definitions (null if Kalshi unavailable)
-      kalshiError: kalshiResult.status === "rejected" ? String(kalshiResult.reason) : null,
-      fetchedAt:   new Date().toISOString(),
+      kalshiBuckets,
+      kalshiError:     kalshiResult.status    === "rejected" ? String(kalshiResult.reason)    : null,
+      nwsHourly,
+      nwsHourlyError:  nwsHourlyResult.status === "rejected" ? String(nwsHourlyResult.reason) : null,
+      fetchedAt:       new Date().toISOString(),
     };
   }
 

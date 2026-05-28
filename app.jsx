@@ -1031,322 +1031,115 @@ function ProbDistribution({ market, live, kalshiStatus }) {
 }
 
 /* ─────────────────────────────────────────────────────────
- * Hourly chart — live NWS 24h obs + ensemble forecast
- * Interactive: hover crosshair + tooltip, smooth Catmull-Rom curve
+ * Hourly Forecast List — NWS official hourly values
  * ───────────────────────────────────────────────────────── */
-function HourlyChart({ market, live }) {
-  const rawObs  = live?.hourlyObs;
-  const hasLive = !!(rawObs?.length > 1);
-  const svgRef  = useRef(null);
-  const [hovered, setHovered] = useState(null);
+function HourlyList({ market, live }) {
+  const nwsHourly = live?.nwsHourly;
+  const tz = window.KW_API?.CITIES?.[market.city]?.tz || "America/New_York";
 
-  const W = 760, H = 320;
-  const padL = 44, padR = 20, padT = 16, padB = 36;
-  const usableW = W - padL - padR;
-  const usableH = H - padT - padB;
-
-  // ── Build data points with elapsed-hour X coordinate ─────
-  let dataPoints = [], fcElapsed = 0, forecastTemp = 0;
-
-  if (hasLive) {
-    const valid = rawObs.filter(o => o.temp != null && o.timestamp);
-    if (valid.length < 2) return null;
-    const t0ms = new Date(valid[0].timestamp).getTime();
-    dataPoints = valid.map(o => ({
-      ...o,
-      elapsed: (new Date(o.timestamp).getTime() - t0ms) / 3_600_000,
-    }));
-    const last  = dataPoints[dataPoints.length - 1];
-    let h2fc    = 14.5 - (last.localHour ?? 14.5);
-    if (h2fc < 0.25) h2fc += 24;
-    fcElapsed    = last.elapsed + h2fc;
-    forecastTemp = live?.distribution?.adjustedMean ?? market.forecastHigh;
-  } else {
-    const series = DATA.hourlySeries[market.city] || [];
-    dataPoints   = series
-      .map((v, i) => v != null ? { temp: v, elapsed: i, localHour: i, timestamp: null } : null)
-      .filter(Boolean);
-    if (dataPoints.length < 2) return null;
-    fcElapsed    = 16;
-    forecastTemp = market.forecastHigh;
+  if (!nwsHourly?.length) {
+    return (
+      <div className="card">
+        <div className="card-head">
+          <div>
+            <h3>Hourly Forecast <em>逐小时预报</em></h3>
+            <div className="sub">NWS 官方逐小时预报</div>
+          </div>
+        </div>
+        <div className="ens-empty">
+          {live?.nwsHourlyError
+            ? <span className="err">加载失败: {live.nwsHourlyError}</span>
+            : <span>点击 ↻ 加载实时数据</span>}
+        </div>
+      </div>
+    );
   }
 
-  const last    = dataPoints[dataPoints.length - 1];
-  const firstLH = dataPoints[0].localHour ?? 0;
-  const xTotal  = Math.max(last.elapsed + 0.5, fcElapsed) + 0.5;
-  const xFor    = e => padL + (e / xTotal) * usableW;
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+  const nowLocalHour = parseInt(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(new Date()), 10
+  );
 
-  // ── Y axis: tight around observed data only ───────────────
-  // Forecast is shown as an annotation (dot+label) and never expands the Y range
-  const obsMins = dataPoints.map(p => p.temp);
-  const obsMin  = Math.min(...obsMins);
-  const obsMax  = Math.max(...obsMins);
-  // Center-symmetric range with minimum ±12°F half-span so small variations are visible
-  const obsMid    = (obsMin + obsMax) / 2;
-  const halfSpan  = Math.max(12, (obsMax - obsMin) / 2 + 4);
-  const minV  = Math.floor((obsMid - halfSpan) / 5) * 5;
-  const maxV  = Math.ceil ((obsMid + halfSpan) / 5) * 5;
-  const ySpan = maxV - minV;
-  const yFor  = v => padT + (1 - (v - minV) / ySpan) * usableH;
-  // Forecast dot: clamp to chart area so it never drags the axis
-  const fcY   = Math.max(padT + 6, Math.min(H - padB - 6, yFor(forecastTemp)));
+  // Peak = highest temp in today's hours (falls back to full list)
+  const todayHours = nwsHourly.filter(h => h.localDate === todayStr);
+  const peakHours  = todayHours.length > 0 ? todayHours : nwsHourly;
+  const peak       = peakHours.reduce((mx, h) => h.temp > mx.temp ? h : mx);
 
-  // ── Catmull-Rom smooth curve ──────────────────────────────
-  const catmullRomPath = pts => {
-    if (pts.length < 2) return "";
-    const coords = pts.map(p => [xFor(p.elapsed), yFor(p.temp)]);
-    let d = `M${coords[0][0].toFixed(1)},${coords[0][1].toFixed(1)}`;
-    const t = 0.38;
-    for (let i = 0; i < coords.length - 1; i++) {
-      const p0 = coords[Math.max(0, i - 1)];
-      const p1 = coords[i];
-      const p2 = coords[i + 1];
-      const p3 = coords[Math.min(coords.length - 1, i + 2)];
-      const cp1x = p1[0] + (p2[0] - p0[0]) * t;
-      const cp1y = p1[1] + (p2[1] - p0[1]) * t;
-      const cp2x = p2[0] - (p3[0] - p1[0]) * t;
-      const cp2y = p2[1] - (p3[1] - p1[1]) * t;
-      d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
-    }
-    return d;
+  const allTemps = nwsHourly.map(h => h.temp);
+  const minTemp  = Math.min(...allTemps);
+  const maxTemp  = Math.max(...allTemps);
+
+  const tempColor = (t) => {
+    if (t >= 95) return "#d32f2f";
+    if (t >= 85) return "#f44336";
+    if (t >= 75) return "#ff9800";
+    if (t >= 65) return "#ffc107";
+    if (t >= 55) return "#66bb6a";
+    return "#42a5f5";
   };
 
-  const obsSmooth  = catmullRomPath(dataPoints);
-  const areaSmooth = obsSmooth
-    + ` L${xFor(last.elapsed).toFixed(1)},${H - padB}`
-    + ` L${xFor(0).toFixed(1)},${H - padB} Z`;
-  const fcPath = `M${xFor(last.elapsed).toFixed(1)},${yFor(last.temp).toFixed(1)}`
-    + ` L${xFor(fcElapsed).toFixed(1)},${fcY.toFixed(1)}`;
-
-  // ── Interactive hover ─────────────────────────────────────
-  const handleMouseMove = e => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const rect  = svg.getBoundingClientRect();
-    const svgX  = ((e.clientX - rect.left)  / rect.width)  * W;
-    const svgY  = ((e.clientY - rect.top)   / rect.height) * H;
-    if (svgX < padL || svgX > W - padR || svgY < padT - 4 || svgY > H - padB + 4) {
-      setHovered(null); return;
-    }
-    const elapsed = ((svgX - padL) / usableW) * xTotal;
-    let closest = dataPoints[0], minDist = Infinity;
-    for (const p of dataPoints) {
-      const d = Math.abs(p.elapsed - elapsed);
-      if (d < minDist) { minDist = d; closest = p; }
-    }
-    setHovered({ svgX: xFor(closest.elapsed), svgY: yFor(closest.temp), temp: closest.temp, localHour: closest.localHour });
-  };
-  const handleMouseLeave = () => setHovered(null);
-
-  // Card tooltip — slightly compact
-  const tipW = 94, tipH = 44;
-  const tipX = hovered ? (hovered.svgX + tipW + 14 > W - padR ? hovered.svgX - tipW - 10 : hovered.svgX + 10) : 0;
-  const tipY = hovered ? Math.max(padT, Math.min(hovered.svgY - tipH / 2, H - padB - tipH)) : 0;
-
-  // Hover time label
-  const hovLH = hovered?.localHour;
-  const hovTime = hovLH != null
-    ? `${String(Math.floor(hovLH)).padStart(2,"0")}:${String(Math.round((hovLH % 1) * 60)).padStart(2,"0")}`
-    : "—";
-
-  // ── Midnight marker ───────────────────────────────────────
-  const midnightElapsed = (() => {
-    for (let i = 1; i < dataPoints.length; i++) {
-      const prev = dataPoints[i - 1].localHour, cur = dataPoints[i].localHour;
-      if (prev != null && cur != null && prev > 20 && cur < 4)
-        return (dataPoints[i - 1].elapsed + dataPoints[i].elapsed) / 2;
-    }
-    return null;
-  })();
-
-  // ── Axis ticks ────────────────────────────────────────────
-  const yTicks = [];
-  for (let v = minV; v <= maxV; v += 5) yTicks.push(v);
-  const yMajor = new Set(yTicks.filter(t => t % 10 === 0));
-  const xStep  = xTotal > 30 ? 6 : 3;          // fewer ticks when chart spans 2+ days
-  const xTicks = [];
-  for (let e = 0; e <= xTotal; e += xStep)
-    xTicks.push({ e, label: String(Math.floor((firstLH + e) % 24)).padStart(2,"0") + ":00" });
-
-  // ── Stats calculations ───────────────────────────────────
-  const maxPt   = dataPoints.reduce((a, b) => b.temp > a.temp ? b : a, dataPoints[0]);
-  const minPt   = dataPoints.reduce((a, b) => b.temp < a.temp ? b : a, dataPoints[0]);
-  const fmtHour = lh => lh != null
-    ? `${String(Math.floor(lh)).padStart(2,"0")}:${String(Math.round((lh%1)*60)).padStart(2,"0")}`
-    : "—";
-  const sixHBack   = last.elapsed - 6;
-  const deltaRefPt = sixHBack >= 0
-    ? ([...dataPoints].reverse().find(p => p.elapsed <= sixHBack) || dataPoints[0])
-    : dataPoints[0];
-  const deltaHrs  = +(last.elapsed - deltaRefPt.elapsed).toFixed(1);
-  const delta     = +(last.temp - deltaRefPt.temp).toFixed(1);
-  const deltaLabel = deltaHrs >= 5.5 ? "过去6小时" : `过去${deltaHrs}h`;
+  // Group by localDate
+  const grouped = nwsHourly.reduce((acc, h) => {
+    (acc[h.localDate] = acc[h.localDate] || []).push(h);
+    return acc;
+  }, {});
 
   return (
-    <div className="card chart-card">
+    <div className="card">
       <div className="card-head">
         <div>
           <h3>
-            Hourly Observation <em>小时观测</em>
-            {hasLive && <span className="live-badge-sm" style={{ marginLeft: 8 }}>LIVE</span>}
+            Hourly Forecast <em>逐小时预报</em>
+            <span className="live-badge-sm" style={{ marginLeft: 8 }}>LIVE</span>
           </h3>
           <div className="sub">
-            {hasLive
-              ? `NWS ASOS 实时逐小时观测 · ${dataPoints.length} 个观测点 · 虚线延伸至集合修正预测峰值`
-              : "NOAA METAR 静态数据（加载 Analysis 后替换为实时数据）"}
+            NWS 官方逐小时预报 · 今日峰值 <strong>{peak.temp}°F</strong> @ {String(peak.localHour).padStart(2,"0")}:00
           </div>
+        </div>
+        <div className="hl-legend">
+          <span className="hl-legend-item"><span className="hl-now-dot" /> 当前</span>
+          <span className="hl-legend-item" style={{color:"var(--neg)"}}>■ 峰值</span>
         </div>
       </div>
 
-      <div className="obs-chart-wrap">
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${W} ${H}`}
-          className="obs-chart"
-          preserveAspectRatio="none"
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          style={{ cursor: "crosshair" }}
-        >
-          <defs>
-            <linearGradient id="obsGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="var(--accent)" stopOpacity="0.18" />
-              <stop offset="60%"  stopColor="var(--accent)" stopOpacity="0.04" />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0"   />
-            </linearGradient>
-          </defs>
-
-          {/* Y gridlines — major (10°) solid, minor (5°) barely visible */}
-          {yTicks.map(t => (
-            <g key={t}>
-              <line x1={padL} x2={W - padR} y1={yFor(t)} y2={yFor(t)}
-                stroke="var(--border)"
-                strokeWidth={yMajor.has(t) ? 0.8 : 0.5}
-                strokeOpacity={yMajor.has(t) ? 0.7 : 0.25} />
-              {yMajor.has(t) && (
-                <text x={padL - 8} y={yFor(t) + 4} fontSize="10.5" textAnchor="end"
-                  fill="var(--ink-4)" fontFamily="var(--mono)">{t}°</text>
-              )}
-            </g>
-          ))}
-
-          {/* X time labels */}
-          {xTicks.map(({ e, label }) => (
-            <text key={e} x={xFor(e)} y={H - 6} fontSize="10" textAnchor="middle"
-              fill="var(--ink-4)" fontFamily="var(--mono)">{label}</text>
-          ))}
-
-          {/* Midnight marker — subtle dotted line, no text */}
-          {midnightElapsed != null && (
-            <line x1={xFor(midnightElapsed)} x2={xFor(midnightElapsed)}
-              y1={padT} y2={H - padB}
-              stroke="var(--accent)" strokeWidth="1" strokeDasharray="2 5" strokeOpacity="0.2" />
-          )}
-
-          {/* Area fill */}
-          <path d={areaSmooth} fill="url(#obsGrad)" />
-
-          {/* Temperature curve */}
-          <path d={obsSmooth} fill="none" stroke="var(--accent)"
-            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-
-          {/* Forecast dashed projection */}
-          <path d={fcPath} fill="none" stroke="var(--accent)"
-            strokeWidth="1.5" strokeDasharray="4 4" opacity="0.45" />
-
-          {/* ── Persistent annotations (rendered before hover so hover is on top) ── */}
-
-          {/* Current obs dot */}
-          <circle cx={xFor(last.elapsed)} cy={yFor(last.temp)} r="4.5"
-            fill="var(--surface)" stroke="var(--accent)" strokeWidth="2" />
-
-          {/* Forecast dot + label — text uses white halo (no background rect) */}
-          {(() => {
-            const fcX = xFor(fcElapsed);
-            const goLeft = fcX + 58 > W - padR;
-            const lx = goLeft ? fcX - 56 : fcX + 9;
-            return (
-              <g>
-                <circle cx={fcX} cy={fcY} r="3.5"
-                  fill="var(--surface)" stroke="var(--accent)" strokeWidth="1.8" opacity="0.7" />
-                <text x={lx} y={fcY - 2} fontSize="13" fontWeight="700"
-                  fill="var(--accent)" fontFamily="var(--mono)"
-                  stroke="var(--surface)" strokeWidth="5" paintOrder="stroke fill">
-                  {forecastTemp}°F
-                </text>
-                <text x={lx} y={fcY + 11} fontSize="9.5"
-                  fill="var(--accent)" fontFamily="var(--mono)" opacity="0.65"
-                  stroke="var(--surface)" strokeWidth="4" paintOrder="stroke fill">
-                  预测峰值
-                </text>
-              </g>
-            );
-          })()}
-
-          {/* Max obs label — white halo, no background rect */}
-          {maxPt && maxPt !== last && (
-            <text
-              x={xFor(maxPt.elapsed)} y={yFor(maxPt.temp) - 8}
-              fontSize="12" textAnchor="middle"
-              fill="var(--neg)" fontFamily="var(--mono)" fontWeight="700"
-              stroke="var(--surface)" strokeWidth="5" paintOrder="stroke fill">
-              {maxPt.temp}°
-            </text>
-          )}
-
-          {/* ── Hover overlay — LAST so it renders above everything ── */}
-          {hovered && (
-            <g>
-              <line x1={hovered.svgX} x2={hovered.svgX} y1={padT} y2={H - padB}
-                stroke="var(--ink-3)" strokeWidth="0.75" strokeOpacity="0.35" />
-              <circle cx={hovered.svgX} cy={hovered.svgY} r="7"
-                fill="var(--accent)" opacity="0.10" />
-              <circle cx={hovered.svgX} cy={hovered.svgY} r="3.5"
-                fill="var(--accent)" />
-              {/* Card tooltip */}
-              <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="9"
-                fill="var(--ink-1)" opacity="0.93" />
-              <line x1={tipX + 8} x2={tipX + tipW - 8} y1={tipY + 1.5} y2={tipY + 1.5}
-                stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" />
-              <text x={tipX + 11} y={tipY + 22} fontSize="16" fontWeight="700"
-                fill="white" fontFamily="var(--mono)">{hovered.temp}°F</text>
-              <text x={tipX + 11} y={tipY + 36} fontSize="10"
-                fill="rgba(255,255,255,0.4)" fontFamily="var(--mono)">{hovTime}</text>
-            </g>
-          )}
-        </svg>
-      </div>
-
-      {/* Stats row */}
-      <div className="chart-stats-row">
-        <div className="chart-stat">
-          <div className="cs-label">昨日最高</div>
-          <div className="cs-value hot">{maxPt.temp}<span>°F</span></div>
-          <div className="cs-sub">{fmtHour(maxPt.localHour)} local</div>
+      <div className="hourly-list">
+        <div className="hourly-list-head">
+          <span>时间</span>
+          <span>温度</span>
+          <span></span>
+          <span>风向风速</span>
+          <span>天气</span>
         </div>
-        <div className="chart-stat-div" />
-        <div className="chart-stat">
-          <div className="cs-label">今日最低</div>
-          <div className="cs-value cool">{minPt.temp}<span>°F</span></div>
-          <div className="cs-sub">{fmtHour(minPt.localHour)} local</div>
-        </div>
-        <div className="chart-stat-div" />
-        <div className="chart-stat">
-          <div className="cs-label">当前温度{hasLive ? " · LIVE" : ""}</div>
-          <div className="cs-value live">{last.temp}<span>°F</span></div>
-          <div className="cs-sub">{fmtHour(last.localHour)} · {deltaLabel} <span className={delta > 0 ? "pos" : delta < 0 ? "neg" : ""}>{delta > 0 ? "+" : ""}{delta}°</span></div>
-        </div>
-        <div className="chart-stat-div" />
-        <div className="chart-stat">
-          <div className="cs-label">预测峰值 · Forecast</div>
-          <div className="cs-value forecast">{forecastTemp}<span>°F</span></div>
-          <div className="cs-sub" title="σ = 约68%概率最高温在均值±σ范围内">
-            {live?.distribution?.adjustedStd ? `σ ±${live.distribution.adjustedStd}°F` : `conf ${Math.round(market.forecastConf * 100)}%`}
-            {live?.distribution?.corrections?.total
-              ? ` · 修正${live.distribution.corrections.total > 0 ? "+" : ""}${live.distribution.corrections.total}°F`
-              : ""}
+
+        {Object.entries(grouped).map(([date, hours]) => (
+          <div key={date} className="hourly-group">
+            <div className="hourly-date-label">
+              {date === todayStr ? "今天 Today" : "明天 Tomorrow"}
+            </div>
+            {hours.map((h, i) => {
+              const isCurrent = date === todayStr && h.localHour === nowLocalHour;
+              const isPeak    = h === peak;
+              const barW = Math.max(4, (h.temp - minTemp) / Math.max(1, maxTemp - minTemp) * 100);
+              return (
+                <div key={i} className={`hourly-row${isCurrent ? " is-current" : ""}${isPeak ? " is-peak" : ""}${!h.isDaytime ? " is-night" : ""}`}>
+                  <div className="hl-time">
+                    {String(h.localHour).padStart(2,"0")}:00
+                    {isCurrent && <span className="hl-now-dot" />}
+                  </div>
+                  <div className="hl-temp" style={isPeak ? { color: "var(--neg)", fontWeight: 700 } : {}}>
+                    {h.temp}°F
+                    {isPeak && <span className="hl-peak-badge">峰值</span>}
+                  </div>
+                  <div className="hl-bar-wrap">
+                    <div className="hl-bar-fill" style={{ width: `${barW}%`, background: tempColor(h.temp) }} />
+                  </div>
+                  <div className="hl-wind">{h.windDirection} {h.windSpeed}</div>
+                  <div className="hl-cond">{h.shortForecast}</div>
+                </div>
+              );
+            })}
           </div>
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -1724,7 +1517,7 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
       </div>
 
       <div style={{ height: 16 }} />
-      <HourlyChart market={market} live={live} />
+      <HourlyList market={market} live={live} />
 
       <div style={{ height: 16 }} />
       <div className="ana-row-2">

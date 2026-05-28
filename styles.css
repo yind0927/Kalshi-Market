@@ -2990,6 +2990,126 @@ input { font-family: inherit; }
 }
 
 /* ============================================================
+ * Hourly Forecast List
+ * ============================================================ */
+.hl-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.hl-legend-item { display: flex; align-items: center; gap: 5px; }
+
+.hourly-list {
+  margin-top: 6px;
+  overflow-y: auto;
+  max-height: 560px;
+}
+
+.hourly-list-head {
+  display: grid;
+  grid-template-columns: 58px 68px 1fr 110px 1fr;
+  gap: 10px;
+  padding: 4px 10px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-4);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+.hourly-group { margin-bottom: 2px; }
+
+.hourly-date-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 10px 10px 5px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+.hourly-row {
+  display: grid;
+  grid-template-columns: 58px 68px 1fr 110px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s;
+}
+.hourly-row:hover { background: var(--surface-2); }
+.hourly-row.is-current { background: var(--accent-soft); }
+.hourly-row.is-peak    { background: var(--neg-soft); }
+.hourly-row.is-night   { opacity: 0.72; }
+
+.hl-time {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.hl-now-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--pos);
+  flex-shrink: 0;
+}
+
+.hl-temp {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-1);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.hl-peak-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--neg);
+  background: var(--neg-soft);
+  border-radius: 3px;
+  padding: 1px 5px;
+  letter-spacing: 0.04em;
+}
+
+.hl-bar-wrap {
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.hl-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.hl-wind {
+  font-size: 12px;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.hl-cond {
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================================
  * Mobile — ≤ 640px
  * ============================================================ */
 @media (max-width: 640px) {
@@ -3153,4 +3273,8 @@ input { font-family: inherit; }
   .settings-drawer { width: 100%; border-left: none; }
   .settings-head { padding: 20px 16px 14px; }
   .settings-body { padding: 16px; }
+
+  /* ── Hourly list mobile ── */
+  .hourly-row { grid-template-columns: 46px 56px 1fr 80px; gap: 6px; }
+  .hl-cond { display: none; }
 }
