@@ -128,8 +128,9 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
         const edge = maxE.model - maxE.market;
         const cls  = edge > 0.02 ? "pos" : edge < -0.02 ? "neg" : "flat";
         const isFocus = m.id === focusId;
+        // forecastHigh = model ensemble mean = Kalshi settlement reference (most useful for trading)
         const temp = m.forecastHigh ?? m.currentObs ?? "--";
-        const strokeW = compact ? 1.5 : Math.min(7, 1.5 + Math.abs(edge) * 48);
+        const strokeW = compact ? 1.2 : Math.min(5, 0.8 + Math.abs(edge) * 34);
 
         return (
           <g
@@ -169,20 +170,20 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
                 </text>
                 {/* Degree mark */}
                 <text
-                  x={x + (String(temp).length > 2 ? 12 : 9)}
-                  y={y - 7}
+                  x={x + (String(temp).length > 2 ? 10 : 7)}
+                  y={y - 6}
                   className="badge-deg"
                   textAnchor="start"
                 >
                   °
                 </text>
-                {/* City name below badge */}
+                {/* City name below badge — larger for readability */}
                 <text
-                  x={x} y={y + R + 11}
+                  x={x} y={y + R + 13}
                   className={`badge-name${isFocus ? " focus" : ""}`}
                   textAnchor="middle"
                 >
-                  {m.city}
+                  {m.cnCity} {m.city}
                 </text>
               </>
             )}
@@ -268,7 +269,8 @@ function MapHero({ markets, onOpen }) {
                 onMouseEnter={() => setHover(m)}
                 onMouseLeave={() => setHover(null)}
               >
-                <span className="mapm-chip-city">{m.city}</span>
+                <span className="mapm-chip-city">{m.cnCity}</span>
+                <span className="mapm-chip-en">{m.city}</span>
                 <span className="mapm-chip-edge">{e > 0 ? "+" : ""}{(e * 100).toFixed(0)}pp</span>
               </button>
             );
