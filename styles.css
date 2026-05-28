@@ -2712,7 +2712,7 @@ input { font-family: inherit; }
 }
 .obs-live-stats {
   display: flex;
-  gap: 24px;
+  gap: 36px;
   flex-wrap: wrap;
 }
 .obs-stat {

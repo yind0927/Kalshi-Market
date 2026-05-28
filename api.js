@@ -128,6 +128,7 @@ window.KW_API = (() => {
       ? dirs[Math.round(p.windDirection.value / 22.5) % 16] : "—";
 
     const windKt = msToKt(p.windSpeed?.value);
+    const windMs = p.windSpeed?.value != null ? +p.windSpeed.value.toFixed(1) : null;
 
     // Wind speed → Beaufort-based category (Chinese)
     function windCategory(kt) {
@@ -184,8 +185,10 @@ window.KW_API = (() => {
       humidity,                          // % RH (Magnus formula)
       windDirection: p.windDirection?.value,
       windCompass:   compass,
-      windSpeed:     windKt,
+      windSpeed:     windKt,       // knots — used in wind correction (>10kt threshold)
+      windSpeedMs:   windMs,       // m/s — displayed in obs strip
       windGust:      msToKt(p.windGust?.value),
+      windGustMs:    p.windGust?.value != null ? +p.windGust.value.toFixed(1) : null,
       windCategory:  windCategory(windKt),
       cloudCoverPct,                     // 0–100 estimated %
       cloudCode,                         // METAR code: FEW/SCT/BKN/OVC

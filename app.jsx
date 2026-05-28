@@ -1419,7 +1419,7 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
             </div>
             <div className="obs-stat">
               <span className="obs-stat-label">风速</span>
-              <span className="obs-stat-val">{obs.windCompass} {obs.windSpeed != null ? `${obs.windSpeed}kt` : "—"}{obs.windGust ? ` G${obs.windGust}` : ""}</span>
+              <span className="obs-stat-val">{obs.windCompass} {obs.windSpeedMs != null ? `${obs.windSpeedMs}m/s` : "—"}{obs.windGustMs ? ` G${obs.windGustMs}` : ""}</span>
               <span className="obs-stat-sub">{obs.windCategory || "—"}</span>
             </div>
             <div className="obs-stat">
