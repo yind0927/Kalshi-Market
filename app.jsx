@@ -163,25 +163,39 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
  * ───────────────────────────────────────────────────────── */
 function MapHero({ markets, onOpen }) {
   const [hover, setHover] = useState(null);
+  const SVG_W = 720, SVG_H = 380;
+
   const sorted = useMemo(() =>
     [...markets].sort((a, b) => {
       const ae = Math.max(...a.buckets.map((x) => Math.abs(x.model - x.market)));
       const be = Math.max(...b.buckets.map((x) => Math.abs(x.model - x.market)));
       return be - ae;
     }), [markets]);
+
   const topMarket = sorted[0];
   const display   = hover || topMarket;
   const maxE      = maxEdgeBucket(display);
   const edge      = maxE.model - maxE.market;
 
+  // Tooltip position derived from SVG city coords (percentage of viewBox)
+  const tooltipStyle = useMemo(() => {
+    const coord = CITY_COORDS[display.city];
+    if (!coord) return {};
+    const [sx, sy] = coord;
+    const xPct = (sx / SVG_W) * 100;
+    const yPct = (sy / SVG_H) * 100;
+    const tx = xPct > 52 ? "-108%" : "16px";
+    const ty = yPct > 62 ? "-108%" : "16px";
+    return { left: `${xPct}%`, top: `${yPct}%`, transform: `translate(${tx}, ${ty})` };
+  }, [display.city]);
+
   return (
-    <div className="map-card">
+    <div className="map-card map-card-immersive">
       <div className="map-card-head">
         <div>
           <div className="hero-eyebrow">Live Market Map</div>
           <h2 className="map-title">全美机会分布</h2>
         </div>
-        {/* Legend pills — moved out of map to avoid overlapping bubbles */}
         <div className="map-legend-pills">
           <span className="legend-pill pos"><span className="ld pos" />YES 低估</span>
           <span className="legend-pill neg"><span className="ld neg" />NO 低估</span>
@@ -190,52 +204,54 @@ function MapHero({ markets, onOpen }) {
         </div>
       </div>
 
-      <div className="map-body">
-        <div className="map-viz">
-          <USMap markets={markets} focusId={display?.id} onSelect={onOpen} onHover={setHover} />
-        </div>
+      {/* Full-width map with floating tooltip */}
+      <div className="map-viz-full">
+        <USMap markets={markets} focusId={display?.id} onSelect={onOpen} onHover={setHover} immersive />
 
-        <div className="map-detail">
-          <div className="map-detail-eyebrow">
-            {hover ? "HOVERING" : "TOP OPPORTUNITY"}
-            <span className="map-detail-pulse" />
-          </div>
-          <div className="map-detail-city">
-            {display.city} <span className="cn">{display.cnCity}</span>
-          </div>
-          <div className="map-detail-id">{display.id}</div>
-
-          <div className="map-detail-stats">
-            <div className="ms">
-              <div className="l">Current</div>
-              <div className="v">{display.currentObs}<span className="d">°F</span></div>
+        <div className={`map-tooltip ${hover ? "visible" : "pinned"}`} style={tooltipStyle}>
+          <div className="map-tt-head">
+            <div className="map-tt-city">
+              {display.city}
+              <span className="map-tt-cn">{display.cnCity}</span>
             </div>
-            <div className="ms">
-              <div className="l">Forecast</div>
-              <div className="v">{display.forecastHigh}<span className="d">°F</span></div>
-            </div>
-            <div className="ms">
-              <div className="l">Max Edge</div>
-              <div className={`v ${edge > 0 ? "pos" : "neg"}`}>
-                {edge > 0 ? "+" : "−"}{Math.abs(edge * 100).toFixed(1)}<span className="d">pp</span>
-              </div>
-            </div>
+            <div className={`map-tt-pulse ${hover ? "" : "show"}`} />
           </div>
 
-          <div className="map-detail-bucket">
+          <div className="map-tt-id">{display.id}</div>
+
+          <div className="map-tt-stats">
+            <div className="map-tt-stat">
+              <span className="map-tt-label">实测</span>
+              <span className="map-tt-val">{display.currentObs}<em>°F</em></span>
+            </div>
+            <div className="map-tt-stat">
+              <span className="map-tt-label">预报高</span>
+              <span className="map-tt-val">{display.forecastHigh}<em>°F</em></span>
+            </div>
+            <div className="map-tt-stat">
+              <span className="map-tt-label">最大偏差</span>
+              <span className={`map-tt-val ${edge > 0 ? "pos" : "neg"}`}>
+                {edge > 0 ? "+" : "−"}{Math.abs(edge * 100).toFixed(1)}<em>pp</em>
+              </span>
+            </div>
+          </div>
+
+          <div className="map-tt-bucket">
             <span className="bucket-tag">{maxE.range}</span>
-            <span className="bucket-vs">
-              market <strong>{Math.round(maxE.market * 100)}¢</strong> · model <strong>{Math.round(maxE.model * 100)}%</strong>
+            <span className="map-tt-vs">
+              市价 <strong>{Math.round(maxE.market * 100)}¢</strong>
+              <span className="map-tt-sep">vs</span>
+              模型 <strong>{Math.round(maxE.model * 100)}%</strong>
             </span>
           </div>
 
-          <button className="map-detail-cta" onClick={() => onOpen(display.id)}>
-            View deep analysis →
+          <button className="map-tt-cta" onClick={() => onOpen(display.id)}>
+            深度分析 →
           </button>
         </div>
       </div>
 
-      {/* City ranking strip — sorted by |edge|, quick overview without opening analysis */}
+      {/* City ranking strip */}
       <div className="map-city-strip">
         {sorted.map(m => {
           const me = maxEdgeBucket(m);
