@@ -3199,17 +3199,20 @@ input { font-family: inherit; }
 .bottom-tab-bar { display: none; }
 
 @media (max-width: 640px) {
-  /* ── Bottom nav ── */
+
+  /* ════════════════════════════════════════════════════════
+   * Bottom tab bar
+   * ════════════════════════════════════════════════════════ */
   .bottom-tab-bar {
     display: flex;
     position: fixed;
     bottom: 0; left: 0; right: 0;
     z-index: 100;
-    background: color-mix(in oklab, var(--surface) 94%, transparent);
-    backdrop-filter: saturate(180%) blur(16px);
-    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    background: color-mix(in oklab, var(--surface) 96%, transparent);
+    backdrop-filter: saturate(200%) blur(20px);
+    -webkit-backdrop-filter: saturate(200%) blur(20px);
     border-top: 1px solid var(--border);
-    align-items: stretch;
+    align-items: flex-start;   /* items start at top of bar, safe area is below */
     justify-content: space-around;
     height: calc(56px + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -3219,9 +3222,10 @@ input { font-family: inherit; }
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 2px;
     flex: 1;
-    padding: 8px 0 6px;
+    height: 56px;              /* fixed to non-safe-area portion */
+    padding: 0;
     background: none;
     border: none;
     cursor: pointer;
@@ -3234,128 +3238,220 @@ input { font-family: inherit; }
     min-width: 0;
   }
   .btab.active { color: var(--accent); }
-  .btab svg { opacity: 0.5; transition: opacity 0.15s; }
+  .btab svg { opacity: 0.45; transition: opacity 0.15s; }
   .btab.active svg { opacity: 1; }
   .btab-center-pill {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-bottom: 4px;
+    height: 56px;
   }
   .btab-window {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
-    padding: 5px 11px;
+    padding: 6px 14px;
     border-radius: 20px;
     background: var(--bg-2);
     border: 1px solid var(--border);
     color: var(--ink-3);
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     white-space: nowrap;
   }
   .btab-window.active {
-    background: var(--pos-soft);
-    border-color: color-mix(in oklab, var(--pos) 30%, transparent);
+    background: color-mix(in oklab, var(--pos) 12%, transparent);
+    border-color: color-mix(in oklab, var(--pos) 35%, transparent);
     color: var(--pos);
   }
 
-  /* ── TopBar: strip to essentials ── */
+  /* ════════════════════════════════════════════════════════
+   * TopBar — logo + controls on ONE ROW
+   * flex-wrap: wrap from the 880px breakpoint is overridden here
+   * ════════════════════════════════════════════════════════ */
   .tabs { display: none !important; }
-  .topbar { padding: 0 14px; height: 50px; gap: 10px; }
+  .topbar {
+    padding: 0 14px;
+    height: 50px;
+    gap: 8px;
+    flex-wrap: nowrap;         /* KEY: keep brand + controls on same line */
+  }
   .brand-name em { display: none; }
-  .brand-name { font-size: 13px; }
+  .brand-name { font-size: 13px; font-weight: 600; }
+  .brand-mark { width: 28px; height: 28px; border-radius: 8px; }
   .topbar-right { gap: 6px; }
   .bjt-clock .bjt-label { display: none; }
-  .bjt-time { font-size: 15px; }
+  .bjt-time { font-size: 14px; font-weight: 600; }
+  .window-badge { font-size: 11px; padding: 5px 10px; border-radius: 20px; }
   .live-count-badge { display: none; }
   .divider-v { display: none; }
   .refresh-stamp { display: none; }
+  .icon-btn { width: 32px; height: 32px; border-radius: 8px; }
 
-  /* ── View padding (above bottom bar) ── */
-  .view { padding: 14px 12px calc(72px + env(safe-area-inset-bottom, 0px)); }
+  /* ════════════════════════════════════════════════════════
+   * View / page padding
+   * ════════════════════════════════════════════════════════ */
+  .view { padding: 12px 12px calc(68px + env(safe-area-inset-bottom, 0px)); }
 
-  /* ── MapHero: responsive SVG map ── */
+  /* ════════════════════════════════════════════════════════
+   * iOS-style cards — rounded, clean
+   * ════════════════════════════════════════════════════════ */
+  .card { padding: 18px 16px; border-radius: 18px; }
+  .card-head { margin-bottom: 14px; flex-wrap: wrap; gap: 6px; }
+  .card-head h3 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .card-head .sub { font-size: 11px; }
+  .hero-eyebrow { font-size: 9px; letter-spacing: 0.12em; }
+
+  /* ════════════════════════════════════════════════════════
+   * MapHero — show SVG map + improved city chips
+   * ════════════════════════════════════════════════════════ */
+  .mapm-card { border-radius: 18px; }
   .mapm-canvas { display: block; }
-  .mapm-canvas .us-map { max-height: 200px; }
-  .mapm-head { flex-direction: column; gap: 10px; }
-  .mapm-title { font-size: 17px; }
+  .mapm-canvas .us-map { max-height: 185px; }
+  .mapm-head { flex-direction: column; gap: 6px; }
+  .mapm-title { font-size: 20px; font-weight: 800; letter-spacing: -0.025em; }
   .mapm-active { display: none; }
-  .mapm-chips { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .mapm-chip { flex-direction: column; gap: 2px; padding: 8px 6px; text-align: center; align-items: center; }
-  .mapm-chip-en { display: none; }
-  .mapm-footer { flex-direction: column; gap: 8px; }
+  .mapm-footer { flex-direction: column; gap: 10px; }
   .mapm-legend { display: none; }
+  /* 3-col chip grid — iOS-style grouped buttons */
+  .mapm-chips {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .mapm-chip {
+    flex-direction: column;
+    gap: 3px;
+    padding: 12px 6px 10px;
+    text-align: center;
+    align-items: center;
+    border-radius: 14px;
+  }
+  .mapm-chip-city { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .mapm-chip-edge { font-size: 12px; font-weight: 600; margin-left: 0; }
+  .mapm-chip-en { display: none; }
 
-  /* ── CityTimeline: horizontal scroll ── */
-  /* tl-inner-scroll is now the positioning context on mobile (position:relative),
-     so padding-top must be on it (not tl-wrap) to push rows below the axis */
+  /* ════════════════════════════════════════════════════════
+   * CityTimeline — horizontal scroll, show NWS temp
+   * ════════════════════════════════════════════════════════ */
+  /* tl-inner-scroll becomes position:relative on mobile, so padding-top
+     must live on it (not tl-wrap) to push rows below the absolute axis */
   .tl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-top: 0; }
   .tl-inner-scroll { min-width: 520px; position: relative; padding-top: 32px; }
-  .tl-row-label { width: 88px; min-width: 88px; }
-  .tl-cn, .tl-tz, .tl-nws-tag { display: none; }
-  .tl-city { font-size: 11px; }
-  .tl-axis { left: 88px; }
+  .tl-row-label { width: 96px; min-width: 96px; }
+  .tl-cn, .tl-tz { display: none; }
+  .tl-nws-tag { display: inline-flex; font-size: 9px; padding: 0 3px; }
+  .tl-city { font-size: 11px; font-weight: 700; }
+  .tl-axis { left: 96px; }
   .tl-card-head { flex-direction: column; gap: 8px; }
-  .tl-legend { flex-wrap: wrap; gap: 6px; }
+  .tl-card-head h3 { font-size: 15px; font-weight: 700; }
+  .tl-legend { flex-wrap: wrap; gap: 5px; font-size: 10px; }
+  .tl-model-badge { font-size: 10px; padding: 3px 8px; }
 
-  /* ── KPIs 2-col grid ── */
+  /* ════════════════════════════════════════════════════════
+   * KPI cards — 2-column
+   * ════════════════════════════════════════════════════════ */
   .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .kpi { padding: 14px 14px; }
-  .kpi-value { font-size: 26px; }
+  .kpi { padding: 16px 14px; border-radius: 18px; }
+  .kpi-value { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; }
   .kpi-label .en { display: none; }
   .kpi-foot { font-size: 10px; }
 
-  /* ── Market cards: single column ── */
+  /* ════════════════════════════════════════════════════════
+   * Market cards — single column
+   * ════════════════════════════════════════════════════════ */
   .card-grid { grid-template-columns: 1fr; gap: 10px; }
-  .mkt-card { padding: 14px; }
-  .mkt-card-title { font-size: 15px; }
-  .mkt-temp-row { gap: 8px; }
-  .mkt-temp-block .v { font-size: 22px; }
+  .mkt-card { padding: 16px; border-radius: 18px; }
+  .mkt-card-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+  .mkt-temp-row { gap: 10px; }
+  .mkt-temp-block .v { font-size: 24px; font-weight: 800; }
   .mkt-temp-spark { display: none; }
   .mkt-dist { gap: 3px; }
 
-  /* ── Playbook ── */
+  /* ════════════════════════════════════════════════════════
+   * Playbook — match desktop: show bucket + tag selector
+   * ════════════════════════════════════════════════════════ */
   .playbook-head { flex-direction: column; gap: 8px; }
-  .pb-nums { display: none; }
-  .pb-bucket { font-size: 11px; max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pb-tag-selector { display: none; }
-  .pb-city-row { gap: 5px; flex-wrap: wrap; }
   .pb-time { flex-direction: row; gap: 8px; align-items: center; }
+  .pb-bjt { font-size: 26px; letter-spacing: -0.03em; }
 
-  /* ── Analysis page ── */
-  .ana-hero { flex-direction: column; gap: 14px; border-radius: 12px; padding: 18px 14px; }
+  /* Mobile row: flex-wrap for 2-line layout */
+  .pb-city-row {
+    display: flex !important;       /* override the grid */
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 12px 16px;
+  }
+  .pb-city-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+  }
+  /* Edge pill and arrow stay on line 1 (after city name) */
+  .pb-city-row > .edge-pill { flex-shrink: 0; }
+  .pb-arrow { flex-shrink: 0; font-size: 16px; }
+
+  /* Bucket + tag selector drop to line 2 */
+  .pb-bucket {
+    display: block;            /* restore: 900px hides it */
+    width: 100%;
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-top: -2px;
+  }
+  .pb-nums { display: none; }
+  .pb-meta { display: none; }
+  .pb-tag-selector {
+    display: flex;
+    gap: 5px;
+    width: 100%;
+    margin-top: 2px;
+  }
+  .pb-tag-btn {
+    flex: 1;
+    font-size: 10px;
+    padding: 5px 4px;
+    border-radius: 8px;
+    text-align: center;
+    min-width: 0;
+  }
+  .pb-filter-bar { padding: 8px 16px; }
+
+  /* ════════════════════════════════════════════════════════
+   * Analysis page
+   * ════════════════════════════════════════════════════════ */
+  .ana-hero { flex-direction: column; gap: 14px; border-radius: 16px; padding: 18px 16px; }
   .ana-hero-right { width: 100%; }
-  .ana-hero-title { font-size: 20px; }
+  .ana-hero-title { font-size: 20px; font-weight: 800; }
   .ana-hero-title .cn { display: block; font-size: 12px; margin-top: 2px; }
   .ana-hero-sub { font-size: 11px; }
   .ana-hero-tags { flex-wrap: wrap; gap: 5px; }
   .ana-selector { flex-wrap: wrap; font-size: 12px; gap: 6px; margin-bottom: 14px; }
   .ana-selector select { font-size: 12px; padding: 5px 24px 5px 8px; }
-  .ana-back-btn { padding: 4px 8px; font-size: 11px; }
+  .ana-back-btn { padding: 5px 10px; font-size: 12px; }
 
-  /* ── Prob distribution ── */
+  /* ════════════════════════════════════════════════════════
+   * Prob distribution
+   * ════════════════════════════════════════════════════════ */
   .prob-row.head { display: none; }
   .prob-row { display: flex; flex-wrap: wrap; padding: 10px 0; gap: 4px 10px; }
-  .prob-row .range { width: 100%; font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+  .prob-row .range { width: 100%; font-weight: 700; font-size: 12px; margin-bottom: 2px; }
   .prob-row .num { font-size: 11px; }
   .prob-bars { display: none; }
 
-  /* ── Ensemble ── */
+  /* ════════════════════════════════════════════════════════
+   * Ensemble
+   * ════════════════════════════════════════════════════════ */
   .ens-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .ens-model { padding: 12px; }
-  .ens-model-temp { font-size: 22px; }
+  .ens-model { padding: 12px; border-radius: 14px; }
+  .ens-model-temp { font-size: 24px; font-weight: 800; }
 
-  /* ── Chart ── */
+  /* ════════════════════════════════════════════════════════
+   * Chart
+   * ════════════════════════════════════════════════════════ */
   .obs-chart-wrap { height: 200px; }
   .chart-stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
   .chart-stat-div:nth-child(4) { display: none; }
-
-  /* ── Cards base ── */
-  .card { padding: 16px; border-radius: 12px; }
-  .card-head { margin-bottom: 12px; flex-wrap: wrap; gap: 6px; }
-  .card-head h3 { font-size: 13px; }
-  .card-head .sub { font-size: 11px; }
 }
