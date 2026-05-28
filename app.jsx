@@ -82,8 +82,8 @@ const CITY_COORDS = {
   "New York":    [645, 198],
   "Miami":       [617, 365],
   "Chicago":     [470, 145],
-  "Austin":      [382, 302],
-  "Dallas":      [390, 273],
+  "Austin":      [365, 308],
+  "Dallas":      [400, 268],
   "Los Angeles": [108, 268],
 };
 
@@ -128,9 +128,10 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
         const edge = maxE.model - maxE.market;
         const cls  = edge > 0.02 ? "pos" : edge < -0.02 ? "neg" : "flat";
         const isFocus = m.id === focusId;
-        // forecastHigh = model ensemble mean = Kalshi settlement reference (most useful for trading)
         const temp = m.forecastHigh ?? m.currentObs ?? "--";
         const strokeW = compact ? 1.2 : Math.min(5, 0.8 + Math.abs(edge) * 34);
+        // Dallas label above badge to avoid Austin overlap
+        const labelY = m.city === "Dallas" ? y - R - 5 : y + R + 13;
 
         return (
           <g
@@ -177,9 +178,9 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
                 >
                   °
                 </text>
-                {/* City name below badge — larger for readability */}
+                {/* City name — Dallas above badge, others below */}
                 <text
-                  x={x} y={y + R + 13}
+                  x={x} y={labelY}
                   className={`badge-name${isFocus ? " focus" : ""}`}
                   textAnchor="middle"
                 >
@@ -429,7 +430,6 @@ function TonightPlaybook({ markets, bjtDec, openAnalysis, pbFilter, setPbFilter,
               <span className="pb-dot" />
               <span>{g.label}</span>
               <span className="pb-group-en">{g.en}</span>
-              <span className="pb-count">{items.length}</span>
               <span className="pb-filter-hint">{isActive ? "↑ 已筛选" : "点击筛选 ↓"}</span>
             </div>
             {items.map(({ m, maxE, edge, status }) => {
@@ -903,7 +903,11 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
   const top = markets
     .map((m) => ({ m, e: Math.max(...m.buckets.map((b) => b.model - b.market)) }))
     .sort((a, b) => b.e - a.e)[0];
-  const activeCount = DATA.markets.filter((m) => m.windowStatus === "active").length;
+  const activeCount = markets.filter(m => {
+    const [es, ee] = m.entryWindowBJT;
+    const now = normH(bjtDec);
+    return now >= normH(es) && now < normH(ee);
+  }).length;
   const liveCount = DATA.markets.filter(m => liveData?.[m.id]?.observation).length;
 
   return (
@@ -952,7 +956,7 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
             <span className="cn">活跃城市</span>
           </div>
           <div className="kpi-value">{activeCount}</div>
-          <div className="kpi-foot">窗口内 · {DATA.markets.length - activeCount} 待入场</div>
+          <div className="kpi-foot">窗口内 · {markets.length - activeCount} 待入场</div>
         </div>
       </div>
 
