@@ -2306,9 +2306,17 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Intercept browser back so it navigates within the app rather than leaving
+  // On mount: seed two history entries so back never exits the app cold.
+  // replaceState overwrites the bare page entry; pushState adds a buffer above it.
   useEffect(() => {
-    const onPop = () => setTab("markets");
+    window.history.replaceState({ view: "markets" }, "");
+    window.history.pushState({ view: "markets" }, "");
+
+    const onPop = () => {
+      setTab("markets");
+      // Re-anchor so the next back press also stays in-app
+      window.history.pushState({ view: "markets" }, "");
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
