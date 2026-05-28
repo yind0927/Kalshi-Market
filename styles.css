@@ -1713,20 +1713,22 @@ input { font-family: inherit; }
 /* Full-width immersive map container */
 .map-viz-full {
   position: relative;
-  background: var(--bg-2);
-  border: 1px solid var(--border);
+  background: oklch(0.91 0.018 245);
+  border: 1px solid oklch(0.82 0.022 245);
   border-radius: var(--radius);
   overflow: hidden;
+  box-shadow: inset 0 0 40px -10px oklch(0.70 0.04 245 / 0.25);
 }
 [data-theme="dark"] .map-viz-full {
-  background: color-mix(in oklab, var(--accent) 5%, oklch(0.17 0.012 255));
-  border-color: var(--border-strong);
+  background: oklch(0.16 0.030 245);
+  border-color: oklch(0.28 0.040 245);
+  box-shadow: inset 0 0 60px -10px oklch(0.10 0.02 245 / 0.8);
 }
 .map-viz-full .us-map {
   display: block;
   width: 100%;
   height: auto;
-  padding: 16px;
+  padding: 20px 24px;
   box-sizing: border-box;
 }
 
@@ -1882,6 +1884,47 @@ input { font-family: inherit; }
   stroke: color-mix(in oklab, var(--ink-3) 30%, var(--border));
 }
 
+/* Immersive map overrides */
+.us-map.immersive .us-outline {
+  fill: oklch(0.93 0.012 245);
+  stroke: oklch(0.80 0.022 245);
+  stroke-width: 2;
+}
+[data-theme="dark"] .us-map.immersive .us-outline {
+  fill: oklch(0.21 0.022 245);
+  stroke: oklch(0.38 0.032 245);
+}
+
+/* Map texture layers */
+.map-dot-bg {
+  fill: none; /* only active in immersive via CSS override below */
+}
+.us-map.immersive .map-dot-bg {
+  fill: url(#dotGrid);
+  color: oklch(0.60 0.04 245);
+  opacity: 0.35;
+}
+.map-land-dots {
+  fill: none;
+}
+.us-map.immersive .map-land-dots {
+  fill: url(#dotGrid);
+  color: oklch(0.44 0.06 245);
+  opacity: 0.55;
+}
+[data-theme="dark"] .us-map.immersive .map-dot-bg {
+  color: oklch(0.55 0.08 245);
+  opacity: 0.25;
+}
+[data-theme="dark"] .us-map.immersive .map-land-dots {
+  color: oklch(0.62 0.10 245);
+  opacity: 0.45;
+}
+
+/* Grid lines (disabled — using dot pattern instead) */
+.us-map .map-grid { display: none; }
+
+/* ── Markers ── */
 .map-marker .halo {
   fill: var(--ink-3);
   opacity: 0.12;
@@ -1889,6 +1932,7 @@ input { font-family: inherit; }
 }
 .map-marker.pos .halo { fill: var(--pos); }
 .map-marker.neg .halo { fill: var(--neg); }
+
 .map-marker .dot {
   fill: var(--ink-3);
   stroke: var(--surface);
@@ -1897,15 +1941,49 @@ input { font-family: inherit; }
 }
 .map-marker.pos .dot { fill: var(--pos); }
 .map-marker.neg .dot { fill: var(--neg); }
+
 .map-marker .dot-inner {
   fill: var(--surface);
   pointer-events: none;
 }
+
+/* Immersive: bloom glow behind dot */
+.map-marker .glow-bloom {
+  fill: var(--ink-3);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.us-map.immersive .map-marker.pos .glow-bloom { fill: var(--pos); opacity: 0.22; }
+.us-map.immersive .map-marker.neg .glow-bloom { fill: var(--neg); opacity: 0.22; }
+.us-map.immersive .map-marker:hover .glow-bloom { opacity: 0.38; }
+.us-map.immersive .map-marker.focus .glow-bloom { opacity: 0.42; }
+
+/* Immersive: dashed edge-ring */
+.map-marker .edge-ring {
+  fill: none;
+  stroke-width: 1.2;
+  opacity: 0;
+}
+.us-map.immersive .map-marker.pos .edge-ring { stroke: var(--pos); opacity: 0.45; }
+.us-map.immersive .map-marker.neg .edge-ring { stroke: var(--neg); opacity: 0.45; }
+.us-map.immersive .map-marker.flat .edge-ring { stroke: var(--ink-4); opacity: 0.3; }
+
+/* Immersive: specular highlight on dot */
+.dot-shine {
+  fill: none;
+  opacity: 0;
+}
+.us-map.immersive .dot-shine {
+  fill: url(#gPos);
+  opacity: 1;
+  pointer-events: none;
+}
+
 .map-marker:hover .halo { opacity: 0.30; }
 .map-marker.focus .halo { opacity: 0.35; }
-.map-marker .glow { display: none; }
-.us-map .map-grid { display: none; }
+.map-marker .glow { display: none; } /* legacy */
 
+/* Labels */
 .map-label {
   font-family: var(--sans);
   font-size: 10px;
@@ -1914,8 +1992,11 @@ input { font-family: inherit; }
   pointer-events: none;
   letter-spacing: 0.01em;
 }
-.map-label.focus { fill: var(--ink-1); font-weight: 600; }
+.map-label.focus { fill: var(--ink-1); font-weight: 700; }
+.us-map.immersive .map-label { font-size: 10.5px; font-weight: 600; fill: var(--ink-1); }
+.us-map.immersive .map-label.focus { font-size: 11.5px; }
 
+/* Pulse ring */
 .pulse-ring {
   stroke: var(--accent);
   stroke-width: 1.5;
@@ -1925,9 +2006,11 @@ input { font-family: inherit; }
   transform-origin: center;
   transform-box: fill-box;
 }
+.us-map.immersive .map-marker.pos .pulse-ring { stroke: var(--pos); stroke-width: 1.8; }
+.us-map.immersive .map-marker.neg .pulse-ring { stroke: var(--neg); stroke-width: 1.8; }
 @keyframes ringPulse {
   0%   { transform: scale(1);    opacity: 0.7; }
-  100% { transform: scale(1.6);  opacity: 0;   }
+  100% { transform: scale(1.7);  opacity: 0;   }
 }
 
 /* Legend */

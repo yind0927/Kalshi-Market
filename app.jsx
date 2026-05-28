@@ -95,23 +95,44 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
         <filter id="usShadow" x="-5%" y="-5%" width="110%" height="115%">
           <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#000" floodOpacity="0.05" />
         </filter>
-        <filter id="markerGlow" x="-100%" y="-100%" width="300%" height="300%">
-          <feGaussianBlur stdDeviation="6" />
+        <filter id="markerGlow" x="-120%" y="-120%" width="340%" height="340%">
+          <feGaussianBlur stdDeviation="9" result="b1" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b2" />
+          <feMerge><feMergeNode in="b1" /><feMergeNode in="b2" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
+        <filter id="labelShadow" x="-20%" y="-40%" width="140%" height="200%">
+          <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#000" floodOpacity="0.35" />
+        </filter>
+        <clipPath id="usClip"><path d={US_PATH} /></clipPath>
+        <pattern id="dotGrid" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+          <circle cx="12" cy="12" r="0.9" className="dot-pattern" />
+        </pattern>
+        <radialGradient id="mapVignette" cx="50%" cy="50%" r="70%">
+          <stop offset="0%" stopOpacity="0" stopColor="#000" />
+          <stop offset="100%" stopOpacity="0.18" stopColor="#000" />
+        </radialGradient>
+        <radialGradient id="gPos" cx="35%" cy="35%" r="65%">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="gNeg" cx="35%" cy="35%" r="65%">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
       {immersive && (
-        <g className="map-grid">
-          {[1, 2, 3, 4].map((i) => (
-            <line key={`h${i}`} x1="0" x2={W} y1={(H * i) / 5} y2={(H * i) / 5} />
-          ))}
-          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <line key={`v${i}`} y1="0" y2={H} x1={(W * i) / 8} x2={(W * i) / 8} />
-          ))}
-        </g>
+        <>
+          {/* Dot grid over whole canvas */}
+          <rect width={W} height={H} fill="url(#dotGrid)" className="map-dot-bg" />
+          {/* Dot grid clipped to land — denser texture on landmass */}
+          <rect width={W} height={H} fill="url(#dotGrid)" clipPath="url(#usClip)" className="map-land-dots" />
+          {/* Vignette */}
+          <rect width={W} height={H} fill="url(#mapVignette)" pointerEvents="none" />
+        </>
       )}
 
-      <path d={US_PATH} className="us-outline" filter="url(#usShadow)" />
+      <path d={US_PATH} className="us-outline" filter={immersive ? undefined : "url(#usShadow)"} />
 
       {markets.map((m, i) => {
         const coord = CITY_COORDS[m.city];
@@ -121,32 +142,53 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
         const edge = maxE.model - maxE.market;
         const cls = edge > 0.02 ? "pos" : edge < -0.02 ? "neg" : "flat";
         const isFocus = m.id === focusId;
-        const r = compact ? (isFocus ? 7 : 4) : Math.min(22, 6 + Math.abs(edge) * (immersive ? 65 : 48));
+        const r = compact ? (isFocus ? 7 : 4) : Math.min(20, 5 + Math.abs(edge) * (immersive ? 58 : 48));
 
         return (
           <g
             key={m.id}
             className={`map-marker ${cls} ${isFocus ? "focus" : ""} ${immersive ? "im" : ""}`}
-            style={{
-              cursor: onSelect ? "pointer" : "default",
-              animationDelay: `${i * 80}ms`,
-            }}
+            style={{ cursor: onSelect ? "pointer" : "default", animationDelay: `${i * 80}ms` }}
             onClick={() => onSelect && onSelect(m.id)}
             onMouseEnter={() => onHover && onHover(m)}
             onMouseLeave={() => onHover && onHover(null)}
           >
             {immersive && (
-              <circle cx={x} cy={y} r={r + 14} className="glow" filter="url(#markerGlow)" />
+              <>
+                {/* Outer bloom glow */}
+                <circle cx={x} cy={y} r={r + 16} className="glow-bloom" filter="url(#markerGlow)" />
+                {/* Outer dashed edge-ring */}
+                <circle cx={x} cy={y} r={r + 9} className="edge-ring" strokeDasharray="3 4" />
+              </>
             )}
-            {!compact && (
-              <circle cx={x} cy={y} r={r + 10} className="halo" />
-            )}
+            {/* Halo */}
+            {!compact && <circle cx={x} cy={y} r={r + (immersive ? 11 : 10)} className="halo" />}
+
+            {/* Main dot */}
             <circle cx={x} cy={y} r={r} className="dot" />
-            <circle cx={x} cy={y} r={Math.max(1.5, r * 0.32)} className="dot-inner" />
-            {(immersive || !compact) && (
-              <text x={x} y={y - r - 9} className={`map-label ${isFocus ? "focus" : ""}`} textAnchor="middle">
-                {m.city}
-              </text>
+            {/* Specular highlight */}
+            {immersive && <circle cx={x} cy={y} r={r} className={`dot-shine ${cls}`} />}
+            {/* Center pinhole */}
+            <circle cx={x} cy={y} r={Math.max(1.5, r * 0.3)} className="dot-inner" />
+
+            {/* City label with pill bg in immersive */}
+            {immersive ? (
+              <g className="map-label-group" filter="url(#labelShadow)">
+                <text x={x} y={y - r - 10} className={`map-label ${isFocus ? "focus" : ""}`} textAnchor="middle">
+                  {m.city}
+                </text>
+              </g>
+            ) : (
+              !compact && (
+                <text x={x} y={y - r - 9} className={`map-label ${isFocus ? "focus" : ""}`} textAnchor="middle">
+                  {m.city}
+                </text>
+              )
+            )}
+
+            {/* Pulse ring on focused city */}
+            {isFocus && (
+              <circle cx={x} cy={y} r={r + (immersive ? 18 : 8)} className="pulse-ring" />
             )}
             {compact && isFocus && (
               <circle cx={x} cy={y} r={r + 6} className="pulse-ring" />
@@ -163,7 +205,8 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
  * ───────────────────────────────────────────────────────── */
 function MapHero({ markets, onOpen }) {
   const [hover, setHover] = useState(null);
-  const SVG_W = 720, SVG_H = 380;
+  const [mousePos, setMousePos] = useState(null);
+  const mapRef = useRef(null);
 
   const sorted = useMemo(() =>
     [...markets].sort((a, b) => {
@@ -177,17 +220,28 @@ function MapHero({ markets, onOpen }) {
   const maxE      = maxEdgeBucket(display);
   const edge      = maxE.model - maxE.market;
 
-  // Tooltip position derived from SVG city coords (percentage of viewBox)
+  const handleMouseMove = useCallback((e) => {
+    const rect = mapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  }, []);
+
+  // Tooltip follows cursor when hovering; anchors top-right when pinned
   const tooltipStyle = useMemo(() => {
-    const coord = CITY_COORDS[display.city];
-    if (!coord) return {};
-    const [sx, sy] = coord;
-    const xPct = (sx / SVG_W) * 100;
-    const yPct = (sy / SVG_H) * 100;
-    const tx = xPct > 52 ? "-108%" : "16px";
-    const ty = yPct > 62 ? "-108%" : "16px";
-    return { left: `${xPct}%`, top: `${yPct}%`, transform: `translate(${tx}, ${ty})` };
-  }, [display.city]);
+    if (hover && mousePos) {
+      const cw = mapRef.current?.offsetWidth || 800;
+      const ch = mapRef.current?.offsetHeight || 420;
+      const flipX = mousePos.x > cw * 0.56;
+      const flipY = mousePos.y > ch * 0.60;
+      return {
+        left: mousePos.x + "px",
+        top:  mousePos.y + "px",
+        transform: `translate(${flipX ? "calc(-100% - 14px)" : "14px"}, ${flipY ? "calc(-100% - 8px)" : "8px"})`,
+      };
+    }
+    // Pinned: top-right corner, always stable
+    return { top: "16px", right: "16px", left: "auto", transform: "none" };
+  }, [hover, mousePos]);
 
   return (
     <div className="map-card map-card-immersive">
@@ -205,7 +259,7 @@ function MapHero({ markets, onOpen }) {
       </div>
 
       {/* Full-width map with floating tooltip */}
-      <div className="map-viz-full">
+      <div className="map-viz-full" ref={mapRef} onMouseMove={handleMouseMove} onMouseLeave={() => { setMousePos(null); setHover(null); }}>
         <USMap markets={markets} focusId={display?.id} onSelect={onOpen} onHover={setHover} immersive />
 
         <div className={`map-tooltip ${hover ? "visible" : "pinned"}`} style={tooltipStyle}>
