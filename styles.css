@@ -3277,20 +3277,23 @@ input { font-family: inherit; }
   /* ── View padding (above bottom bar) ── */
   .view { padding: 14px 12px calc(72px + env(safe-area-inset-bottom, 0px)); }
 
-  /* ── MapHero: no SVG, city chips in grid ── */
-  .mapm-canvas { display: none; }
+  /* ── MapHero: responsive SVG map ── */
+  .mapm-canvas { display: block; }
+  .mapm-canvas .us-map { max-height: 200px; }
   .mapm-head { flex-direction: column; gap: 10px; }
   .mapm-title { font-size: 17px; }
-  .mapm-active-top { flex-wrap: wrap; gap: 6px; }
-  .mapm-chips { display: grid !important; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .mapm-active { display: none; }
+  .mapm-chips { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .mapm-chip { flex-direction: column; gap: 2px; padding: 8px 6px; text-align: center; align-items: center; }
   .mapm-chip-en { display: none; }
   .mapm-footer { flex-direction: column; gap: 8px; }
   .mapm-legend { display: none; }
 
   /* ── CityTimeline: horizontal scroll ── */
-  .tl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .tl-inner-scroll { min-width: 560px; position: relative; }
+  /* tl-inner-scroll is now the positioning context on mobile (position:relative),
+     so padding-top must be on it (not tl-wrap) to push rows below the axis */
+  .tl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-top: 0; }
+  .tl-inner-scroll { min-width: 520px; position: relative; padding-top: 32px; }
   .tl-row-label { width: 88px; min-width: 88px; }
   .tl-cn, .tl-tz, .tl-nws-tag { display: none; }
   .tl-city { font-size: 11px; }
