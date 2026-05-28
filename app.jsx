@@ -88,13 +88,224 @@ const CITY_COORDS = {
 };
 
 function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
-  const W = 720, H = 380;
+  const W = 720, H = 400;
+  const R = compact ? 8 : 26; // badge radius
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className={`us-map ${compact ? "compact" : ""} ${immersive ? "immersive" : ""}`}>
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className={`us-map${compact ? " compact" : ""}${immersive ? " immersive" : ""}`}
+      style={{ overflow: "visible" }}
+    >
       <defs>
-        <filter id="usShadow" x="-5%" y="-5%" width="110%" height="115%">
-          <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#000" floodOpacity="0.05" />
+        <pattern id="mdGrid" x="0" y="0" width="30" height="30" patternUnits="userSpaceOnUse">
+          <circle cx="15" cy="15" r="1.1" className="md-dot" />
+        </pattern>
+        <filter id="badgeFocus" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="6" result="b" />
+          <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
+        <filter id="usShadow2" x="-5%" y="-5%" width="110%" height="115%">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.04" />
+        </filter>
+        <clipPath id="usClipA"><path d={US_PATH} /></clipPath>
+      </defs>
+
+      {/* Dot grid — canvas */}
+      {!compact && <rect width={W} height={H} fill="url(#mdGrid)" className="md-grid-bg" />}
+      {/* Denser dot grid clipped to US landmass */}
+      {!compact && <rect width={W} height={H} fill="url(#mdGrid)" clipPath="url(#usClipA)" className="md-grid-land" />}
+
+      {/* Ghost US outline */}
+      <path d={US_PATH} className="us-ghost" filter={compact ? undefined : "url(#usShadow2)"} />
+
+      {/* City badges */}
+      {markets.map((m, i) => {
+        const coord = CITY_COORDS[m.city];
+        if (!coord) return null;
+        const [x, y] = coord;
+        const maxE = maxEdgeBucket(m);
+        const edge = maxE.model - maxE.market;
+        const cls  = edge > 0.02 ? "pos" : edge < -0.02 ? "neg" : "flat";
+        const isFocus = m.id === focusId;
+        const temp = m.forecastHigh ?? m.currentObs ?? "--";
+        const strokeW = compact ? 2 : Math.min(10, 2 + Math.abs(edge) * 72);
+
+        return (
+          <g
+            key={m.id}
+            className={`badge-marker ${cls}${isFocus ? " focus" : ""}`}
+            style={{ cursor: onSelect ? "pointer" : "default", animationDelay: `${i * 55}ms` }}
+            onClick={() => onSelect?.(m.id)}
+            onMouseEnter={() => onHover?.(m)}
+            onMouseLeave={() => onHover?.(null)}
+          >
+            {/* Focus bloom */}
+            {isFocus && !compact && (
+              <circle cx={x} cy={y} r={R + strokeW / 2 + 10}
+                className={`badge-bloom ${cls}`} filter="url(#badgeFocus)" />
+            )}
+
+            {/* Semi-transparent badge background */}
+            <circle cx={x} cy={y} r={R} className="badge-bg" />
+
+            {/* Edge ring — variable stroke-width */}
+            <circle cx={x} cy={y} r={R}
+              className={`badge-ring ${cls}`}
+              strokeWidth={strokeW}
+              fill="none"
+            />
+
+            {!compact && (
+              <>
+                {/* Temperature — the hero number */}
+                <text
+                  x={x} y={y + 2}
+                  className="badge-temp"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                >
+                  {temp}
+                </text>
+                {/* Degree mark */}
+                <text
+                  x={x + (String(temp).length > 2 ? 17 : 13)}
+                  y={y - 9}
+                  className="badge-deg"
+                  textAnchor="start"
+                >
+                  °
+                </text>
+                {/* City name below badge */}
+                <text
+                  x={x} y={y + R + 14}
+                  className={`badge-name${isFocus ? " focus" : ""}`}
+                  textAnchor="middle"
+                >
+                  {m.city}
+                </text>
+              </>
+            )}
+
+            {/* Compact: tiny pulse for focus */}
+            {compact && isFocus && (
+              <circle cx={x} cy={y} r={R + 5} className="pulse-ring" />
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+ * Map Hero — Markets page (极简数据艺术 redesign)
+ * ───────────────────────────────────────────────────────── */
+function MapHero({ markets, onOpen }) {
+  const [hover, setHover] = useState(null);
+
+  const sorted = useMemo(() =>
+    [...markets].sort((a, b) => {
+      const ae = Math.max(...a.buckets.map(x => Math.abs(x.model - x.market)));
+      const be = Math.max(...b.buckets.map(x => Math.abs(x.model - x.market)));
+      return be - ae;
+    }), [markets]);
+
+  const active = hover || sorted[0];
+  const maxE   = maxEdgeBucket(active);
+  const edge   = maxE.model - maxE.market;
+  const edgeCls = edge > 0.02 ? "pos" : edge < -0.02 ? "neg" : "flat";
+
+  return (
+    <div className="mapm-card">
+      {/* Header */}
+      <div className="mapm-head">
+        <div className="mapm-head-left">
+          <div className="hero-eyebrow">Market Map · 机会分布</div>
+          <h2 className="mapm-title">全美气象市场</h2>
+        </div>
+        <div className="mapm-legend">
+          <span className="mapm-leg-item"><span className="mapm-leg-ring pos" />YES 低估</span>
+          <span className="mapm-leg-item"><span className="mapm-leg-ring neg" />NO 低估</span>
+          <span className="mapm-leg-item mapm-leg-hint">环宽 ∝ |Edge|</span>
+        </div>
+      </div>
+
+      {/* SVG canvas */}
+      <div className="mapm-canvas">
+        <USMap
+          markets={markets}
+          focusId={active?.id}
+          onSelect={onOpen}
+          onHover={setHover}
+        />
+      </div>
+
+      {/* City detail strip — replaces tooltip, no flying bug */}
+      <div className="mapm-detail">
+        <div className="mapm-d-left">
+          <div className="mapm-d-city">
+            {active.city}
+            <span className="mapm-d-cn">{active.cnCity}</span>
+          </div>
+          <div className="mapm-d-id">{active.id}</div>
+        </div>
+
+        <div className="mapm-d-stats">
+          <div className="mapm-d-stat">
+            <span className="mapm-d-label">实测</span>
+            <span className="mapm-d-val">{active.currentObs}<em>°F</em></span>
+          </div>
+          <div className="mapm-d-stat">
+            <span className="mapm-d-label">预报高</span>
+            <span className="mapm-d-val">{active.forecastHigh}<em>°F</em></span>
+          </div>
+          <div className="mapm-d-stat">
+            <span className="mapm-d-label">最大偏差</span>
+            <span className={`mapm-d-val ${edgeCls}`}>
+              {edge > 0 ? "+" : "−"}{Math.abs(edge * 100).toFixed(1)}<em>pp</em>
+            </span>
+          </div>
+          <div className="mapm-d-stat">
+            <span className="mapm-d-label">区间</span>
+            <span className="mapm-d-val sm">{maxE.range}</span>
+          </div>
+          <div className="mapm-d-stat">
+            <span className="mapm-d-label">市价 vs 模型</span>
+            <span className="mapm-d-val sm">
+              {Math.round(maxE.market * 100)}¢ / {Math.round(maxE.model * 100)}%
+            </span>
+          </div>
+        </div>
+
+        <button className="mapm-d-cta" onClick={() => onOpen(active.id)}>
+          深度分析 →
+        </button>
+      </div>
+
+      {/* City ranking chips */}
+      <div className="mapm-chips">
+        {sorted.map(m => {
+          const me = maxEdgeBucket(m);
+          const e  = me.model - me.market;
+          const cls = e > 0.02 ? "pos" : e < -0.02 ? "neg" : "flat";
+          return (
+            <button
+              key={m.id}
+              className={`mapm-chip ${cls}${active.id === m.id ? " active" : ""}`}
+              onClick={() => onOpen(m.id)}
+              onMouseEnter={() => setHover(m)}
+              onMouseLeave={() => setHover(null)}
+            >
+              <span className="mapm-chip-city">{m.city}</span>
+              <span className="mapm-chip-edge">{e > 0 ? "+" : ""}{(e * 100).toFixed(0)}pp</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
         <filter id="markerGlow" x="-120%" y="-120%" width="340%" height="340%">
           <feGaussianBlur stdDeviation="9" result="b1" />
           <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b2" />
@@ -107,227 +318,7 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
         <pattern id="dotGrid" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
           <circle cx="12" cy="12" r="0.9" className="dot-pattern" />
         </pattern>
-        <radialGradient id="mapVignette" cx="50%" cy="50%" r="70%">
-          <stop offset="0%" stopOpacity="0" stopColor="#000" />
-          <stop offset="100%" stopOpacity="0.18" stopColor="#000" />
-        </radialGradient>
-        <radialGradient id="gPos" cx="35%" cy="35%" r="65%">
-          <stop offset="0%" stopColor="#fff" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
-        </radialGradient>
-        <radialGradient id="gNeg" cx="35%" cy="35%" r="65%">
-          <stop offset="0%" stopColor="#fff" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
-        </radialGradient>
-      </defs>
 
-      {immersive && (
-        <>
-          {/* Dot grid over whole canvas */}
-          <rect width={W} height={H} fill="url(#dotGrid)" className="map-dot-bg" />
-          {/* Dot grid clipped to land — denser texture on landmass */}
-          <rect width={W} height={H} fill="url(#dotGrid)" clipPath="url(#usClip)" className="map-land-dots" />
-          {/* Vignette */}
-          <rect width={W} height={H} fill="url(#mapVignette)" pointerEvents="none" />
-        </>
-      )}
-
-      <path d={US_PATH} className="us-outline" filter={immersive ? undefined : "url(#usShadow)"} />
-
-      {markets.map((m, i) => {
-        const coord = CITY_COORDS[m.city];
-        if (!coord) return null;
-        const [x, y] = coord;
-        const maxE = maxEdgeBucket(m);
-        const edge = maxE.model - maxE.market;
-        const cls = edge > 0.02 ? "pos" : edge < -0.02 ? "neg" : "flat";
-        const isFocus = m.id === focusId;
-        const r = compact ? (isFocus ? 7 : 4) : Math.min(20, 5 + Math.abs(edge) * (immersive ? 58 : 48));
-
-        return (
-          <g
-            key={m.id}
-            className={`map-marker ${cls} ${isFocus ? "focus" : ""} ${immersive ? "im" : ""}`}
-            style={{ cursor: onSelect ? "pointer" : "default", animationDelay: `${i * 80}ms` }}
-            onClick={() => onSelect && onSelect(m.id)}
-            onMouseEnter={() => onHover && onHover(m)}
-            onMouseLeave={() => onHover && onHover(null)}
-          >
-            {immersive && (
-              <>
-                {/* Outer bloom glow */}
-                <circle cx={x} cy={y} r={r + 16} className="glow-bloom" filter="url(#markerGlow)" />
-                {/* Outer dashed edge-ring */}
-                <circle cx={x} cy={y} r={r + 9} className="edge-ring" strokeDasharray="3 4" />
-              </>
-            )}
-            {/* Halo */}
-            {!compact && <circle cx={x} cy={y} r={r + (immersive ? 11 : 10)} className="halo" />}
-
-            {/* Main dot */}
-            <circle cx={x} cy={y} r={r} className="dot" />
-            {/* Specular highlight */}
-            {immersive && <circle cx={x} cy={y} r={r} className={`dot-shine ${cls}`} />}
-            {/* Center pinhole */}
-            <circle cx={x} cy={y} r={Math.max(1.5, r * 0.3)} className="dot-inner" />
-
-            {/* City label with pill bg in immersive */}
-            {immersive ? (
-              <g className="map-label-group" filter="url(#labelShadow)">
-                <text x={x} y={y - r - 10} className={`map-label ${isFocus ? "focus" : ""}`} textAnchor="middle">
-                  {m.city}
-                </text>
-              </g>
-            ) : (
-              !compact && (
-                <text x={x} y={y - r - 9} className={`map-label ${isFocus ? "focus" : ""}`} textAnchor="middle">
-                  {m.city}
-                </text>
-              )
-            )}
-
-            {/* Pulse ring on focused city */}
-            {isFocus && (
-              <circle cx={x} cy={y} r={r + (immersive ? 18 : 8)} className="pulse-ring" />
-            )}
-            {compact && isFocus && (
-              <circle cx={x} cy={y} r={r + 6} className="pulse-ring" />
-            )}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────
- * Map Hero — Markets page
- * ───────────────────────────────────────────────────────── */
-function MapHero({ markets, onOpen }) {
-  const [hover, setHover] = useState(null);
-  const [mousePos, setMousePos] = useState(null);
-  const mapRef = useRef(null);
-
-  const sorted = useMemo(() =>
-    [...markets].sort((a, b) => {
-      const ae = Math.max(...a.buckets.map((x) => Math.abs(x.model - x.market)));
-      const be = Math.max(...b.buckets.map((x) => Math.abs(x.model - x.market)));
-      return be - ae;
-    }), [markets]);
-
-  const topMarket = sorted[0];
-  const display   = hover || topMarket;
-  const maxE      = maxEdgeBucket(display);
-  const edge      = maxE.model - maxE.market;
-
-  const handleMouseMove = useCallback((e) => {
-    const rect = mapRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-  }, []);
-
-  // Tooltip follows cursor when hovering; anchors top-right when pinned
-  const tooltipStyle = useMemo(() => {
-    if (hover && mousePos) {
-      const cw = mapRef.current?.offsetWidth || 800;
-      const ch = mapRef.current?.offsetHeight || 420;
-      const flipX = mousePos.x > cw * 0.56;
-      const flipY = mousePos.y > ch * 0.60;
-      return {
-        left: mousePos.x + "px",
-        top:  mousePos.y + "px",
-        transform: `translate(${flipX ? "calc(-100% - 14px)" : "14px"}, ${flipY ? "calc(-100% - 8px)" : "8px"})`,
-      };
-    }
-    // Pinned: top-right corner, always stable
-    return { top: "16px", right: "16px", left: "auto", transform: "none" };
-  }, [hover, mousePos]);
-
-  return (
-    <div className="map-card map-card-immersive">
-      <div className="map-card-head">
-        <div>
-          <div className="hero-eyebrow">Live Market Map</div>
-          <h2 className="map-title">全美机会分布</h2>
-        </div>
-        <div className="map-legend-pills">
-          <span className="legend-pill pos"><span className="ld pos" />YES 低估</span>
-          <span className="legend-pill neg"><span className="ld neg" />NO 低估</span>
-          <span className="legend-pill flat"><span className="ld flat" />均衡</span>
-          <span className="legend-pill hint">气泡 ∝ |Edge|</span>
-        </div>
-      </div>
-
-      {/* Full-width map with floating tooltip */}
-      <div className="map-viz-full" ref={mapRef} onMouseMove={handleMouseMove} onMouseLeave={() => { setMousePos(null); setHover(null); }}>
-        <USMap markets={markets} focusId={display?.id} onSelect={onOpen} onHover={setHover} immersive />
-
-        <div className={`map-tooltip ${hover ? "visible" : "pinned"}`} style={tooltipStyle}>
-          <div className="map-tt-head">
-            <div className="map-tt-city">
-              {display.city}
-              <span className="map-tt-cn">{display.cnCity}</span>
-            </div>
-            <div className={`map-tt-pulse ${hover ? "" : "show"}`} />
-          </div>
-
-          <div className="map-tt-id">{display.id}</div>
-
-          <div className="map-tt-stats">
-            <div className="map-tt-stat">
-              <span className="map-tt-label">实测</span>
-              <span className="map-tt-val">{display.currentObs}<em>°F</em></span>
-            </div>
-            <div className="map-tt-stat">
-              <span className="map-tt-label">预报高</span>
-              <span className="map-tt-val">{display.forecastHigh}<em>°F</em></span>
-            </div>
-            <div className="map-tt-stat">
-              <span className="map-tt-label">最大偏差</span>
-              <span className={`map-tt-val ${edge > 0 ? "pos" : "neg"}`}>
-                {edge > 0 ? "+" : "−"}{Math.abs(edge * 100).toFixed(1)}<em>pp</em>
-              </span>
-            </div>
-          </div>
-
-          <div className="map-tt-bucket">
-            <span className="bucket-tag">{maxE.range}</span>
-            <span className="map-tt-vs">
-              市价 <strong>{Math.round(maxE.market * 100)}¢</strong>
-              <span className="map-tt-sep">vs</span>
-              模型 <strong>{Math.round(maxE.model * 100)}%</strong>
-            </span>
-          </div>
-
-          <button className="map-tt-cta" onClick={() => onOpen(display.id)}>
-            深度分析 →
-          </button>
-        </div>
-      </div>
-
-      {/* City ranking strip */}
-      <div className="map-city-strip">
-        {sorted.map(m => {
-          const me = maxEdgeBucket(m);
-          const e  = me.model - me.market;
-          const cls = e > 0.02 ? "pos" : e < -0.02 ? "neg" : "flat";
-          return (
-            <button
-              key={m.id}
-              className={`map-city-chip ${cls}${display.id === m.id ? " active" : ""}`}
-              onClick={() => onOpen(m.id)}
-              onMouseEnter={() => setHover(m)}
-              onMouseLeave={() => setHover(null)}
-            >
-              <span className="chip-city">{m.city}</span>
-              <span className="chip-edge">{e > 0 ? "+" : ""}{(e * 100).toFixed(0)}pp</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /* ─────────────────────────────────────────────────────────
  * Location Card — Analysis page
