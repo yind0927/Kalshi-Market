@@ -88,8 +88,8 @@ const CITY_COORDS = {
 };
 
 function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
-  const W = 720, H = 400;
-  const R = compact ? 8 : 26; // badge radius
+  const W = 720, H = 380;
+  const R = compact ? 6 : 17; // badge radius — smaller for minimalist feel
 
   return (
     <svg
@@ -98,8 +98,8 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
       style={{ overflow: "visible" }}
     >
       <defs>
-        <pattern id="mdGrid" x="0" y="0" width="30" height="30" patternUnits="userSpaceOnUse">
-          <circle cx="15" cy="15" r="1.1" className="md-dot" />
+        <pattern id="mdGrid" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+          <circle cx="16" cy="16" r="0.85" className="md-dot" />
         </pattern>
         <filter id="badgeFocus" x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="6" result="b" />
@@ -129,7 +129,7 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
         const cls  = edge > 0.02 ? "pos" : edge < -0.02 ? "neg" : "flat";
         const isFocus = m.id === focusId;
         const temp = m.forecastHigh ?? m.currentObs ?? "--";
-        const strokeW = compact ? 2 : Math.min(10, 2 + Math.abs(edge) * 72);
+        const strokeW = compact ? 1.5 : Math.min(7, 1.5 + Math.abs(edge) * 48);
 
         return (
           <g
@@ -142,14 +142,14 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
           >
             {/* Focus bloom */}
             {isFocus && !compact && (
-              <circle cx={x} cy={y} r={R + strokeW / 2 + 10}
+              <circle cx={x} cy={y} r={R + strokeW / 2 + 8}
                 className={`badge-bloom ${cls}`} filter="url(#badgeFocus)" />
             )}
 
             {/* Semi-transparent badge background */}
             <circle cx={x} cy={y} r={R} className="badge-bg" />
 
-            {/* Edge ring — variable stroke-width */}
+            {/* Edge ring — variable stroke-width encodes edge magnitude */}
             <circle cx={x} cy={y} r={R}
               className={`badge-ring ${cls}`}
               strokeWidth={strokeW}
@@ -158,9 +158,9 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
 
             {!compact && (
               <>
-                {/* Temperature — the hero number */}
+                {/* Temperature — hero number */}
                 <text
-                  x={x} y={y + 2}
+                  x={x} y={y + 1}
                   className="badge-temp"
                   textAnchor="middle"
                   dominantBaseline="middle"
@@ -169,8 +169,8 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
                 </text>
                 {/* Degree mark */}
                 <text
-                  x={x + (String(temp).length > 2 ? 17 : 13)}
-                  y={y - 9}
+                  x={x + (String(temp).length > 2 ? 12 : 9)}
+                  y={y - 7}
                   className="badge-deg"
                   textAnchor="start"
                 >
@@ -178,7 +178,7 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
                 </text>
                 {/* City name below badge */}
                 <text
-                  x={x} y={y + R + 14}
+                  x={x} y={y + R + 11}
                   className={`badge-name${isFocus ? " focus" : ""}`}
                   textAnchor="middle"
                 >
@@ -218,16 +218,28 @@ function MapHero({ markets, onOpen }) {
 
   return (
     <div className="mapm-card">
-      {/* Header */}
+      {/* Header: title left, active city quick-read right */}
       <div className="mapm-head">
-        <div className="mapm-head-left">
+        <div>
           <div className="hero-eyebrow">Market Map · 机会分布</div>
           <h2 className="mapm-title">全美气象市场</h2>
         </div>
-        <div className="mapm-legend">
-          <span className="mapm-leg-item"><span className="mapm-leg-ring pos" />YES 低估</span>
-          <span className="mapm-leg-item"><span className="mapm-leg-ring neg" />NO 低估</span>
-          <span className="mapm-leg-item mapm-leg-hint">环宽 ∝ |Edge|</span>
+
+        <div className="mapm-active">
+          <div className="mapm-active-top">
+            <span className="mapm-active-city">{active.city}</span>
+            <span className="mapm-active-cn">{active.cnCity}</span>
+            <EdgePill value={edge} />
+          </div>
+          <div className="mapm-active-bot">
+            <span className="mapm-active-temp">
+              {active.currentObs}° → <strong>{active.forecastHigh}°F</strong>
+            </span>
+            <span className="mapm-active-bucket">{maxE.range}</span>
+            <button className="mapm-active-cta" onClick={() => onOpen(active.id)}>
+              分析 →
+            </button>
+          </div>
         </div>
       </div>
 
@@ -241,67 +253,32 @@ function MapHero({ markets, onOpen }) {
         />
       </div>
 
-      {/* City detail strip — replaces tooltip, no flying bug */}
-      <div className="mapm-detail">
-        <div className="mapm-d-left">
-          <div className="mapm-d-city">
-            {active.city}
-            <span className="mapm-d-cn">{active.cnCity}</span>
-          </div>
-          <div className="mapm-d-id">{active.id}</div>
+      {/* City chips + legend hint */}
+      <div className="mapm-footer">
+        <div className="mapm-chips">
+          {sorted.map(m => {
+            const me = maxEdgeBucket(m);
+            const e  = me.model - me.market;
+            const cls = e > 0.02 ? "pos" : e < -0.02 ? "neg" : "flat";
+            return (
+              <button
+                key={m.id}
+                className={`mapm-chip ${cls}${active.id === m.id ? " active" : ""}`}
+                onClick={() => onOpen(m.id)}
+                onMouseEnter={() => setHover(m)}
+                onMouseLeave={() => setHover(null)}
+              >
+                <span className="mapm-chip-city">{m.city}</span>
+                <span className="mapm-chip-edge">{e > 0 ? "+" : ""}{(e * 100).toFixed(0)}pp</span>
+              </button>
+            );
+          })}
         </div>
-
-        <div className="mapm-d-stats">
-          <div className="mapm-d-stat">
-            <span className="mapm-d-label">实测</span>
-            <span className="mapm-d-val">{active.currentObs}<em>°F</em></span>
-          </div>
-          <div className="mapm-d-stat">
-            <span className="mapm-d-label">预报高</span>
-            <span className="mapm-d-val">{active.forecastHigh}<em>°F</em></span>
-          </div>
-          <div className="mapm-d-stat">
-            <span className="mapm-d-label">最大偏差</span>
-            <span className={`mapm-d-val ${edgeCls}`}>
-              {edge > 0 ? "+" : "−"}{Math.abs(edge * 100).toFixed(1)}<em>pp</em>
-            </span>
-          </div>
-          <div className="mapm-d-stat">
-            <span className="mapm-d-label">区间</span>
-            <span className="mapm-d-val sm">{maxE.range}</span>
-          </div>
-          <div className="mapm-d-stat">
-            <span className="mapm-d-label">市价 vs 模型</span>
-            <span className="mapm-d-val sm">
-              {Math.round(maxE.market * 100)}¢ / {Math.round(maxE.model * 100)}%
-            </span>
-          </div>
+        <div className="mapm-legend">
+          <span className="mapm-leg-item"><span className="mapm-leg-ring pos" />YES</span>
+          <span className="mapm-leg-item"><span className="mapm-leg-ring neg" />NO</span>
+          <span className="mapm-leg-hint">环宽∝Edge</span>
         </div>
-
-        <button className="mapm-d-cta" onClick={() => onOpen(active.id)}>
-          深度分析 →
-        </button>
-      </div>
-
-      {/* City ranking chips */}
-      <div className="mapm-chips">
-        {sorted.map(m => {
-          const me = maxEdgeBucket(m);
-          const e  = me.model - me.market;
-          const cls = e > 0.02 ? "pos" : e < -0.02 ? "neg" : "flat";
-          return (
-            <button
-              key={m.id}
-              className={`mapm-chip ${cls}${active.id === m.id ? " active" : ""}`}
-              onClick={() => onOpen(m.id)}
-              onMouseEnter={() => setHover(m)}
-              onMouseLeave={() => setHover(null)}
-            >
-              <span className="mapm-chip-city">{m.city}</span>
-              <span className="mapm-chip-edge">{e > 0 ? "+" : ""}{(e * 100).toFixed(0)}pp</span>
-            </button>
-          );
-        })}
       </div>
     </div>
   );
