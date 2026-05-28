@@ -320,12 +320,13 @@ window.KW_API = (() => {
         }
 
         results[key] = {
-          dailyMax:    +peak.temp.toFixed(1),
-          peakHour:    peak.hour ?? null,
-          windAtPeak:  peak.wind  != null ? +peak.wind.toFixed(1)  : null,
-          cloudAtPeak: peak.cloud != null ? +peak.cloud            : null,
+          dailyMax:      +peak.temp.toFixed(1),
+          peakHour:      peak.hour    ?? null,
+          windAtPeak:    peak.wind    != null ? +peak.wind.toFixed(1)    : null,
+          windDirAtPeak: peak.windDir != null ? Math.round(peak.windDir) : null,
+          cloudAtPeak:   peak.cloud   != null ? +peak.cloud              : null,
           hourly,
-          updatedAt:   new Date().toISOString(),
+          updatedAt:     new Date().toISOString(),
         };
       }).map((p, i) => p.catch(e => { errs[OM_MODELS[i].key] = e.message; })),
 
@@ -438,6 +439,18 @@ window.KW_API = (() => {
     "Los Angeles": 0.65,   // slow — marine layer limits morning heating
   };
 
+  // ── Onshore wind sector per city ──────────────────────────────
+  // center = wind-FROM direction (degrees) that maximally suppresses peak.
+  // maxCool = °F penalty at center (cosine roll-off to 0 at ±90° offset).
+  const ONSHORE_SECTOR = {
+    "New York":    { center: 112.5, maxCool: -4.5 },  // ESE — Atlantic sea breeze
+    "Miami":       { center: 112.5, maxCool: -3.0 },  // ESE — Atlantic/Biscayne Bay
+    "Chicago":     { center:  22.5, maxCool: -4.0 },  // NNE — Lake Michigan
+    "Austin":      { center:   0,   maxCool: -2.0 },  // N — cold-front northers
+    "Dallas":      { center:   0,   maxCool: -1.5 },  // N — open plains
+    "Los Angeles": { center: 247.5, maxCool: -4.0 },  // WSW — Pacific marine layer
+  };
+
   // ── Helper: get local hour from ISO timestamp + IANA timezone ──
   function getLocalHour(isoTimestamp, tz) {
     try {
@@ -454,10 +467,11 @@ window.KW_API = (() => {
 
   // ── Core distribution builder ───────────────────────────────────
   // options: { city, observation }
-  //   city        — city name (for station bias + heating rate)
-  //   observation — NWS ASOS obs object { temperature, timestamp, ... }
+  //   city        — city name (for station bias + heating rate + onshore sector)
+  //   observation — NWS ASOS obs object { temperature, dewpoint, windDirection, timestamp, ... }
   function buildDistribution(modelData, buckets, options = {}) {
     const { city, observation } = options;
+    const cityCfg = city ? CITIES[city] : null;
 
     // Collect valid model values with their weights
     const entries = Object.entries(modelData)
@@ -471,101 +485,152 @@ window.KW_API = (() => {
     const mean     = entries.reduce((s, e) => s + e.val * e.w, 0) / totalW;
     const variance = entries.reduce((s, e) => s + e.w * (e.val - mean) ** 2, 0) / totalW;
     const spread   = Math.sqrt(variance);
-
-    // Irreducible forecast error (CONUS 12–24h)
-    // 1.8 when NWS official forecast is present (already post-processed/calibrated)
-    const irreducible = entries.some(e => e.key === "NWS") ? 1.8 : 2.0;
-    const std         = Math.sqrt(spread ** 2 + irreducible ** 2);
-
     const modelMin = Math.min(...entries.map(e => e.val));
     const modelMax = Math.max(...entries.map(e => e.val));
 
-    // ── Correction 1: Station bias ──────────────────────────────
-    const stationCorr = city ? (STATION_BIAS[city] ?? 0) : 0;
-
-    // ── Correction 2: Wind cooling at peak hour ──────────────────
-    // Wind increases surface mixing, limiting daytime maximum.
-    // Above 10kt: each additional knot removes ~0.12°F from peak.
+    // ── Wind speed (weighted mean at peak) ───────────────────────
     const windEs = entries
       .map(e => ({ w: e.w, v: modelData[e.key].windAtPeak }))
       .filter(e => e.v != null);
     const windW    = windEs.reduce((s, e) => s + e.w, 0);
     const windMean = windW > 0
       ? windEs.reduce((s, e) => s + e.v * e.w, 0) / windW : null;
-    const windCorr = windMean != null && windMean > 10
-      ? Math.max(-2.0, -(windMean - 10) * 0.12) : 0;
 
-    // ── Correction 3: Cloud cover at peak hour ───────────────────
-    // Cloud blocks solar radiation, reducing daytime maximum.
-    // Above 25%: each additional 10% cloud removes ~0.30°F from peak.
+    // ── Cloud cover (weighted mean at peak) ──────────────────────
     const cloudEs = entries
       .map(e => ({ w: e.w, v: modelData[e.key].cloudAtPeak }))
       .filter(e => e.v != null);
     const cloudW    = cloudEs.reduce((s, e) => s + e.w, 0);
     const cloudMean = cloudW > 0
       ? cloudEs.reduce((s, e) => s + e.v * e.w, 0) / cloudW : null;
-    const cloudCorr = cloudMean != null && cloudMean > 25
-      ? Math.max(-2.5, -((cloudMean - 25) / 10) * 0.30) : 0;
 
-    // ── Correction 4: Observation blending ──────────────────────
-    // Use the current NWS ASOS temperature (which is the actual settlement
-    // station reading) to constrain the forecast. The further we are from
-    // peak, the less weight we give to the obs-implied estimate.
-    let obsCorr = 0, obsBlendWeight = 0, impliedPeak = null;
-    const cityCfg = city ? CITIES[city] : null;
-
+    // ── Early: obs blend weight (needed before wind dir blending) ─
+    let obsBlendWeight = 0, obsLocalH = null, remainingH = null;
     if (observation?.temperature != null && observation?.timestamp && cityCfg?.tz) {
-      const obsLocalH = getLocalHour(observation.timestamp, cityCfg.tz);
+      obsLocalH = getLocalHour(observation.timestamp, cityCfg.tz);
       if (obsLocalH != null) {
-        const PEAK_HOUR = 14.5;  // typical daily high ~2:30 PM local
-        const remainingH = Math.max(0, PEAK_HOUR - obsLocalH);
-
-        if (remainingH >= 0 && remainingH < 9) {
-          // Heating rate: city base × cloud factor × wind factor
-          const cityRate   = city ? (CITY_HEATING_RATE[city] ?? 1.0) : 1.0;
-          const cFactor    = cloudMean != null ? Math.max(0.3, 1 - cloudMean / 115) : 1.0;
-          const wFactor    = windMean  != null && windMean > 12
-            ? Math.max(0.65, 1 - (windMean - 12) / 45) : 1.0;
-          const heatingRate = cityRate * cFactor * wFactor;
-
-          impliedPeak = observation.temperature + remainingH * heatingRate;
-
-          // Blend weight: 0 at ≥8h out, rises smoothly to 0.65 near peak.
-          // obs-model base before this correction is (mean + stationCorr + windCorr + cloudCorr)
-          const preBlendMean = mean + stationCorr + windCorr + cloudCorr;
+        remainingH = Math.max(0, 14.5 - obsLocalH);
+        if (remainingH < 9) {
           obsBlendWeight = remainingH < 8
             ? Math.min(0.65, ((8 - remainingH) / 8) ** 1.4 * 0.65) : 0;
-          obsCorr = (impliedPeak - preBlendMean) * obsBlendWeight;
         }
       }
     }
 
-    // ── Final adjusted distribution ─────────────────────────────
-    const totalCorr    = stationCorr + windCorr + cloudCorr + obsCorr;
+    // ── Correction 1: Station bias ───────────────────────────────
+    const stationCorr = city ? (STATION_BIAS[city] ?? 0) : 0;
+
+    // ── Correction 2: Wind speed cooling ─────────────────────────
+    // >10kt: each additional knot removes ~0.12°F from peak (surface mixing)
+    const windCorr = windMean != null && windMean > 10
+      ? Math.max(-2.0, -(windMean - 10) * 0.12) : 0;
+
+    // ── Correction 3: Cloud cover ─────────────────────────────────
+    // >25%: each additional 10% cloud removes ~0.30°F (reduced solar)
+    const cloudCorr = cloudMean != null && cloudMean > 25
+      ? Math.max(-2.5, -((cloudMean - 25) / 10) * 0.30) : 0;
+
+    // ── Correction 4: Wind direction (sea breeze / marine intrusion) ──
+    // Compute circular mean of model wind directions at peak, then blend with
+    // current obs wind direction (obs gets more weight the closer we are to peak).
+    const wdirEs = entries
+      .map(e => ({ w: e.w, dir: modelData[e.key].windDirAtPeak }))
+      .filter(e => e.dir != null);
+
+    let wdirMeanModel = null;
+    if (wdirEs.length > 0) {
+      const wW = wdirEs.reduce((s, e) => s + e.w, 0);
+      const sn = wdirEs.reduce((s, e) => s + (e.w/wW) * Math.sin(e.dir * Math.PI/180), 0);
+      const cs = wdirEs.reduce((s, e) => s + (e.w/wW) * Math.cos(e.dir * Math.PI/180), 0);
+      wdirMeanModel = ((Math.atan2(sn, cs) * 180/Math.PI) + 360) % 360;
+    }
+
+    const obsWindDeg = observation?.windDirection ?? null;
+    let effectiveWindDir = wdirMeanModel;
+    if (obsWindDeg != null) {
+      if (wdirMeanModel != null && obsBlendWeight > 0) {
+        // Circular blend: obs contributes up to 50% weight near peak
+        const ow = Math.min(0.5, obsBlendWeight * 0.8);
+        const mw = 1 - ow;
+        const sBlend = ow * Math.sin(obsWindDeg * Math.PI/180) + mw * Math.sin(wdirMeanModel * Math.PI/180);
+        const cBlend = ow * Math.cos(obsWindDeg * Math.PI/180) + mw * Math.cos(wdirMeanModel * Math.PI/180);
+        effectiveWindDir = ((Math.atan2(sBlend, cBlend) * 180/Math.PI) + 360) % 360;
+      } else if (wdirMeanModel == null) {
+        effectiveWindDir = obsWindDeg;
+      }
+    }
+
+    const windDirCorr = (() => {
+      const cfg = city ? ONSHORE_SECTOR[city] : null;
+      if (!cfg || effectiveWindDir == null) return 0;
+      let diff = Math.abs(effectiveWindDir - cfg.center) % 360;
+      if (diff > 180) diff = 360 - diff;
+      if (diff >= 90) return 0;
+      return +(cfg.maxCool * Math.cos((diff / 90) * (Math.PI / 2))).toFixed(2);
+    })();
+
+    // ── Correction 5: Dew point ───────────────────────────────────
+    // Dry air → efficient sensible heating → peak higher.
+    // Humid air → latent cooling / reduced sensible flux → peak lower.
+    // Reference 50°F dewpoint = neutral; slope 0.055°F per degree of dryness/humidity.
+    const dewCorr = (() => {
+      const dp = observation?.dewpoint;  // °F from fetchObservation
+      if (dp == null) return 0;
+      return +(Math.min(1.0, Math.max(-1.5, (50 - dp) * 0.055))).toFixed(2);
+    })();
+
+    // ── Correction 6: Observation blending ───────────────────────
+    // Real-time ASOS obs + heating-rate extrapolation constrains the ensemble.
+    let obsCorr = 0, impliedPeak = null;
+    if (obsBlendWeight > 0 && observation?.temperature != null && remainingH != null) {
+      const cityRate    = city ? (CITY_HEATING_RATE[city] ?? 1.0) : 1.0;
+      const cFactor     = cloudMean != null ? Math.max(0.3, 1 - cloudMean / 115) : 1.0;
+      const wFactor     = windMean  != null && windMean > 12
+        ? Math.max(0.65, 1 - (windMean - 12) / 45) : 1.0;
+      const heatingRate = cityRate * cFactor * wFactor;
+      impliedPeak = observation.temperature + remainingH * heatingRate;
+      const preBlendMean = mean + stationCorr + windCorr + cloudCorr + windDirCorr + dewCorr;
+      obsCorr = (impliedPeak - preBlendMean) * obsBlendWeight;
+    }
+
+    // ── Dynamic σ ────────────────────────────────────────────────
+    // Base irreducible forecast error (lower when NWS human-QC present)
+    let irreducible = entries.some(e => e.key === "NWS") ? 1.8 : 2.0;
+    // Tighten when models agree tightly; widen on large spread
+    if (spread < 0.5)      irreducible *= 0.85;
+    else if (spread > 3.0) irreducible *= 1.15;
+    // Widen when significant onshore flow (sea breeze timing is uncertain)
+    if (windDirCorr < -2.0) irreducible = Math.min(irreducible * 1.25, 2.8);
+    const std = Math.sqrt(spread ** 2 + irreducible ** 2);
+
+    // ── Final adjusted distribution ──────────────────────────────
+    const totalCorr    = stationCorr + windCorr + cloudCorr + windDirCorr + dewCorr + obsCorr;
     const adjustedMean = +(mean + totalCorr).toFixed(1);
-    // Observation blending reduces uncertainty proportionally to blend weight
     const adjustedStd  = +(std * (1 - obsBlendWeight * 0.40)).toFixed(2);
 
     return {
-      mean:          +mean.toFixed(1),
+      mean:           +mean.toFixed(1),
       adjustedMean,
       adjustedStd,
-      std:           +std.toFixed(2),
-      spread:        +spread.toFixed(2),
-      modelCount:    entries.length,
-      modelMin:      +modelMin.toFixed(1),
-      modelMax:      +modelMax.toFixed(1),
-      weights:       Object.fromEntries(entries.map(e => [e.key, e.w])),
-      windMean:      windMean      != null ? +windMean.toFixed(1)  : null,
-      cloudMean:     cloudMean     != null ? +cloudMean.toFixed(1) : null,
-      impliedPeak:   impliedPeak   != null ? +impliedPeak.toFixed(1) : null,
+      std:            +std.toFixed(2),
+      spread:         +spread.toFixed(2),
+      modelCount:     entries.length,
+      modelMin:       +modelMin.toFixed(1),
+      modelMax:       +modelMax.toFixed(1),
+      weights:        Object.fromEntries(entries.map(e => [e.key, e.w])),
+      windMean:       windMean        != null ? +windMean.toFixed(1)        : null,
+      cloudMean:      cloudMean       != null ? +cloudMean.toFixed(1)       : null,
+      windDirMean:    effectiveWindDir != null ? +effectiveWindDir.toFixed(0) : null,
+      impliedPeak:    impliedPeak     != null ? +impliedPeak.toFixed(1)     : null,
       obsBlendWeight: +obsBlendWeight.toFixed(3),
       corrections: {
-        station:      +stationCorr.toFixed(2),
-        wind:         +windCorr.toFixed(2),
-        cloud:        +cloudCorr.toFixed(2),
-        observation:  +obsCorr.toFixed(2),
-        total:        +totalCorr.toFixed(2),
+        station:     +stationCorr.toFixed(2),
+        wind:        +windCorr.toFixed(2),
+        cloud:       +cloudCorr.toFixed(2),
+        windDir:     +windDirCorr.toFixed(2),
+        dew:         +dewCorr.toFixed(2),
+        observation: +obsCorr.toFixed(2),
+        total:       +totalCorr.toFixed(2),
       },
       buckets: buckets.map(b => {
         const lo = b.lowerBound ?? -Infinity;

@@ -1355,6 +1355,11 @@ function HourlyChart({ market, live }) {
 /* ─────────────────────────────────────────────────────────
  * Correction row helper
  * ───────────────────────────────────────────────────────── */
+function windDirLabel(deg) {
+  const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
 function CorrRow({ label, sublabel, value, note }) {
   const cls = value > 0.05 ? "pos" : value < -0.05 ? "neg" : "flat";
   return (
@@ -1483,6 +1488,8 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
       {dist && (
         <div className="ens-note">
           均权均值 {dist.mean}°F → 修正后 {dist.adjustedMean}°F（NWS · HRRR · GFS 各 ⅓ 权重，共 {dist.modelCount}/3 模型）· 区间 {dist.modelMin}–{dist.modelMax}°F · σ {dist.adjustedStd}°F
+          {dist.windDirMean != null && ` · 风向 ${windDirLabel(dist.windDirMean)} ${dist.windDirMean}°`}
+          {dist.corrections.dew != null && dist.corrections.dew !== 0 && ` · 露点修正 ${dist.corrections.dew > 0 ? "+" : ""}${dist.corrections.dew}°F`}
         </div>
       )}
 
@@ -1499,6 +1506,16 @@ function ModelEnsemblePanel({ live, market, onRefresh }) {
             {dist.cloudMean != null && (
               <CorrRow label="峰时云量" sublabel={`云覆盖 ${dist.cloudMean}%`} value={dist.corrections.cloud}
                 note={dist.corrections.cloud < 0 ? "太阳辐射遮挡↓" : "≤25% 无修正"} />
+            )}
+            {dist.windDirMean != null && (
+              <CorrRow label="风向修正" sublabel={`${windDirLabel(dist.windDirMean)} ${dist.windDirMean}° 实效风向`}
+                value={dist.corrections.windDir}
+                note={dist.corrections.windDir < -0.5 ? "偏海向 海风入侵↓" : dist.corrections.windDir < -0.1 ? "轻度偏海↓" : "离岸/中性"} />
+            )}
+            {dist.corrections.dew != null && dist.corrections.dew !== 0 && (
+              <CorrRow label="露点修正" sublabel="感热效率 vs 参考露点50°F"
+                value={dist.corrections.dew}
+                note={dist.corrections.dew > 0.1 ? "干燥 感热升温快↑" : dist.corrections.dew < -0.1 ? "潮湿 抑制峰温↓" : "接近中性"} />
             )}
             {dist.impliedPeak != null && (
               <CorrRow label="观测融合" sublabel={`NWS → 隐含峰值 ${dist.impliedPeak}°F (权重 ${Math.round(dist.obsBlendWeight*100)}%)`}
