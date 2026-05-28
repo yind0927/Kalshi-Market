@@ -492,36 +492,48 @@ function CityTimeline({ markets, bjtDec, liveData }) {
     const today = hourly.filter(h => h.localDate === todayStr && h.isDaytime !== false);
     if (!today.length) return null;
     const peak = today.reduce((mx, h) => h.temp > mx.temp ? h : mx);
-    // BJT = local peak hour − bjtOffset (bjtOffset is negative for US cities)
     return { bjtH: peak.localHour - m.bjtOffset, temp: peak.temp };
   };
-  const ticks = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
 
-  // 12z GFS: initialized at 12:00 UTC = 20:00 BJT; products available ~15:00 UTC = 23:00 BJT
-  // 00z GFS: initialized at 00:00 UTC = 08:00 BJT; products available ~03:00 UTC = 11:00 BJT
-  const gfs12zReadyBJT = normH(23); // BJT 23:00
-  const gfsUpdated = now >= gfs12zReadyBJT;
+  // NWS forecast freshness across all cities
+  const nwsLoaded = markets.filter(m => liveData?.[m.id]?.models?.NWS?.dailyMax != null).length;
+  const lastFetchISO = markets.reduce((latest, m) => {
+    const t = liveData?.[m.id]?.fetchedAt;
+    return (t && t > latest) ? t : latest;
+  }, "");
+  const lastFetchBJT = lastFetchISO
+    ? new Date(lastFetchISO).toLocaleTimeString("zh-CN",
+        { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false })
+    : null;
+
+  // NWS morning forecast update times in BJT (when api.weather.gov issues new daily high)
+  // ET (UTC-4): ~07:00 ET = BJT 19:00 | CT (UTC-5): ~07:00 CT = BJT 20:00 | PT (UTC-7): ~07:00 PT = BJT 22:00
+  const nwsUpdateLines = [
+    { bjtH: 19, label: "NWS ET", title: "NY·Miami NWS 早间预报更新 ~07:00 ET = BJT 19:00" },
+    { bjtH: 20, label: "NWS CT", title: "Chicago·Austin·Dallas NWS 早间预报更新 ~07:00 CT = BJT 20:00" },
+    { bjtH: 22, label: "NWS PT", title: "LA NWS 早间预报更新 ~07:00 PT = BJT 22:00" },
+  ];
+
+  const ticks = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
 
   return (
     <div className="card tl-card">
       <div className="tl-card-head">
         <div>
           <h3>City Trading Timeline <em>城市交易时间轴</em></h3>
-          <div className="sub">北京时间 (BJT) · 绿色 = 入场窗口 (本地 08:00–12:00 峰前 2–6h) · ▲ = 高温峰值 (红=NWS实时 · 灰=静态估算)</div>
+          <div className="sub">北京时间 (BJT) · 绿色 = 入场窗口 · ▲ = 高温峰值 (红=NWS实时 · 灰=估算) · 竖线 = NWS 早间预报更新时刻</div>
         </div>
         <div className="tl-legend">
           <span><i className="tl-i entry" /> 入场窗口</span>
           <span
-            className={`tl-model-badge ${gfsUpdated ? "updated" : "pending"}`}
-            title={gfsUpdated
-              ? "12z GFS: 12:00 UTC (BJT 20:00) 起报，~15:00 UTC (BJT 23:00) 产品可用，已更新"
-              : "12z GFS: 初始化 12:00 UTC (BJT 20:00)，产品约 BJT 23:00 可用，当前仍使用上次数据"}
+            className={`tl-model-badge ${nwsLoaded > 0 ? "updated" : "pending"}`}
+            title={`NWS 官方预报 — Kalshi 结算参考来源。NWS 每天早间 ~07:00 本地时更新日高温预报。${lastFetchBJT ? `最近拉取 BJT ${lastFetchBJT}` : "尚未加载"}`}
           >
             <i className="tl-i model-upd" />
-            12z GFS
-            {gfsUpdated
-              ? <span className="tl-model-status ok">已更新 ✓</span>
-              : <span className="tl-model-status wait">待更新 {formatBJTDisplay(gfs12zReadyBJT % 24)}↓</span>}
+            NWS 预报
+            {nwsLoaded > 0
+              ? <span className="tl-model-status ok">{nwsLoaded}/{markets.length} 已加载 ✓{lastFetchBJT ? ` · ${lastFetchBJT}` : ""}</span>
+              : <span className="tl-model-status wait">点击城市 ↻ 加载</span>}
           </span>
         </div>
       </div>
@@ -535,15 +547,18 @@ function CityTimeline({ markets, bjtDec, liveData }) {
             width: `${((26 - 19) / TL_SPAN * 100).toFixed(2)}%`,
           }}
         />
-        {/* 12z model update line */}
-        <div className="tl-model-line" style={{ left: toX(23) }}>
-          <div className="tl-model-label">
-            12z GFS
-            {gfsUpdated
-              ? <span style={{ color: "var(--pos)", marginLeft: 3 }}>✓</span>
-              : <span style={{ color: "var(--warn)", marginLeft: 3 }}>…</span>}
-          </div>
-        </div>
+        {/* NWS morning forecast update reference lines — one per timezone */}
+        {nwsUpdateLines.map(({ bjtH, label, title }) => {
+          const n = normH(bjtH);
+          if (n < TL_S || n > TL_E) return null;
+          const isPast = now >= n;
+          return (
+            <div key={label} className={`tl-nws-line${isPast ? " past" : ""}`}
+              style={{ left: toX(bjtH) }} title={title}>
+              <div className="tl-nws-label">{label}{isPast ? " ✓" : ""}</div>
+            </div>
+          );
+        })}
         {/* Now line */}
         {now >= TL_S && now <= TL_E && (
           <div
@@ -581,12 +596,20 @@ function CityTimeline({ markets, bjtDec, liveData }) {
           const peakBJT = livePeak ? normH(livePeak.bjtH) : normH(ps);
           const peakX = peakBJT <= TL_E ? `${((peakBJT - TL_S) / TL_SPAN * 100).toFixed(2)}%` : null;
           const wsInfo = windowStatusLabel(m, bjtDec);
+          const nwsHigh = liveData?.[m.id]?.models?.NWS?.dailyMax;
+          const mktHigh = maxEdgeBucket(m);
+          const nwsEdge = nwsHigh != null ? nwsHigh - (mktHigh.market * 100 + (m.forecastHigh ?? 0)) / 2 : null;
           return (
             <div className="tl-row" key={m.id}>
               <div className="tl-row-label">
                 <span className="tl-city">{m.city}</span>
                 <span className="tl-cn">{m.cnCity}</span>
                 <span className="tl-tz">{m.timezone}</span>
+                {nwsHigh != null && (
+                  <span className="tl-nws-tag" title={`NWS 官方预报高温 — Kalshi 结算参考`}>
+                    {nwsHigh}°
+                  </span>
+                )}
               </div>
               <div className="tl-track">
                 <div
