@@ -1946,6 +1946,76 @@ input { font-family: inherit; }
 }
 .map-detail-cta:hover { background: color-mix(in oklab, var(--ink-1) 88%, transparent); }
 
+/* Map legend pills (header row) */
+.map-legend-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.legend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.legend-pill.hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  background: transparent;
+  border-color: transparent;
+}
+.legend-pill .ld {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.legend-pill .ld.pos { background: var(--pos); }
+.legend-pill .ld.neg { background: var(--neg); }
+.legend-pill .ld.flat { background: var(--ink-4); }
+
+/* City ranking strip */
+.map-city-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.map-city-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.map-city-chip:hover { border-color: var(--border-strong); background: var(--bg-2); }
+.map-city-chip.active { border-color: var(--accent); background: var(--accent-soft); }
+.map-city-chip .chip-city { font-weight: 600; color: var(--ink-1); }
+.map-city-chip .chip-edge {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+.map-city-chip.pos .chip-edge { color: var(--pos); }
+.map-city-chip.neg .chip-edge { color: var(--neg); }
+.map-city-chip.flat .chip-edge { color: var(--ink-3); }
+
 /* Compact map for Analysis location card */
 .us-map.compact .us-outline { stroke-width: 1.2; }
 .location-card .card-head { margin-bottom: 16px; }
@@ -2199,6 +2269,48 @@ input { font-family: inherit; }
   transition: transform 0.15s, color 0.15s;
 }
 .pb-city-row:hover .pb-arrow { color: var(--ink-1); transform: translateX(3px); }
+
+/* Playbook group head — clickable filter */
+.pb-group-head {
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.pb-group-head:hover { filter: brightness(0.94); }
+.pb-group-head-active { outline: 2px solid currentColor; outline-offset: -2px; }
+.pb-filter-hint {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.6;
+  font-family: var(--mono);
+}
+
+/* Playbook filter notification bar */
+.pb-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 28px;
+  background: var(--warn-soft);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--warn);
+  font-weight: 500;
+}
+.pb-filter-clear {
+  background: none;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.pb-filter-clear:hover { opacity: 1; }
+
+
 @media (max-width: 900px) {
   .pb-city-row { grid-template-columns: 1fr auto auto; gap: 10px; }
   .pb-bucket, .pb-nums, .pb-meta { display: none; }
@@ -2224,6 +2336,7 @@ input { font-family: inherit; }
   gap: 14px;
   font-size: 11px;
   color: var(--ink-3);
+  align-items: center;
 }
 .tl-legend span { display: flex; align-items: center; gap: 5px; }
 .tl-i {
@@ -2237,6 +2350,29 @@ input { font-family: inherit; }
   background: var(--accent);
   opacity: 0.7;
 }
+
+/* 12z GFS model badge in timeline header */
+.tl-model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: help;
+}
+.tl-model-badge.updated { border-color: var(--pos); background: var(--pos-soft); color: var(--pos); }
+.tl-model-badge.pending { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
+.tl-model-status {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+.tl-model-status.ok { color: var(--pos); }
+.tl-model-status.wait { color: var(--warn); }
 
 .tl-wrap {
   position: relative;

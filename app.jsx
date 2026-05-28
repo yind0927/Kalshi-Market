@@ -121,7 +121,7 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
         const edge = maxE.model - maxE.market;
         const cls = edge > 0.02 ? "pos" : edge < -0.02 ? "neg" : "flat";
         const isFocus = m.id === focusId;
-        const r = compact ? (isFocus ? 7 : 4) : 6 + Math.abs(edge) * (immersive ? 110 : 90);
+        const r = compact ? (isFocus ? 7 : 4) : Math.min(22, 6 + Math.abs(edge) * (immersive ? 65 : 48));
 
         return (
           <g
@@ -163,55 +163,41 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
  * ───────────────────────────────────────────────────────── */
 function MapHero({ markets, onOpen }) {
   const [hover, setHover] = useState(null);
-  const topMarket = useMemo(() => {
-    return [...markets].sort((a, b) => {
+  const sorted = useMemo(() =>
+    [...markets].sort((a, b) => {
       const ae = Math.max(...a.buckets.map((x) => Math.abs(x.model - x.market)));
       const be = Math.max(...b.buckets.map((x) => Math.abs(x.model - x.market)));
       return be - ae;
-    })[0];
-  }, [markets]);
-
-  const display = hover || topMarket;
-  const maxE = maxEdgeBucket(display);
-  const edge = maxE.model - maxE.market;
+    }), [markets]);
+  const topMarket = sorted[0];
+  const display   = hover || topMarket;
+  const maxE      = maxEdgeBucket(display);
+  const edge      = maxE.model - maxE.market;
 
   return (
     <div className="map-card">
       <div className="map-card-head">
         <div>
           <div className="hero-eyebrow">Live Market Map</div>
-          <h2 className="map-title">
-            全美机会分布
-            <em>气泡大小 = |Edge|，颜色 = 偏差方向</em>
-          </h2>
+          <h2 className="map-title">全美机会分布</h2>
         </div>
-        <div className="map-card-actions">
-          <button className="chip">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            6 cities
-          </button>
-          <button className="chip">Heatmap</button>
+        {/* Legend pills — moved out of map to avoid overlapping bubbles */}
+        <div className="map-legend-pills">
+          <span className="legend-pill pos"><span className="ld pos" />YES 低估</span>
+          <span className="legend-pill neg"><span className="ld neg" />NO 低估</span>
+          <span className="legend-pill flat"><span className="ld flat" />均衡</span>
+          <span className="legend-pill hint">气泡 ∝ |Edge|</span>
         </div>
       </div>
 
       <div className="map-body">
         <div className="map-viz">
-          <USMap markets={markets} focusId={display?.id}
-            onSelect={onOpen}
-            onHover={setHover} />
-
-          <div className="map-legend">
-            <div className="legend-title">EDGE 信号</div>
-            <div className="legend-item"><span className="ld pos" /> Model &gt; Market <span className="m">YES 低估</span></div>
-            <div className="legend-item"><span className="ld neg" /> Model &lt; Market <span className="m">NO 低估</span></div>
-            <div className="legend-item"><span className="ld flat" /> Edge &lt; 2pp <span className="m">无明显机会</span></div>
-            <div className="legend-foot">气泡半径 ∝ |Edge|</div>
-          </div>
+          <USMap markets={markets} focusId={display?.id} onSelect={onOpen} onHover={setHover} />
         </div>
 
         <div className="map-detail">
           <div className="map-detail-eyebrow">
-            {hover ? "Hovering" : "Top opportunity"}
+            {hover ? "HOVERING" : "TOP OPPORTUNITY"}
             <span className="map-detail-pulse" />
           </div>
           <div className="map-detail-city">
@@ -247,6 +233,27 @@ function MapHero({ markets, onOpen }) {
             View deep analysis →
           </button>
         </div>
+      </div>
+
+      {/* City ranking strip — sorted by |edge|, quick overview without opening analysis */}
+      <div className="map-city-strip">
+        {sorted.map(m => {
+          const me = maxEdgeBucket(m);
+          const e  = me.model - me.market;
+          const cls = e > 0.02 ? "pos" : e < -0.02 ? "neg" : "flat";
+          return (
+            <button
+              key={m.id}
+              className={`map-city-chip ${cls}${display.id === m.id ? " active" : ""}`}
+              onClick={() => onOpen(m.id)}
+              onMouseEnter={() => setHover(m)}
+              onMouseLeave={() => setHover(null)}
+            >
+              <span className="chip-city">{m.city}</span>
+              <span className="chip-edge">{e > 0 ? "+" : ""}{(e * 100).toFixed(0)}pp</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -347,9 +354,7 @@ const PB_GROUPS = [
   { key: "skip",  label: "今日跳过", en: "Skip",        cls: "flat"   },
 ];
 
-function TonightPlaybook({ markets, bjtDec, openAnalysis }) {
-  // overrides: { [market.id]: "act"|"watch"|"late"|"skip" }
-  const [overrides, setOverrides] = useState({});
+function TonightPlaybook({ markets, bjtDec, openAnalysis, pbFilter, setPbFilter, overrides, setOverride }) {
   const inWindow = isInWindow(bjtDec);
 
   const rows = markets.map((m) => {
@@ -358,10 +363,6 @@ function TonightPlaybook({ markets, bjtDec, openAnalysis }) {
     const status = overrides[m.id] || autoStatus;
     return { m, maxE, edge: maxE.model - maxE.market, status };
   });
-
-  const setOverride = (id, key) => {
-    setOverrides((prev) => ({ ...prev, [id]: key }));
-  };
 
   return (
     <div className="card playbook-card">
@@ -380,16 +381,29 @@ function TonightPlaybook({ markets, bjtDec, openAnalysis }) {
         </div>
       </div>
 
+      {pbFilter && (
+        <div className="pb-filter-bar">
+          <span>已筛选: {PB_GROUPS.find(g => g.key === pbFilter)?.label}</span>
+          <button className="pb-filter-clear" onClick={() => setPbFilter(null)}>× 清除筛选</button>
+        </div>
+      )}
+
       {PB_GROUPS.map((g) => {
         const items = rows.filter((r) => r.status === g.key);
         if (!items.length) return null;
+        const isActive = pbFilter === g.key;
         return (
           <div className="pb-group" key={g.key}>
-            <div className={`pb-group-head ${g.cls}`}>
+            <div
+              className={`pb-group-head ${g.cls}${isActive ? " pb-group-head-active" : ""}`}
+              onClick={() => setPbFilter(isActive ? null : g.key)}
+              title="点击筛选下方卡片"
+            >
               <span className="pb-dot" />
               <span>{g.label}</span>
               <span className="pb-group-en">{g.en}</span>
               <span className="pb-count">{items.length}</span>
+              <span className="pb-filter-hint">{isActive ? "↑ 已筛选" : "点击筛选 ↓"}</span>
             </div>
             {items.map(({ m, maxE, edge, status }) => {
               const ws = windowStatusLabel(m, bjtDec);
@@ -442,6 +456,11 @@ function CityTimeline({ markets, bjtDec }) {
   const now = normH(bjtDec);
   const ticks = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
 
+  // 12z GFS: initialized at 12:00 UTC = 20:00 BJT; products available ~15:00 UTC = 23:00 BJT
+  // 00z GFS: initialized at 00:00 UTC = 08:00 BJT; products available ~03:00 UTC = 11:00 BJT
+  const gfs12zReadyBJT = normH(23); // BJT 23:00
+  const gfsUpdated = now >= gfs12zReadyBJT;
+
   return (
     <div className="card tl-card">
       <div className="tl-card-head">
@@ -451,7 +470,18 @@ function CityTimeline({ markets, bjtDec }) {
         </div>
         <div className="tl-legend">
           <span><i className="tl-i entry" /> 入场窗口</span>
-          <span><i className="tl-i model-upd" /> 12z模型</span>
+          <span
+            className={`tl-model-badge ${gfsUpdated ? "updated" : "pending"}`}
+            title={gfsUpdated
+              ? "12z GFS: 12:00 UTC (BJT 20:00) 起报，~15:00 UTC (BJT 23:00) 产品可用，已更新"
+              : "12z GFS: 初始化 12:00 UTC (BJT 20:00)，产品约 BJT 23:00 可用，当前仍使用上次数据"}
+          >
+            <i className="tl-i model-upd" />
+            12z GFS
+            {gfsUpdated
+              ? <span className="tl-model-status ok">已更新 ✓</span>
+              : <span className="tl-model-status wait">待更新 {formatBJTDisplay(gfs12zReadyBJT % 24)}↓</span>}
+          </span>
         </div>
       </div>
 
@@ -466,7 +496,12 @@ function CityTimeline({ markets, bjtDec }) {
         />
         {/* 12z model update line */}
         <div className="tl-model-line" style={{ left: toX(23) }}>
-          <div className="tl-model-label">12z GFS</div>
+          <div className="tl-model-label">
+            12z GFS
+            {gfsUpdated
+              ? <span style={{ color: "var(--pos)", marginLeft: 3 }}>✓</span>
+              : <span style={{ color: "var(--warn)", marginLeft: 3 }}>…</span>}
+          </div>
         </div>
         {/* Now line */}
         {now >= TL_S && now <= TL_E && (
@@ -809,6 +844,12 @@ function liveMarket(market, live) {
 
 function MarketsView({ openAnalysis, bjtDec, liveData }) {
   const [filter, setFilter] = useState("all");
+  const [pbFilter, setPbFilter] = useState(null); // playbook group key e.g. "act"|"watch"|"late"|"skip"
+  const [pbOverrides, setPbOverrides] = useState({}); // lifted from TonightPlaybook
+
+  const setPbOverride = useCallback((id, key) => {
+    setPbOverrides(prev => ({ ...prev, [id]: key }));
+  }, []);
 
   // Merge live data into markets for edge/temp calculations
   const markets = useMemo(() =>
@@ -816,13 +857,20 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
     [liveData]
   );
 
+  // Effective playbook status including manual overrides
+  const pbStatus = useCallback((m) => pbOverrides[m.id] || getPlaybookStatus(m, bjtDec), [pbOverrides, bjtDec]);
+
   const filtered = useMemo(() => {
     let arr = [...markets];
-    if (filter === "edge") arr = arr.filter((m) => totalAbsEdge(m) > 0.07);
-    if (filter === "watch") arr = arr.slice(0, 4);
-    if (filter === "edge") arr.sort((a, b) => totalAbsEdge(b) - totalAbsEdge(a));
+    if (pbFilter) {
+      arr = arr.filter(m => pbStatus(m) === pbFilter);
+    } else {
+      if (filter === "edge") arr = arr.filter((m) => totalAbsEdge(m) > 0.07);
+      if (filter === "watch") arr = arr.slice(0, 4);
+      if (filter === "edge") arr.sort((a, b) => totalAbsEdge(b) - totalAbsEdge(a));
+    }
     return arr;
-  }, [filter, markets]);
+  }, [filter, pbFilter, markets, pbStatus]);
 
   const avgEdge = markets.reduce((s, m) => s + totalAbsEdge(m), 0) / markets.length;
   const top = markets
@@ -836,7 +884,9 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
 
       <MapHero markets={markets} onOpen={openAnalysis} />
 
-      <TonightPlaybook markets={markets} bjtDec={bjtDec} openAnalysis={openAnalysis} />
+      <TonightPlaybook markets={markets} bjtDec={bjtDec} openAnalysis={openAnalysis}
+        pbFilter={pbFilter} setPbFilter={setPbFilter}
+        overrides={pbOverrides} setOverride={setPbOverride} />
 
       <div className="kpis">
         <div className="kpi">
@@ -886,13 +936,23 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
           <h2>
             市场一览 <em>Market Overview</em>
             {liveCount > 0 && <span className="live-badge-sm" style={{ marginLeft: 8 }}>LIVE</span>}
+            {pbFilter && <span className="live-badge-sm" style={{ marginLeft: 8, background: "var(--warn-soft)", color: "var(--warn)" }}>筛选中</span>}
           </h2>
-          <div className="section-sub">按模型预测概率与市场价格之差排序</div>
+          <div className="section-sub">
+            {pbFilter
+              ? `来自操作板筛选: ${PB_GROUPS.find(g => g.key === pbFilter)?.label} · ${filtered.length} 个城市`
+              : "按模型预测概率与市场价格之差排序"}
+          </div>
         </div>
         <div className="section-actions">
-          <button className={`chip ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>All · 全部</button>
-          <button className={`chip ${filter === "edge" ? "active" : ""}`} onClick={() => setFilter("edge")}>Top edge · 高偏差</button>
-          <button className={`chip ${filter === "watch" ? "active" : ""}`} onClick={() => setFilter("watch")}>Watchlist · 自选</button>
+          {pbFilter
+            ? <button className="chip active" onClick={() => setPbFilter(null)}>× 清除操作板筛选</button>
+            : <>
+              <button className={`chip ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>All · 全部</button>
+              <button className={`chip ${filter === "edge" ? "active" : ""}`} onClick={() => setFilter("edge")}>Top edge · 高偏差</button>
+              <button className={`chip ${filter === "watch" ? "active" : ""}`} onClick={() => setFilter("watch")}>Watchlist · 自选</button>
+            </>
+          }
         </div>
       </div>
 
