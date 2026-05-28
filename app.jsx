@@ -2301,21 +2301,19 @@ function App() {
   const openAnalysis = (id) => {
     setMarketId(id);
     setTab("analysis");
-    // Push a history entry so browser/app back button returns to markets, not exits
-    window.history.pushState({ view: "analysis", id }, "");
+    window.history.pushState({ view: "analysis", id }, "", "#/analysis");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // On mount: seed two history entries so back never exits the app cold.
-  // replaceState overwrites the bare page entry; pushState adds a buffer above it.
+  // Hash-based history floor: #/ entries are genuinely distinct navigable entries
+  // in all browsers, unlike pushState with the same URL which some browsers collapse.
   useEffect(() => {
-    window.history.replaceState({ view: "markets" }, "");
-    window.history.pushState({ view: "markets" }, "");
+    window.history.replaceState({ view: "markets" }, "", "#/");
+    window.history.pushState({ view: "markets" }, "", "#/");
 
     const onPop = () => {
       setTab("markets");
-      // Re-anchor so the next back press also stays in-app
-      window.history.pushState({ view: "markets" }, "");
+      window.history.pushState({ view: "markets" }, "", "#/");
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
