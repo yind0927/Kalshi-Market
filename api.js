@@ -45,14 +45,18 @@ window.KW_API = (() => {
     return 0.5 * (1 + erf((x - mu) / (sigma * Math.SQRT2)));
   }
 
-  /* ── 0. NWS Official Hourly Forecast ───────────────────── */
+  /* ── 0. NWS Official Daily Forecast ────────────────────── */
   // NWS is not a single NWP model — it's a human-QC'd blend (NBM-based)
   // calibrated specifically for each ASOS station area.  For Kalshi it's
   // the most directly relevant forecast: same agency, same station domain.
+  //
+  // Uses the DAILY forecast endpoint (not hourly) so the temperature
+  // matches weather.gov "High: XX°F" — the official forecaster-issued max
+  // that Kalshi contracts reference at settlement.
   async function fetchNWSForecast(lat, lon, tz) {
     const cacheKey = `${lat},${lon}`;
 
-    // Step 1: resolve gridpoint URL (cached after first call)
+    // Step 1: resolve gridpoint daily forecast URL (cached after first call)
     let fcUrl = NWS_FC_URL_CACHE.get(cacheKey);
     if (!fcUrl) {
       const ptRes = await fetch(
@@ -61,53 +65,40 @@ window.KW_API = (() => {
       );
       if (!ptRes.ok) throw new Error(`NWS points ${ptRes.status}`);
       const ptData = await ptRes.json();
-      fcUrl = ptData.properties?.forecastHourly;
-      if (!fcUrl) throw new Error("NWS: no forecastHourly URL in response");
+      fcUrl = ptData.properties?.forecast;   // daily, not forecastHourly
+      if (!fcUrl) throw new Error("NWS: no forecast URL in response");
       NWS_FC_URL_CACHE.set(cacheKey, fcUrl);
     }
 
-    // Step 2: fetch hourly forecast
+    // Step 2: fetch daily forecast
     const fcRes = await fetch(fcUrl, { headers: { Accept: "application/json" } });
-    if (!fcRes.ok) throw new Error(`NWS hourly forecast ${fcRes.status}`);
+    if (!fcRes.ok) throw new Error(`NWS daily forecast ${fcRes.status}`);
     const fcData = await fcRes.json();
 
     const periods = fcData.properties?.periods;
     if (!periods?.length) throw new Error("NWS: empty forecast periods");
 
-    // Determine today's local date string ("YYYY-MM-DD")
     const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
-
-    const toLocalHour = (isoStr) =>
-      parseInt(new Intl.DateTimeFormat("en-US", {
-        timeZone: tz, hour: "numeric", hour12: false,
-      }).format(new Date(isoStr)), 10);
-
     const toLocalDate = (isoStr) =>
       new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(isoStr));
 
-    // Filter to today's peak window (08:00–22:00 local); fall back to full today
-    const inWindow = periods.filter(p =>
-      toLocalDate(p.startTime) === todayStr &&
-      toLocalHour(p.startTime) >= 8 &&
-      toLocalHour(p.startTime) <= 22
-    );
-    const candidates = inWindow.length > 0
-      ? inWindow
-      : periods.filter(p => toLocalDate(p.startTime) === todayStr);
+    // Find today's daytime period — official NWS daily high (same as weather.gov).
+    // Falls back to next available daytime period if today's has already passed.
+    const daytime =
+      periods.find(p => p.isDaytime && toLocalDate(p.startTime) === todayStr) ||
+      periods.find(p => p.isDaytime);
 
-    if (candidates.length === 0) throw new Error("NWS: no forecast periods for today");
+    if (!daytime) throw new Error("NWS: no daytime forecast period found");
 
-    // Temperature is already °F for all US NWS offices
-    const peak = candidates.reduce((mx, p) => p.temperature > mx.temperature ? p : mx);
-
-    if (!isFinite(peak.temperature) || peak.temperature < -60 || peak.temperature > 140) {
-      throw new Error(`NWS: implausible temperature ${peak.temperature}°F`);
+    const temp = daytime.temperature;
+    if (!isFinite(temp) || temp < -60 || temp > 140) {
+      throw new Error(`NWS: implausible temperature ${temp}°F`);
     }
 
     return {
-      dailyMax:    peak.temperature,
-      peakHour:    isFinite(toLocalHour(peak.startTime)) ? toLocalHour(peak.startTime) : null,
-      windAtPeak:  null,   // NWS wind is a string like "10 mph" — skip for corrections
+      dailyMax:    temp,
+      peakHour:    null,   // daily product has no single peak hour
+      windAtPeak:  null,
       cloudAtPeak: null,
       updatedAt:   new Date().toISOString(),
     };
