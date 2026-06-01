@@ -2331,11 +2331,22 @@ function App() {
   const openAnalysis = (id) => {
     setMarketId(id);
     setTab("analysis");
-    window.history.pushState({ view: "analysis", id }, "", "#analysis");
+    window.history.pushState({ view: "analysis", id }, "", window.location.href);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Browser back/forward: read state, update view — never re-push
+  // On mount: build a history "floor" so back never closes/leaves the app.
+  // replaceState marks the entry below us as the floor, then pushState
+  // adds a clean working entry on top. popstate catches the floor and
+  // re-pushes to keep the user inside the app.
+  useEffect(() => {
+    const url = window.location.href;
+    window.history.replaceState({ view: "markets", floor: true }, "", url);
+    window.history.pushState({ view: "markets" }, "", url);
+  }, []);
+
+  // Browser back/forward: read state, update view.
+  // When back reaches the floor entry, re-push to stay in app.
   useEffect(() => {
     const onPop = (e) => {
       if (e.state?.view === "analysis") {
@@ -2343,6 +2354,10 @@ function App() {
         setTab("analysis");
       } else {
         setTab("markets");
+        if (e.state?.floor) {
+          // Re-push so the user stays on markets instead of leaving the app
+          window.history.pushState({ view: "markets" }, "", window.location.href);
+        }
       }
     };
     window.addEventListener("popstate", onPop);
