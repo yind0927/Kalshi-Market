@@ -2331,8 +2331,23 @@ function App() {
   const openAnalysis = (id) => {
     setMarketId(id);
     setTab("analysis");
+    window.history.pushState({ view: "analysis", id }, "", "#analysis");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  // Browser back/forward: read state, update view — never re-push
+  useEffect(() => {
+    const onPop = (e) => {
+      if (e.state?.view === "analysis") {
+        setMarketId(e.state.id);
+        setTab("analysis");
+      } else {
+        setTab("markets");
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const liveCount = DATA.markets.filter(m => liveData[m.id]?.observation).length;
 
@@ -2359,7 +2374,16 @@ function App() {
           liveData={liveData}
           onFetch={fetchLiveForMarket}
           kalshiStatus={kalshiStatus}
-          onBack={() => setTab("markets")}
+          onBack={() => {
+            // If we pushed a history entry when opening analysis, go back via
+            // browser history so the URL and history stack stay in sync.
+            // Fallback to direct state change if no app-pushed entry exists.
+            if (window.history.state?.view === "analysis") {
+              window.history.back();
+            } else {
+              setTab("markets");
+            }
+          }}
         />
       )}
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} setTheme={setTheme}
