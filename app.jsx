@@ -199,7 +199,7 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
 
   return (
     <svg
-      viewBox={`0 -15 ${W} ${H}`}
+      viewBox={`0 0 ${W} ${H}`}
       className={`us-map${compact ? " compact" : ""}${immersive ? " immersive" : ""}`}
       style={{ overflow: "visible" }}
     >
@@ -216,6 +216,10 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
         </filter>
         <clipPath id="usClipA"><path d={US_PATH} /></clipPath>
       </defs>
+
+      {/* Shift all content up so the US shape is vertically centered in the box.
+          US path top ≈ y78, bottom ≈ y378 → 300px content in 380px canvas → shift -40px */}
+      <g transform="translate(0, -40)">
 
       {/* Dot grid — canvas */}
       {!compact && <rect width={W} height={H} fill="url(#mdGrid)" className="md-grid-bg" />}
@@ -302,6 +306,8 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
           </g>
         );
       })}
+
+      </g>{/* end translate group */}
     </svg>
   );
 }
