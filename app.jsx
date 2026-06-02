@@ -384,6 +384,7 @@ function MapHero({ markets, onOpen }) {
               >
                 <span className="mapm-chip-city">{m.cnCity}</span>
                 <span className="mapm-chip-en">{m.city}</span>
+                <span className="mapm-chip-temp">{m.forecastHigh ?? m.currentObs}°</span>
                 <span className="mapm-chip-edge">{e > 0 ? "+" : ""}{(e * 100).toFixed(0)}pp</span>
               </button>
             );

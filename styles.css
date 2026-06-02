@@ -1998,6 +1998,7 @@ input { font-family: inherit; }
 .mapm-chip.active { border-color: var(--ink-3); background: var(--bg-2); }
 .mapm-chip-city { font-weight: 700; color: var(--ink-1); font-size: 11.5px; }
 .mapm-chip-en { font-size: 10px; color: var(--ink-3); font-weight: 400; }
+.mapm-chip-temp { display: none; } /* shown only on mobile */
 .mapm-chip-edge { font-family: var(--mono); font-size: 10px; font-weight: 500; margin-left: 2px; }
 .mapm-chip.pos .mapm-chip-edge { color: var(--pos); }
 .mapm-chip.neg .mapm-chip-edge { color: var(--neg); }
@@ -3467,33 +3468,45 @@ input { font-family: inherit; }
   .hero-eyebrow { font-size: 9px; letter-spacing: 0.12em; }
 
   /* ════════════════════════════════════════════════════════
-   * MapHero — show SVG map + improved city chips
+   * MapHero — SVG map + 3-col info chips
    * ════════════════════════════════════════════════════════ */
   .mapm-card { border-radius: 18px; }
   .mapm-canvas { display: block; }
-  .mapm-canvas .us-map { max-height: 185px; }
-  .mapm-head { flex-direction: column; gap: 6px; }
-  .mapm-title { font-size: 20px; font-weight: 800; letter-spacing: -0.025em; }
-  .mapm-active { display: none; }
+  .mapm-canvas .us-map { max-height: 190px; }
+  .mapm-head { flex-direction: row; justify-content: space-between; align-items: flex-end; gap: 6px; margin-bottom: 10px; }
+  .mapm-title { font-size: 18px; font-weight: 800; letter-spacing: -0.025em; }
+  /* Compact active city summary — visible on mobile */
+  .mapm-active { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+  .mapm-active-top { gap: 5px; }
+  .mapm-active-city { font-size: 13px; font-weight: 700; }
+  .mapm-active-cn { font-size: 11px; }
+  .mapm-active-bot { justify-content: flex-end; gap: 6px; }
+  .mapm-active-temp { font-size: 13px; font-family: var(--mono); }
+  .mapm-active-bucket { font-size: 11px; }
+  .mapm-active-cta { font-size: 11px; padding: 3px 8px; border-radius: 8px; }
   .mapm-footer { flex-direction: column; gap: 10px; }
   .mapm-legend { display: none; }
-  /* 3-col chip grid — iOS-style grouped buttons */
+  /* 3-col chip grid — iOS-style, shows CN name + temp + edge */
   .mapm-chips {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    gap: 7px;
   }
   .mapm-chip {
     flex-direction: column;
-    gap: 3px;
-    padding: 12px 6px 10px;
+    gap: 1px;
+    padding: 10px 6px 9px;
     text-align: center;
     align-items: center;
     border-radius: 14px;
   }
-  .mapm-chip-city { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
-  .mapm-chip-edge { font-size: 12px; font-weight: 600; margin-left: 0; }
-  .mapm-chip-en { display: none; }
+  .mapm-chip-city { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+  .mapm-chip-en { display: block; font-size: 9px; color: var(--ink-4); font-weight: 400; letter-spacing: 0.01em; margin-bottom: 3px; }
+  .mapm-chip-temp { display: block; font-family: var(--mono); font-size: 16px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 3px 0 1px; }
+  .mapm-chip.pos .mapm-chip-temp { color: var(--pos); }
+  .mapm-chip.neg .mapm-chip-temp { color: var(--neg); }
+  .mapm-chip.flat .mapm-chip-temp { color: var(--ink-2); }
+  .mapm-chip-edge { font-size: 11px; font-weight: 600; margin-left: 0; }
 
   /* ════════════════════════════════════════════════════════
    * CityTimeline — horizontal scroll, show NWS temp
@@ -3522,18 +3535,25 @@ input { font-family: inherit; }
   .kpi-foot { font-size: 10px; }
 
   /* ════════════════════════════════════════════════════════
-   * Market cards — single column
+   * Market cards — single column, full info
    * ════════════════════════════════════════════════════════ */
   .card-grid { grid-template-columns: 1fr; gap: 10px; }
   .mkt-card { padding: 16px; border-radius: 18px; }
   .mkt-card-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+  .mkt-card-id { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
   .mkt-edge-hero { padding: 8px 12px; border-radius: 10px; }
   .mkt-edge-hero-num { font-size: 22px; }
   .mkt-edge-sign { font-size: 15px; }
   .mkt-temp-val.obs { font-size: 26px; }
   .mkt-temp-val.fct { font-size: 30px; }
-  .mkt-temp-spark { display: none; }
+  /* Restore sparkline — use smaller fixed SVG size via CSS scale */
+  .mkt-temp-spark { display: block; }
+  .mkt-temp-spark svg { width: 64px !important; height: 26px !important; }
+  /* Weather factors — clip detail text so it doesn't overflow */
+  .kv-detail { max-width: 80px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .mkt-dist { gap: 3px; }
+  /* Dist bars: taller on mobile for easier reading */
+  .mkt-dist-bar-wrap { height: 48px; }
 
   /* ════════════════════════════════════════════════════════
    * Playbook — match desktop: show bucket + tag selector
@@ -3559,15 +3579,27 @@ input { font-family: inherit; }
   .pb-city-row > .edge-pill { flex-shrink: 0; }
   .pb-arrow { flex-shrink: 0; font-size: 16px; }
 
-  /* Bucket + tag selector drop to line 2 */
+  /* Line 2: bucket range + market vs model prices on same line */
   .pb-bucket {
-    display: block;            /* restore: 900px hides it */
-    width: 100%;
+    display: inline-flex;      /* restore: 900px hides it */
+    align-items: center;
     font-size: 11px;
+    font-weight: 600;
     color: var(--ink-3);
     margin-top: -2px;
+    gap: 6px;
   }
-  .pb-nums { display: none; }
+  /* Show market vs model prices inline after bucket */
+  .pb-nums {
+    display: inline-flex;
+    gap: 3px;
+    font-size: 10px;
+    font-family: var(--mono);
+    align-items: center;
+  }
+  .pb-sep { color: var(--ink-4); }
+  .pb-market { color: var(--ink-3); }
+  .pb-model { color: var(--accent); }
   .pb-meta { display: none; }
   .pb-tag-selector {
     display: flex;
