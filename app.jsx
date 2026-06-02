@@ -37,6 +37,112 @@ function normH(h) { return h < 7 ? h + 24 : h; } // normalize for timeline math
 
 function isInWindow(bjtDec) { return bjtDec >= 19 || bjtDec < 2; }
 
+/* ─────────────────────────────────────────────────────────
+ * City-specific weather factor configs
+ * onshoreMin/Max: wind direction sector (degrees) that indicates
+ * onshore (sea/lake) flow causing cooling effect
+ * ───────────────────────────────────────────────────────── */
+const CITY_WEATHER_CFG = {
+  "New York":    { waterFeature: "海风",  onshoreMin: 120, onshoreMax: 260, minKt: 5 },
+  "Miami":       { waterFeature: "海风",  onshoreMin: 45,  onshoreMax: 180, minKt: 4 },
+  "Chicago":     { waterFeature: "湖风",  onshoreMin: 20,  onshoreMax: 140, minKt: 4 },
+  "Los Angeles": { waterFeature: "海雾",  onshoreMin: 210, onshoreMax: 330, minKt: 3 },
+  "Austin":      { waterFeature: null },
+  "Dallas":      { waterFeature: null },
+};
+
+/* Compute real-time weather risk factors from live observation + distribution.
+ * Uses already-calculated corrections (no extra math) and returns up to 3
+ * factors sorted by temperature impact magnitude. */
+function computeLiveFactors(market, liveEntry) {
+  const obs  = liveEntry?.observation;
+  const dist = liveEntry?.distribution;
+  if (!obs && !dist) return null;
+
+  const cfg = CITY_WEATHER_CFG[market.city] || {};
+  const factors = [];
+
+  // ── 1. Onshore flow (sea / lake breeze) ──────────────────
+  if (cfg.waterFeature && obs?.windDirection != null) {
+    const wd = obs.windDirection;
+    const isOnshore = cfg.onshoreMin <= cfg.onshoreMax
+      ? wd >= cfg.onshoreMin && wd <= cfg.onshoreMax
+      : wd >= cfg.onshoreMin || wd <= cfg.onshoreMax;
+    const active   = isOnshore && (obs.windSpeed ?? 0) >= cfg.minKt;
+    const corr     = dist?.corrections?.windDir ?? 0;
+    const speedStr = obs.windSpeed != null ? `${Math.round(obs.windSpeed)}kt` : "—";
+    factors.push({
+      labelCN: cfg.waterFeature,
+      signal:  active ? "cool" : "neutral",
+      value:   `${obs.windCompass ?? "—"} ${speedStr}`,
+      valueCN: active ? "已到达" : "未到达",
+      detail:  Math.abs(corr) > 0.15 ? `${corr > 0 ? "+" : ""}${corr.toFixed(1)}°` : null,
+      impact:  Math.abs(corr),
+    });
+  }
+
+  // ── 2. Inland wind speed (Austin / Dallas) ────────────────
+  if (!cfg.waterFeature && obs?.windSpeed != null) {
+    const corr = dist?.corrections?.wind ?? 0;
+    const cat  = obs.windCategory ?? (obs.windSpeed > 15 ? "强风" : obs.windSpeed > 8 ? "有风" : "微风");
+    factors.push({
+      labelCN: "风速",
+      signal:  obs.windSpeed > 15 ? "cool" : obs.windSpeed < 5 ? "hot" : "neutral",
+      value:   `${obs.windCompass ?? "—"} ${Math.round(obs.windSpeed)}kt`,
+      valueCN: cat,
+      detail:  Math.abs(corr) > 0.15 ? `${corr > 0 ? "+" : ""}${corr.toFixed(1)}°` : null,
+      impact:  Math.abs(corr),
+    });
+  }
+
+  // ── 3. Cloud cover ────────────────────────────────────────
+  if (obs?.cloudCoverPct != null) {
+    const corr = dist?.corrections?.cloud ?? 0;
+    factors.push({
+      labelCN: "云量",
+      signal:  obs.cloudCoverPct > 60 ? "cool" : obs.cloudCoverPct < 15 ? "hot" : "neutral",
+      value:   `${obs.cloudLabel} · ${obs.cloudCoverPct}%`,
+      valueCN: obs.cloudLabel,
+      detail:  Math.abs(corr) > 0.15 ? `${corr > 0 ? "+" : ""}${corr.toFixed(1)}°` : null,
+      impact:  Math.abs(corr),
+    });
+  }
+
+  // ── 4. Dew point / humidity ───────────────────────────────
+  if (obs?.dewpoint != null) {
+    const corr = dist?.corrections?.dew ?? 0;
+    if (Math.abs(corr) > 0.2 || obs.dewpoint > 62) {
+      const label = obs.dewpoint > 65 ? "高湿" : obs.dewpoint > 55 ? "适中" : "干燥";
+      factors.push({
+        labelCN: "露点",
+        signal:  obs.dewpoint > 65 ? "cool" : obs.dewpoint < 35 ? "hot" : "neutral",
+        value:   `${obs.dewpoint.toFixed(0)}°F · ${Math.round(obs.humidity ?? 0)}%RH`,
+        valueCN: label,
+        detail:  Math.abs(corr) > 0.15 ? `${corr > 0 ? "+" : ""}${corr.toFixed(1)}°` : null,
+        impact:  Math.abs(corr),
+      });
+    }
+  }
+
+  // ── 5. Model spread (uncertainty signal) ─────────────────
+  if (dist?.spread != null) {
+    const high = dist.spread > 3.5;
+    factors.push({
+      labelCN: "预测分歧",
+      signal:  high ? "warn" : "neutral",
+      value:   `±${(dist.spread / 2).toFixed(1)}°F`,
+      valueCN: high ? "高不确定" : "模型一致",
+      detail:  null,
+      impact:  high ? 1.5 : 0,
+    });
+  }
+
+  // Sort by impact and return top 3
+  return factors
+    .sort((a, b) => (b.impact || 0) - (a.impact || 0))
+    .slice(0, 3);
+}
+
 function getPlaybookStatus(market, bjtDec) {
   // Conservative default: everything is "late" unless edge is negligible.
   // Manual overrides in TonightPlaybook let the user reclassify.
@@ -771,13 +877,27 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
         </div>
       </div>
 
-      {/* ── keyvar (sea breeze, wind, etc.) ── */}
-      <div className="mkt-keyvar">
-        <span className="kv-label">{market.keyVar.labelCN}</span>
-        <span className={`kv-signal ${market.keyVar.signal}`} />
-        <span className="kv-val">{market.keyVar.value}</span>
-        <span className="kv-cn">{market.keyVar.valueCN}</span>
-      </div>
+      {/* ── Weather factors (real-time or static fallback) ── */}
+      {(() => {
+        const lf = computeLiveFactors(market, market._liveEntry);
+        const rows = lf || [{ ...market.keyVar, impact: 0 }];
+        return (
+          <div className="mkt-factors">
+            {rows.map((f, i) => (
+              <div className="mkt-factor" key={i}>
+                <span className={`kv-signal ${f.signal}`} />
+                <span className="kv-label">{f.labelCN}</span>
+                <span className="kv-val">{f.value}</span>
+                {f.detail && <span className="kv-detail">{f.detail}</span>}
+                {!lf && f.valueCN && <span className="kv-cn">{f.valueCN}</span>}
+              </div>
+            ))}
+            {lf && (
+              <div className="mkt-factors-src">实时 NWS · 修正值 = 温度影响</div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Zone 3: Probability Distribution ── */}
       <div className="mkt-dist">
@@ -904,6 +1024,7 @@ function liveMarket(market, live) {
     _liveObs:    !!(obs),
     _liveModel:  !!(dist),
     _liveKalshi: !!(live.kalshiBuckets?.length),
+    _liveEntry:  live,   // raw entry for factor computation
   };
 }
 

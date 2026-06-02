@@ -2656,6 +2656,42 @@ input { font-family: inherit; }
   color: var(--ink-4);
   border: 1px solid var(--border);
 }
+/* Weather factor block — replaces single mkt-keyvar with multi-factor list */
+.mkt-factors {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.mkt-factor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.mkt-factor:first-child { border-top: 0; }
+.mkt-factors-src {
+  padding: 4px 12px 6px;
+  font-size: 9.5px;
+  color: var(--ink-4);
+  letter-spacing: 0.03em;
+  border-top: 1px solid var(--border);
+}
+.kv-detail {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* Legacy single-factor (fallback when no live data) */
 .mkt-keyvar {
   display: flex;
   align-items: center;
@@ -2686,8 +2722,9 @@ input { font-family: inherit; }
   border-radius: 50%;
   flex-shrink: 0;
 }
-.kv-signal.hot { background: var(--neg); }
+.kv-signal.hot  { background: var(--neg); }
 .kv-signal.cool { background: var(--accent); }
+.kv-signal.warn { background: var(--warn); }
 .kv-signal.neutral { background: var(--ink-4); }
 .kv-cn {
   font-size: 11px;
