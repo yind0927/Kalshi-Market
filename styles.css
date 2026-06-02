@@ -729,18 +729,23 @@ input { font-family: inherit; }
 /* ── Zone 2: Temperature (compact inline) ── */
 .mkt-z2 {
   display: flex;
-  align-items: center;
-  gap: 0;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: 16px;
-  flex-wrap: wrap;
-  row-gap: 4px;
+}
+.mkt-z2-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .mkt-temp-pair {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
   flex: 1;
   min-width: 0;
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 .mkt-temp-obs, .mkt-temp-fct {
   display: flex;

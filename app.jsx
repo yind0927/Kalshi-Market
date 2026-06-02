@@ -743,27 +743,31 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
 
       {/* ── Zone 2: Temperature (compact inline) ── */}
       <div className="mkt-z2">
-        <div className="mkt-temp-pair">
-          <div className="mkt-temp-obs">
-            <span className="mkt-temp-val obs">{market.currentObs}<span className="deg">°</span></span>
-            {isLive && <span className="live-dot-inline" />}
+        {/* Row 1: numbers + sparkline */}
+        <div className="mkt-z2-main">
+          <div className="mkt-temp-pair">
+            <div className="mkt-temp-obs">
+              <span className="mkt-temp-val obs">{market.currentObs}<span className="deg">°</span></span>
+              {isLive && <span className="live-dot-inline" />}
+            </div>
+            <span className="mkt-temp-arrow-sm">→</span>
+            <div className="mkt-temp-fct">
+              <span className="mkt-temp-val fct">{market.forecastHigh}<span className="deg">°F</span></span>
+              {market._liveModel && <span className="live-dot-inline accent" />}
+            </div>
+            {market._liveModel && market.forecastMin != null && (
+              <span className="mkt-range-tag">{market.forecastMin}–{market.forecastMax}°F</span>
+            )}
           </div>
-          <span className="mkt-temp-arrow-sm">→</span>
-          <div className="mkt-temp-fct">
-            <span className="mkt-temp-val fct">{market.forecastHigh}<span className="deg">°F</span></span>
-            {market._liveModel && <span className="live-dot-inline accent" />}
+          <div className="mkt-temp-spark">
+            <Spark series={series} color="var(--accent)" w={80} h={32} />
           </div>
-          {market._liveModel && market.forecastMin != null && (
-            <span className="mkt-range-tag">{market.forecastMin}–{market.forecastMax}°F</span>
-          )}
         </div>
+        {/* Row 2: labels */}
         <div className="mkt-temp-labels">
           <span>当前{isLive ? " · 实时" : ""}</span>
           <span className="mkt-temp-labels-sep" />
           <span>NWS 预报{market._liveModel ? " · 实时" : ""}</span>
-        </div>
-        <div className="mkt-temp-spark">
-          <Spark series={series} color="var(--accent)" w={80} h={32} />
         </div>
       </div>
 
