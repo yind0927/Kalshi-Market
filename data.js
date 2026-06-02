@@ -38,7 +38,7 @@ window.KW_DATA = {
       obsTime: "10:00 ET",
       forecastHigh: 83,
       forecastConf: 0.71,
-      modelConsensus: "GFS · ECMWF · HRRR",
+      modelConsensus: "HRRR · GFS · NWS",
       keyVar: {
         label: "Sea breeze",
         labelCN: "海风",
@@ -81,7 +81,7 @@ window.KW_DATA = {
       obsTime: "10:00 ET",
       forecastHigh: 89,
       forecastConf: 0.88,
-      modelConsensus: "GFS · ECMWF · HWRF",
+      modelConsensus: "HRRR · GFS · NWS",
       keyVar: {
         label: "Sea breeze front",
         labelCN: "海风锋",
@@ -122,7 +122,7 @@ window.KW_DATA = {
       obsTime: "09:00 CT",
       forecastHigh: 74,
       forecastConf: 0.83,
-      modelConsensus: "GFS · ECMWF · NAM",
+      modelConsensus: "HRRR · GFS · NWS",
       keyVar: {
         label: "Lake wind",
         labelCN: "湖风",
@@ -163,7 +163,7 @@ window.KW_DATA = {
       obsTime: "09:00 CT",
       forecastHigh: 91,
       forecastConf: 0.74,
-      modelConsensus: "GFS · ECMWF · HRRR",
+      modelConsensus: "HRRR · GFS · NWS",
       keyVar: {
         label: "Cap strength",
         labelCN: "抑制层强度",
@@ -204,7 +204,7 @@ window.KW_DATA = {
       obsTime: "09:00 CT",
       forecastHigh: 96,
       forecastConf: 0.78,
-      modelConsensus: "GFS · ECMWF · HRRR",
+      modelConsensus: "HRRR · GFS · NWS",
       keyVar: {
         label: "850mb temp",
         labelCN: "850百帕温度",
@@ -245,7 +245,7 @@ window.KW_DATA = {
       obsTime: "07:00 PT",
       forecastHigh: 74,
       forecastConf: 0.62,
-      modelConsensus: "GFS · ECMWF · WRF-Cal",
+      modelConsensus: "HRRR · GFS · NWS",
       keyVar: {
         label: "Marine layer ceiling",
         labelCN: "海雾层高度",

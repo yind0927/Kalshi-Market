@@ -817,7 +817,11 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
   const maxE = maxEdgeBucket(market);
   const edge = maxE.model - maxE.market;
   const best = bestBucket(market);
-  const series = DATA.hourlySeries[market.city];
+  // Prefer live NWS hourly obs temps; fall back to static seed data
+  const liveHourly = market._liveEntry?.hourlyObs;
+  const series = liveHourly && liveHourly.length >= 2
+    ? liveHourly.map(h => h.temp)
+    : (DATA.hourlySeries[market.city] || []);
   const maxBucketVal = Math.max(...market.buckets.flatMap((b) => [b.market, b.model]));
   const wsInfo = windowStatusLabel(market, bjtDec);
   const edgeCls = edge > 0.015 ? "pos" : edge < -0.015 ? "neg" : "flat";
@@ -1727,7 +1731,11 @@ function AnalysisView({ marketId, setMarketId, bjtDec, liveData, onFetch, kalshi
           <div className="ana-hero-tags">
             <span className="ana-tag">{market.airport}</span>
             <span className="ana-tag">{market.timezone} · {market.tzLabel}</span>
-            <span className="ana-tag">{market.modelConsensus}</span>
+            <span className="ana-tag">{
+              live?.models
+                ? Object.keys(live.models).join(" · ")
+                : market.modelConsensus
+            }</span>
             <span className="ana-tag"
               title="σ = 集合预测标准差。约68%概率最高温在 均值±σ 范围内。σ越小 = 模型越一致 = 预测越可信。">
               {live?.distribution?.adjustedStd
