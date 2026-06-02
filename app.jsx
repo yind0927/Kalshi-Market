@@ -199,7 +199,7 @@ function USMap({ markets, focusId, onSelect, onHover, compact, immersive }) {
 
   return (
     <svg
-      viewBox={`0 0 ${W} ${H}`}
+      viewBox={`0 -15 ${W} ${H}`}
       className={`us-map${compact ? " compact" : ""}${immersive ? " immersive" : ""}`}
       style={{ overflow: "visible" }}
     >
@@ -330,7 +330,7 @@ function MapHero({ markets, onOpen }) {
       <div className="mapm-head">
         <div>
           <div className="hero-eyebrow">Market Map · 机会分布</div>
-          <h2 className="mapm-title">全美气象市场</h2>
+          <h2 className="mapm-title">气象市场概要</h2>
         </div>
 
         <div className="mapm-active">
@@ -1131,7 +1131,7 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
       <div className="section-head">
         <div>
           <h2>
-            市场一览 <em>Market Overview</em>
+            市场总结 <em>Market Summary</em>
             {liveCount > 0 && <span className="live-badge-sm" style={{ marginLeft: 8 }}>LIVE</span>}
             {pbFilter && <span className="live-badge-sm" style={{ marginLeft: 8, background: "var(--warn-soft)", color: "var(--warn)" }}>筛选中</span>}
           </h2>
@@ -1145,9 +1145,8 @@ function MarketsView({ openAnalysis, bjtDec, liveData }) {
           {pbFilter
             ? <button className="chip active" onClick={() => setPbFilter(null)}>× 清除操作板筛选</button>
             : <>
-              <button className={`chip ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>All · 全部</button>
-              <button className={`chip ${filter === "edge" ? "active" : ""}`} onClick={() => setFilter("edge")}>Top edge · 高偏差</button>
-              <button className={`chip ${filter === "watch" ? "active" : ""}`} onClick={() => setFilter("watch")}>Watchlist · 自选</button>
+              <button className={`chip ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>全部</button>
+              <button className={`chip ${filter === "edge" ? "active" : ""}`} onClick={() => setFilter("edge")}>偏差</button>
             </>
           }
         </div>
