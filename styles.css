@@ -514,8 +514,9 @@ input { font-family: inherit; }
   align-items: start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 22px;
+  margin-bottom: 18px;
 }
+.mkt-temp-row { margin-bottom: 16px; }
 .mkt-card-title {
   font-size: 22px;
   font-weight: 600;
@@ -684,6 +685,126 @@ input { font-family: inherit; }
   transition: all 0.15s;
 }
 .mkt-card:hover .mkt-foot-cta { background: var(--ink-1); color: var(--surface); border-color: var(--ink-1); }
+
+/* ── Zone 1: City + Edge Hero ── */
+.mkt-z1 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.mkt-city-block { flex: 1; min-width: 0; }
+
+/* Edge hero: large signal number replacing the small pill */
+.mkt-edge-hero {
+  flex-shrink: 0;
+  text-align: right;
+  line-height: 1;
+  padding: 10px 14px;
+  border-radius: 12px;
+}
+.mkt-edge-hero.pos { background: var(--pos-soft); color: var(--pos); }
+.mkt-edge-hero.neg { background: var(--neg-soft); color: var(--neg); }
+.mkt-edge-hero.flat { background: var(--bg-2); color: var(--ink-3); }
+.mkt-edge-hero-num {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.mkt-edge-sign { font-size: 18px; }
+.mkt-edge-unit { font-size: 13px; font-weight: 500; opacity: 0.7; }
+.mkt-edge-hero-lbl {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-top: 4px;
+  text-align: center;
+}
+
+/* ── Zone 2: Temperature (compact inline) ── */
+.mkt-z2 {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.mkt-temp-pair {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.mkt-temp-obs, .mkt-temp-fct {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.mkt-temp-val {
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.mkt-temp-val .deg { font-size: 0.55em; font-weight: 400; color: var(--ink-3); }
+.mkt-temp-val.obs { font-size: 30px; color: var(--pos); }
+.mkt-temp-val.fct { font-size: 36px; color: var(--accent); }
+.mkt-temp-arrow-sm {
+  font-size: 16px;
+  color: var(--ink-4);
+  padding: 0 2px;
+  align-self: center;
+}
+.mkt-range-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  align-self: center;
+}
+.mkt-temp-labels {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--ink-4);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+}
+.mkt-temp-labels-sep {
+  width: 1px; height: 10px;
+  background: var(--border);
+}
+.live-dot-inline {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--pos);
+  flex-shrink: 0;
+  position: relative;
+}
+.live-dot-inline.accent { background: var(--accent); }
+.live-dot-inline::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: var(--pos);
+  opacity: 0.25;
+  animation: pulse 2s infinite;
+}
+.live-dot-inline.accent::after { background: var(--accent); }
 
 /* ============================================================
  * Analysis view
@@ -3364,8 +3485,11 @@ input { font-family: inherit; }
   .card-grid { grid-template-columns: 1fr; gap: 10px; }
   .mkt-card { padding: 16px; border-radius: 18px; }
   .mkt-card-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
-  .mkt-temp-row { gap: 10px; }
-  .mkt-temp-block .v { font-size: 24px; font-weight: 800; }
+  .mkt-edge-hero { padding: 8px 12px; border-radius: 10px; }
+  .mkt-edge-hero-num { font-size: 22px; }
+  .mkt-edge-sign { font-size: 15px; }
+  .mkt-temp-val.obs { font-size: 26px; }
+  .mkt-temp-val.fct { font-size: 30px; }
   .mkt-temp-spark { display: none; }
   .mkt-dist { gap: 3px; }
 

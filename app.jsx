@@ -714,11 +714,14 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
   const series = DATA.hourlySeries[market.city];
   const maxBucketVal = Math.max(...market.buckets.flatMap((b) => [b.market, b.model]));
   const wsInfo = windowStatusLabel(market, bjtDec);
+  const edgeCls = edge > 0.015 ? "pos" : edge < -0.015 ? "neg" : "flat";
 
   return (
     <div className="mkt-card" onClick={onOpen}>
-      <div className="mkt-card-top">
-        <div>
+
+      {/* ── Zone 1: Market Identity + Edge Hero ── */}
+      <div className="mkt-z1">
+        <div className="mkt-city-block">
           <div className="mkt-card-title">
             {market.city} <span className="cn">{market.cnCity}</span>
           </div>
@@ -728,39 +731,43 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
             <span className={`window-status-badge ${wsInfo.cls}`}>{wsInfo.text}</span>
           </div>
         </div>
-        <EdgePill value={edge} large />
+        <div className={`mkt-edge-hero ${edgeCls}`}>
+          <div className="mkt-edge-hero-num">
+            <span className="mkt-edge-sign">{edge > 0.015 ? "↑" : edge < -0.015 ? "↓" : "·"}</span>
+            {(Math.abs(edge) * 100).toFixed(1)}
+            <span className="mkt-edge-unit">pp</span>
+          </div>
+          <div className="mkt-edge-hero-lbl">Max Edge</div>
+        </div>
       </div>
 
-      <div className="mkt-temp-row">
-        <div className="mkt-temp-block">
-          <div className="l">
-            Current 当前
-            {isLive && <span className="live-badge-sm" style={{ marginLeft: 4 }}>LIVE</span>}
+      {/* ── Zone 2: Temperature (compact inline) ── */}
+      <div className="mkt-z2">
+        <div className="mkt-temp-pair">
+          <div className="mkt-temp-obs">
+            <span className="mkt-temp-val obs">{market.currentObs}<span className="deg">°</span></span>
+            {isLive && <span className="live-dot-inline" />}
           </div>
-          <div className="v" style={isLive ? { color: "var(--pos)" } : {}}>
-            {market.currentObs}<span className="deg">°F</span>
-          </div>
-        </div>
-        <span className="mkt-temp-arrow">→</span>
-        <div className="mkt-temp-block">
-          <div className="l">
-            Forecast 预测
-            {market._liveModel && <span className="live-badge-sm" style={{ marginLeft: 4 }}>LIVE</span>}
-          </div>
-          <div className="v" style={market._liveModel ? { color: "var(--accent)" } : {}}>
-            {market.forecastHigh}<span className="deg">°F</span>
+          <span className="mkt-temp-arrow-sm">→</span>
+          <div className="mkt-temp-fct">
+            <span className="mkt-temp-val fct">{market.forecastHigh}<span className="deg">°F</span></span>
+            {market._liveModel && <span className="live-dot-inline accent" />}
           </div>
           {market._liveModel && market.forecastMin != null && (
-            <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 1 }}>
-              {market.forecastMin}–{market.forecastMax}°F 模型区间
-            </div>
+            <span className="mkt-range-tag">{market.forecastMin}–{market.forecastMax}°F</span>
           )}
         </div>
+        <div className="mkt-temp-labels">
+          <span>当前{isLive ? " · 实时" : ""}</span>
+          <span className="mkt-temp-labels-sep" />
+          <span>NWS 预报{market._liveModel ? " · 实时" : ""}</span>
+        </div>
         <div className="mkt-temp-spark">
-          <Spark series={series} color="var(--accent)" w={84} h={36} />
+          <Spark series={series} color="var(--accent)" w={80} h={32} />
         </div>
       </div>
 
+      {/* ── keyvar (sea breeze, wind, etc.) ── */}
       <div className="mkt-keyvar">
         <span className="kv-label">{market.keyVar.labelCN}</span>
         <span className={`kv-signal ${market.keyVar.signal}`} />
@@ -768,6 +775,7 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
         <span className="kv-cn">{market.keyVar.valueCN}</span>
       </div>
 
+      {/* ── Zone 3: Probability Distribution ── */}
       <div className="mkt-dist">
         {market.buckets.map((b, i) => {
           const isPeak = b === best;
@@ -776,10 +784,7 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
           return (
             <div className="mkt-dist-col" key={i}>
               <div className="mkt-dist-bar-wrap">
-                <div
-                  className={`mkt-dist-bar${isPeak ? " peak" : ""}`}
-                  style={{ height: `${heightPct}%` }}
-                >
+                <div className={`mkt-dist-bar${isPeak ? " peak" : ""}`} style={{ height: `${heightPct}%` }}>
                   <div className="fill-market" style={{ height: `${(b.market / innerMax) * 100}%` }} />
                   <div className="fill-model"  style={{ height: `${(b.model  / innerMax) * 100}%` }} />
                 </div>
@@ -790,9 +795,10 @@ function MarketCard({ market, onOpen, bjtDec, isLive }) {
         })}
       </div>
 
+      {/* ── Footer: best bucket + volume + CTA ── */}
       <div className="mkt-foot">
         <div className="mkt-edge-block">
-          <div className="l">Top bucket · 最佳区间</div>
+          <div className="l">最佳区间</div>
           <div className="v">
             <span className="range mono">{maxE.range}</span>
             <span style={{ color: "var(--ink-3)", fontSize: 11 }}>· {fmtCents(maxE.market)} vs {fmtPct(maxE.model)}</span>
