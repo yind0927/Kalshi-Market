@@ -3529,11 +3529,18 @@ input { font-family: inherit; }
   .topbar-right { gap: 6px; }
   .bjt-clock .bjt-label { display: none; }
   .bjt-time { font-size: 14px; font-weight: 600; }
-  .window-badge { font-size: 11px; padding: 5px 10px; border-radius: 20px; }
+  /* window-badge shown in bottom tab bar on mobile — hide from topbar */
+  .topbar .window-badge { display: none; }
   .live-count-badge { display: none; }
   .divider-v { display: none; }
   .refresh-stamp { display: none; }
-  .icon-btn { width: 32px; height: 32px; border-radius: 8px; }
+  /* explicit centering for icon-btn on mobile */
+  .icon-btn {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+  }
 
   /* ════════════════════════════════════════════════════════
    * View / page padding
@@ -3555,36 +3562,44 @@ input { font-family: inherit; }
   .mapm-card { border-radius: 18px; }
   .mapm-canvas { display: block; }
   .mapm-canvas .us-map { max-height: 190px; }
-  .mapm-head { flex-direction: row; justify-content: space-between; align-items: flex-end; gap: 6px; margin-bottom: 10px; }
-  .mapm-title { font-size: 18px; font-weight: 800; letter-spacing: -0.025em; }
+  /* Stack title + active city summary vertically for breathing room */
+  .mapm-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .mapm-title { font-size: 20px; font-weight: 800; letter-spacing: -0.025em; }
   /* Compact active city summary — visible on mobile */
-  .mapm-active { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+  .mapm-active { display: flex; flex-direction: row; gap: 8px; align-items: center; flex-wrap: wrap; }
   .mapm-active-top { gap: 5px; }
   .mapm-active-city { font-size: 13px; font-weight: 700; }
   .mapm-active-cn { font-size: 11px; }
-  .mapm-active-bot { justify-content: flex-end; gap: 6px; }
+  .mapm-active-bot { justify-content: flex-start; gap: 6px; }
   .mapm-active-temp { font-size: 13px; font-family: var(--mono); }
   .mapm-active-bucket { font-size: 11px; }
   .mapm-active-cta { font-size: 11px; padding: 3px 8px; border-radius: 8px; }
   .mapm-footer { flex-direction: column; gap: 10px; }
   .mapm-legend { display: none; }
-  /* 3-col chip grid — iOS-style, shows CN name + temp + edge */
+  /* 3-col chip grid — bigger cells filling full row width */
   .mapm-chips {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr);
-    gap: 7px;
+    gap: 8px;
   }
   .mapm-chip {
     flex-direction: column;
-    gap: 1px;
-    padding: 10px 6px 9px;
+    gap: 2px;
+    padding: 14px 8px 12px;
     text-align: center;
     align-items: center;
-    border-radius: 14px;
+    border-radius: 16px;
+    min-height: 88px;
+    justify-content: center;
   }
-  .mapm-chip-city { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
-  .mapm-chip-en { display: block; font-size: 9px; color: var(--ink-4); font-weight: 400; letter-spacing: 0.01em; margin-bottom: 3px; }
-  .mapm-chip-temp { display: block; font-family: var(--mono); font-size: 16px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 3px 0 1px; }
+  .mapm-chip-city { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .mapm-chip-en { display: block; font-size: 9px; color: var(--ink-4); font-weight: 400; letter-spacing: 0.01em; margin-bottom: 2px; }
+  .mapm-chip-temp { display: block; font-family: var(--mono); font-size: 20px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 4px 0 2px; }
   .mapm-chip.pos .mapm-chip-temp { color: var(--pos); }
   .mapm-chip.neg .mapm-chip-temp { color: var(--neg); }
   .mapm-chip.flat .mapm-chip-temp { color: var(--ink-2); }
@@ -3603,7 +3618,13 @@ input { font-family: inherit; }
   .tl-city { font-size: 11px; font-weight: 700; }
   .tl-axis { left: 96px; }
   .tl-overlay { left: 96px; }
-  .tl-card-head { gap: 6px; }
+  .tl-card-head { gap: 8px; }
+  /* Stack title row and NWS badge vertically on mobile */
+  .tl-head-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
   .tl-head-top h3 { font-size: 15px; font-weight: 700; }
   .tl-model-badge { font-size: 10px; padding: 3px 8px; }
   .tl-legend { gap: 3px 8px; font-size: 10px; }
@@ -3623,10 +3644,35 @@ input { font-family: inherit; }
   .kpi-foot { font-size: 10px; }
 
   /* ════════════════════════════════════════════════════════
+   * Market summary section header + filter tabs
+   * ════════════════════════════════════════════════════════ */
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 28px 0 14px;
+  }
+  .section-head h2 { font-size: 18px; }
+  .section-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+  .chip { height: 34px; padding: 0 14px; font-size: 12px; }
+
+  /* ════════════════════════════════════════════════════════
    * Market cards — single column, full info
    * ════════════════════════════════════════════════════════ */
   .card-grid { grid-template-columns: 1fr; gap: 10px; }
   .mkt-card { padding: 16px; border-radius: 18px; }
+  /* Ensure detail icon button is centered */
+  .mkt-foot-cta {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+  }
   .mkt-card-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
   .mkt-card-id { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
   .mkt-edge-hero { padding: 8px 12px; border-radius: 10px; }
@@ -3644,11 +3690,25 @@ input { font-family: inherit; }
   .mkt-dist-bar-wrap { height: 48px; }
 
   /* ════════════════════════════════════════════════════════
-   * Playbook — match desktop: show bucket + tag selector
+   * Playbook — title top-left, compact time row below
    * ════════════════════════════════════════════════════════ */
-  .playbook-head { flex-direction: column; gap: 8px; }
-  .pb-time { flex-direction: row; gap: 8px; align-items: center; }
-  .pb-bjt { font-size: 26px; letter-spacing: -0.03em; }
+  .playbook-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 16px 16px 14px;
+  }
+  /* Title block: eyebrow + h2 clearly anchored top-left */
+  .playbook-head > div:first-child { width: 100%; }
+  .playbook-head h2 { font-size: 20px; font-weight: 700; margin: 2px 0 0; letter-spacing: -0.02em; }
+  /* Time row: horizontal, compact, secondary treatment */
+  .pb-time {
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+    opacity: 0.75;
+  }
+  .pb-bjt { font-size: 18px; letter-spacing: -0.02em; }
 
   /* Mobile row: flex-wrap for 2-line layout */
   .pb-city-row {
