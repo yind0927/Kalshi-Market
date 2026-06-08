@@ -2377,19 +2377,40 @@ input { font-family: inherit; }
 }
 .tl-card-head {
   display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 20px;
+}
+.tl-head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 .tl-legend {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
   font-size: 11px;
   color: var(--ink-3);
-  align-items: center;
 }
-.tl-legend span { display: flex; align-items: center; gap: 5px; }
+.tl-leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.tl-leg strong { color: var(--ink-2); font-weight: 700; }
+.tl-leg-peak { color: var(--neg); font-size: 10px; }
+.tl-leg-dim { opacity: 0.5; }
+.tl-leg-sep {
+  width: 1px;
+  height: 11px;
+  background: var(--border-strong);
+  flex-shrink: 0;
+  align-self: center;
+}
 .tl-i {
   width: 12px; height: 6px;
   border-radius: 2px;
@@ -2673,6 +2694,7 @@ input { font-family: inherit; }
   .tl-cn, .tl-tz, .tl-nws-tag { display: none; }
   .tl-axis { left: 100px; }
   .tl-overlay { left: 100px; }
+  .tl-legend { gap: 4px 8px; font-size: 10.5px; }
 }
 
 /* ============================================================
@@ -3581,10 +3603,12 @@ input { font-family: inherit; }
   .tl-city { font-size: 11px; font-weight: 700; }
   .tl-axis { left: 96px; }
   .tl-overlay { left: 96px; }
-  .tl-card-head { flex-direction: column; gap: 8px; }
-  .tl-card-head h3 { font-size: 15px; font-weight: 700; }
-  .tl-legend { flex-wrap: wrap; gap: 5px; font-size: 10px; }
+  .tl-card-head { gap: 6px; }
+  .tl-head-top h3 { font-size: 15px; font-weight: 700; }
   .tl-model-badge { font-size: 10px; padding: 3px 8px; }
+  .tl-legend { gap: 3px 8px; font-size: 10px; }
+  .tl-leg-sep { display: none; }
+  .tl-leg-dim { display: none; }
   .tl-nws-line-label { font-size: 6px; left: 1px; }
   .tl-now-label { font-size: 8px; padding: 1px 4px; }
   .tl-now-time { font-size: 6px; }
