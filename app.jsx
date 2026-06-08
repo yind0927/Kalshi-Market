@@ -690,7 +690,7 @@ function CityTimeline({ markets, bjtDec, liveData }) {
             >
               <div className="tl-now-label">
                 <span>NOW</span>
-                <span className="tl-now-time">{fmtBJT(bjtDec)}</span>
+                <span className="tl-now-time">{formatBJTDisplay(bjtDec)}</span>
               </div>
             </div>
           )}
