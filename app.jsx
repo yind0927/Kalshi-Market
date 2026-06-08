@@ -702,11 +702,13 @@ function CityTimeline({ markets, bjtDec, liveData }) {
             <div className="tl-now-label">NOW</div>
           </div>
         )}
-        {/* NWS forecast update markers */}
+        {/* NWS forecast update markers — afternoon only as faded dashed lines;
+             OOB pre-dawn as edge pins; morning shown as chips in axis below */}
         {nwsUpdateLines.map((m, i) => {
           const hn = normH(m.bjtH);
           if (hn > TL_E) return null;
-          const oob = hn < TL_S; // before trading window — pin to left edge
+          const oob = hn < TL_S;
+          if (m.kind === "morning" && !oob) return null; // in-bounds morning → chip in axis
           const x = oob ? "0%" : ((hn - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
           return (
             <div
@@ -736,6 +738,18 @@ function CityTimeline({ markets, bjtDec, liveData }) {
               </div>
             );
           })}
+          {/* NWS morning update chips — text labels at update positions */}
+          {nwsUpdateLines
+            .filter(n => n.kind === "morning" && normH(n.bjtH) >= TL_S && normH(n.bjtH) <= TL_E)
+            .map((n, idx) => {
+              const x = ((normH(n.bjtH) - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
+              return (
+                <div key={`nchip-${idx}`} className="tl-nws-chip" style={{ left: x }} title={n.title}>
+                  {n.label}
+                </div>
+              );
+            })
+          }
         </div>
         {/* City rows */}
         {markets.map((m) => {
