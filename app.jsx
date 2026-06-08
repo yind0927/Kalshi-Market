@@ -640,21 +640,23 @@ function CityTimeline({ markets, bjtDec, liveData }) {
   //             OKX (NYC) estimated ~14:00 EDT     = BJT 26.0 (02:00)
   //             LOX (LA) estimated  ~12:00 PDT     = BJT 27.0 (03:00)
   //
+  // labelTop: stagger vertical position inside axis band (0-26px) so labels don't collide.
+  // CT/PT morning are only 45min apart → PT bumped to BJT 23.5 (8:30 PDT, within ±30min margin).
   const nwsUpdateLines = [
-    // Cycle 1 — Morning (right at window open — most tradeable)
-    { bjtH: 19.5, label: "NWS¹ET", kind: "morning",
-      title: "NY·Miami NWS 早间预报 (06Z GFS+HRRR) · 实测 ~07:30 EDT = BJT 19:30 · 入场窗口刚开，市场定价滞后约30-60分钟" },
-    { bjtH: 22.75, label: "NWS¹CT", kind: "morning",
-      title: "Chicago·Austin·Dallas NWS 早间预报 (06Z/12ZHRRR) · 实测 ~09:45 CDT = BJT 22:45 · 当地早晨观测融入预报" },
-    { bjtH: 23.0, label: "NWS¹PT", kind: "morning",
-      title: "LA NWS 早间预报 (06Z GFS+HRRR) · 估算 ~08:00 PDT = BJT 23:00 · 海雾消散情况开始纳入" },
-    // Cycle 2 — Afternoon (highest accuracy, late in window)
-    { bjtH: 26.0, label: "NWS²ET", kind: "afternoon",
-      title: "NY·Miami NWS 午后精更 (12Z GFS+HRRR) · 估算 ~14:00 EDT = BJT 02:00 · 精度最高，含全天地面观测，Edge 基本消失" },
-    { bjtH: 25.5, label: "NWS²CT", kind: "afternoon",
-      title: "Chicago·Austin·Dallas NWS 午后精更 (12Z GFS+HRRR) · 实测 ~12:30 CDT = BJT 01:30 · 模型订正值最小" },
-    { bjtH: 27.0, label: "NWS²PT", kind: "afternoon",
-      title: "LA NWS 午后精更 (12Z GFS+HRRR) · 估算 ~12:00 PDT = BJT 03:00 · 含海雾午间实测" },
+    // ── Cycle 1: Morning (blue) ─────────────────────────────────────────────
+    { bjtH: 19.5,  label: "ET", kind: "morning",   labelTop: 2,
+      title: "NY·Miami NWS 早间预报 · 实测 07:30 EDT = BJT 19:30 · 窗口刚开，最佳入场信号" },
+    { bjtH: 22.75, label: "CT", kind: "morning",   labelTop: 2,
+      title: "Chicago·Austin·Dallas NWS 早间预报 · 实测 09:45 CDT = BJT 22:45 · 早晨观测融入" },
+    { bjtH: 23.5,  label: "PT", kind: "morning",   labelTop: 14,
+      title: "LA NWS 早间预报 · 估算 08:30 PDT = BJT 23:30 · 海雾消散情况纳入" },
+    // ── Cycle 2: Afternoon (green) ─────────────────────────────────────────
+    { bjtH: 25.5,  label: "CT", kind: "afternoon", labelTop: 2,
+      title: "Chicago·Austin·Dallas NWS 午后精更 · 实测 12:30 CDT = BJT 01:30 · 精度最高，Edge接近消失" },
+    { bjtH: 26.0,  label: "ET", kind: "afternoon", labelTop: 14,
+      title: "NY·Miami NWS 午后精更 · 估算 14:00 EDT = BJT 02:00 · 12Z模型全量数据融入" },
+    { bjtH: 27.0,  label: "PT", kind: "afternoon", labelTop: 2,
+      title: "LA NWS 午后精更 · 估算 12:00 PDT = BJT 03:00 · 含海雾午间实测数据" },
   ];
 
   const ticks = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
@@ -704,7 +706,7 @@ function CityTimeline({ markets, bjtDec, liveData }) {
               style={{ left: x }}
               title={m.title}
             >
-              <span className="tl-nws-line-label">{m.label}</span>
+              <span className="tl-nws-line-label" style={{ top: m.labelTop }}>{m.label}</span>
             </div>
           );
         })}

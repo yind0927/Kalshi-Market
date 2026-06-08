@@ -2518,7 +2518,6 @@ input { font-family: inherit; }
 .tl-nws-line.midday { border-left: 2px solid var(--accent); }
 .tl-nws-line-label {
   position: absolute;
-  top: 4px;
   left: 3px;
   font-family: var(--mono);
   font-size: 8px;
@@ -3555,6 +3554,7 @@ input { font-family: inherit; }
   .tl-card-head h3 { font-size: 15px; font-weight: 700; }
   .tl-legend { flex-wrap: wrap; gap: 5px; font-size: 10px; }
   .tl-model-badge { font-size: 10px; padding: 3px 8px; }
+  .tl-nws-line-label { font-size: 6px; left: 1px; }
 
   /* ════════════════════════════════════════════════════════
    * KPI cards — 2-column
