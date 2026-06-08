@@ -275,7 +275,7 @@ input { font-family: inherit; }
   transition: all 0.15s;
 }
 .icon-btn:hover { color: var(--ink-1); background: var(--bg-2); border-color: var(--border-strong); }
-.icon-btn svg { width: 16px; height: 16px; }
+.icon-btn svg { width: 16px; height: 16px; display: block; }
 
 .avatar {
   width: 32px; height: 32px;
@@ -3569,7 +3569,15 @@ input { font-family: inherit; }
     gap: 8px;
     margin-bottom: 12px;
   }
-  .mapm-title { font-size: 20px; font-weight: 800; letter-spacing: -0.025em; }
+  /* Unified module main-title treatment (mapm/playbook/timeline/section) */
+  .mapm-title,
+  .playbook-head h2,
+  .tl-head-top h3,
+  .section-head h2 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
   /* Compact active city summary — visible on mobile */
   .mapm-active { display: flex; flex-direction: row; gap: 8px; align-items: center; flex-wrap: wrap; }
   .mapm-active-top { gap: 5px; }
@@ -3581,25 +3589,29 @@ input { font-family: inherit; }
   .mapm-active-cta { font-size: 11px; padding: 3px 8px; border-radius: 8px; }
   .mapm-footer { flex-direction: column; gap: 10px; }
   .mapm-legend { display: none; }
-  /* 3-col chip grid — bigger cells filling full row width */
+  /* 3-col chip grid — 6 cities = 2 even rows, cards fill the full row */
   .mapm-chips {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr);
     gap: 8px;
+    width: 100%;
   }
   .mapm-chip {
     flex-direction: column;
-    gap: 2px;
-    padding: 14px 8px 12px;
+    gap: 0;
+    padding: 13px 8px;
     text-align: center;
     align-items: center;
-    border-radius: 16px;
-    min-height: 88px;
     justify-content: center;
+    border-radius: 16px;
+    min-height: 92px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
   }
-  .mapm-chip-city { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
-  .mapm-chip-en { display: block; font-size: 9px; color: var(--ink-4); font-weight: 400; letter-spacing: 0.01em; margin-bottom: 2px; }
-  .mapm-chip-temp { display: block; font-family: var(--mono); font-size: 20px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 4px 0 2px; }
+  .mapm-chip.active { border-color: var(--ink-3); background: var(--surface); }
+  .mapm-chip-city { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+  .mapm-chip-en { display: block; font-size: 9px; color: var(--ink-4); font-weight: 400; letter-spacing: 0.02em; margin-top: 1px; }
+  .mapm-chip-temp { display: block; font-family: var(--mono); font-size: 21px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; margin: 7px 0 4px; }
   .mapm-chip.pos .mapm-chip-temp { color: var(--pos); }
   .mapm-chip.neg .mapm-chip-temp { color: var(--neg); }
   .mapm-chip.flat .mapm-chip-temp { color: var(--ink-2); }
@@ -3625,7 +3637,6 @@ input { font-family: inherit; }
     align-items: flex-start;
     gap: 6px;
   }
-  .tl-head-top h3 { font-size: 15px; font-weight: 700; }
   .tl-model-badge { font-size: 10px; padding: 3px 8px; }
   .tl-legend { gap: 3px 8px; font-size: 10px; }
   .tl-leg-sep { display: none; }
@@ -3652,7 +3663,6 @@ input { font-family: inherit; }
     gap: 10px;
     margin: 28px 0 14px;
   }
-  .section-head h2 { font-size: 18px; }
   .section-actions {
     width: 100%;
     justify-content: flex-start;
@@ -3700,7 +3710,7 @@ input { font-family: inherit; }
   }
   /* Title block: eyebrow + h2 clearly anchored top-left */
   .playbook-head > div:first-child { width: 100%; }
-  .playbook-head h2 { font-size: 20px; font-weight: 700; margin: 2px 0 0; letter-spacing: -0.02em; }
+  .playbook-head h2 { margin: 2px 0 0; }
   /* Time row: horizontal, compact, secondary treatment */
   .pb-time {
     flex-direction: row;
