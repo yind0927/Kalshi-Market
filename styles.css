@@ -276,8 +276,17 @@ input { font-family: inherit; }
   border: 1px solid var(--border);
   background: var(--surface);
   border-radius: 9px;
-  display: grid;
-  place-items: center;
+  /* reset native iOS/Safari push-button rendering — without this the
+     button keeps UA padding + native content metrics that push the
+     glyph down-and-right inside the box */
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--ink-2);
   transition: all 0.15s;
 }
@@ -687,10 +696,17 @@ input { font-family: inherit; }
   background: var(--bg-2);
   border: 1px solid var(--border);
   color: var(--ink-2);
-  display: grid;
-  place-items: center;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.15s;
 }
+.mkt-foot-cta svg { display: block; }
 .mkt-card:hover .mkt-foot-cta { background: var(--ink-1); color: var(--surface); border-color: var(--ink-1); }
 
 /* ── Zone 1: City + Edge Hero ── */
@@ -3541,12 +3557,10 @@ input { font-family: inherit; }
   .live-count-badge { display: none; }
   .divider-v { display: none; }
   .refresh-stamp { display: none; }
-  /* explicit centering for icon-btn on mobile */
+  /* size only — centering + native-button reset come from base rule */
   .icon-btn {
     width: 32px; height: 32px;
     border-radius: 8px;
-    display: grid;
-    place-items: center;
   }
 
   /* ════════════════════════════════════════════════════════
@@ -3683,10 +3697,8 @@ input { font-family: inherit; }
    * ════════════════════════════════════════════════════════ */
   .card-grid { grid-template-columns: 1fr; gap: 10px; }
   .mkt-card { padding: 16px; border-radius: 18px; }
-  /* Ensure detail icon button is centered */
+  /* larger tap target — centering + reset inherited from base rule */
   .mkt-foot-cta {
-    display: grid;
-    place-items: center;
     width: 36px;
     height: 36px;
   }
