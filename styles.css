@@ -2508,14 +2508,23 @@ input { font-family: inherit; }
 }
 /* Cycle 1 — Morning update: key entry signal, accent blue */
 .tl-nws-line.morning {
-  border-left: 2px solid var(--accent);
+  border-left: 2px dashed var(--accent);
 }
 /* Cycle 2 — Afternoon update: highest accuracy, green */
 .tl-nws-line.afternoon {
-  border-left: 2px solid var(--pos);
+  border-left: 2px dashed var(--pos);
 }
 /* Legacy alias */
-.tl-nws-line.midday { border-left: 2px solid var(--accent); }
+.tl-nws-line.midday { border-left: 2px dashed var(--accent); }
+/* Out-of-bounds: happened before timeline start — faded edge pin */
+.tl-nws-line.oob {
+  opacity: 0.4;
+}
+.tl-nws-line.oob .tl-nws-line-label {
+  background: var(--surface-2, rgba(0,0,0,0.06));
+  padding: 0 3px;
+  border-radius: 3px;
+}
 .tl-nws-line-label {
   position: absolute;
   left: 3px;
