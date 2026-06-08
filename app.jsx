@@ -680,26 +680,32 @@ function CityTimeline({ markets, bjtDec, liveData }) {
 
       <div className="tl-wrap">
         <div className="tl-inner-scroll">
-        {/* Now line */}
-        {now >= TL_S && now <= TL_E && (
-          <div
-            className="tl-now-line"
-            style={{ left: `${((now - TL_S) / TL_SPAN * 100).toFixed(2)}%` }}
-          >
-            <div className="tl-now-label">NOW</div>
-          </div>
-        )}
-        {/* NWS afternoon forecast update markers */}
-        {nwsUpdateLines.map((m, i) => {
-          const hn = normH(m.bjtH);
-          if (hn < TL_S || hn > TL_E) return null;
-          const x = ((hn - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
-          return (
-            <div key={i} className="tl-nws-line afternoon" style={{ left: x }} title={m.title}>
-              <span className="tl-nws-line-label" style={{ top: m.labelTop }}>{m.label}</span>
+        {/* Overlay: same left offset as .tl-axis so left:X% aligns with ticks/bars */}
+        <div className="tl-overlay">
+          {/* Now line */}
+          {now >= TL_S && now <= TL_E && (
+            <div
+              className="tl-now-line"
+              style={{ left: `${((now - TL_S) / TL_SPAN * 100).toFixed(2)}%` }}
+            >
+              <div className="tl-now-label">
+                <span>NOW</span>
+                <span className="tl-now-time">{fmtBJT(bjtDec)}</span>
+              </div>
             </div>
-          );
-        })}
+          )}
+          {/* NWS afternoon forecast update markers */}
+          {nwsUpdateLines.map((m, i) => {
+            const hn = normH(m.bjtH);
+            if (hn < TL_S || hn > TL_E) return null;
+            const x = ((hn - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
+            return (
+              <div key={i} className="tl-nws-line afternoon" style={{ left: x }} title={m.title}>
+                <span className="tl-nws-line-label" style={{ top: m.labelTop }}>{m.label}</span>
+              </div>
+            );
+          })}
+        </div>
         {/* Hour axis */}
         <div className="tl-axis">
           {ticks.map((h) => {

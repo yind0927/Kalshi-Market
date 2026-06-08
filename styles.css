@@ -2475,6 +2475,14 @@ input { font-family: inherit; }
   margin-left: auto;
   cursor: default;
 }
+/* Overlay: matches axis/track coordinate space (left = label width) */
+.tl-overlay {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 210px; right: 0;
+  pointer-events: none;
+  z-index: 2;
+}
 /* Current time line */
 .tl-now-line {
   position: absolute;
@@ -2496,6 +2504,16 @@ input { font-family: inherit; }
   padding: 1px 6px;
   border-radius: 3px;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+.tl-now-time {
+  font-size: 7px;
+  font-weight: 500;
+  opacity: 0.85;
+  letter-spacing: 0.01em;
 }
 /* NWS forecast update vertical markers */
 .tl-nws-line {
@@ -2654,6 +2672,7 @@ input { font-family: inherit; }
   .tl-row-label { width: 100px; }
   .tl-cn, .tl-tz, .tl-nws-tag { display: none; }
   .tl-axis { left: 100px; }
+  .tl-overlay { left: 100px; }
 }
 
 /* ============================================================
@@ -3561,11 +3580,14 @@ input { font-family: inherit; }
   .tl-nws-tag { display: inline-flex; font-size: 9px; padding: 0 3px; }
   .tl-city { font-size: 11px; font-weight: 700; }
   .tl-axis { left: 96px; }
+  .tl-overlay { left: 96px; }
   .tl-card-head { flex-direction: column; gap: 8px; }
   .tl-card-head h3 { font-size: 15px; font-weight: 700; }
   .tl-legend { flex-wrap: wrap; gap: 5px; font-size: 10px; }
   .tl-model-badge { font-size: 10px; padding: 3px 8px; }
   .tl-nws-line-label { font-size: 6px; left: 1px; }
+  .tl-now-label { font-size: 8px; padding: 1px 4px; }
+  .tl-now-time { font-size: 6px; }
 
   /* ════════════════════════════════════════════════════════
    * KPI cards — 2-column
