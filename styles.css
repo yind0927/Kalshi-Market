@@ -2427,7 +2427,7 @@ input { font-family: inherit; }
 
 .tl-wrap {
   position: relative;
-  padding-top: 42px;
+  padding-top: 32px;
   padding-bottom: 8px;
   overflow: hidden;
 }
@@ -2537,31 +2537,13 @@ input { font-family: inherit; }
 }
 .tl-nws-line.morning .tl-nws-line-label  { color: var(--accent); }
 .tl-nws-line.afternoon .tl-nws-line-label { color: var(--pos); }
-/* NWS morning chips — text labels at top of axis row (ticks sit at bottom) */
-.tl-nws-chip {
-  position: absolute;
-  top: 4px;
-  transform: translateX(-50%);
-  font-family: var(--mono);
-  font-size: 7px;
-  font-weight: 800;
-  color: var(--accent-ink);
-  background: var(--accent-soft);
-  padding: 1px 4px;
-  border-radius: 3px;
-  white-space: nowrap;
-  letter-spacing: 0.03em;
-  pointer-events: all;
-  cursor: help;
-  z-index: 3;
-}
 /* Hour axis */
 .tl-axis {
   position: absolute;
   top: 0;
   left: 210px;
   right: 0;
-  height: 40px;
+  height: 26px;
   border-bottom: 1px solid var(--border);
 }
 .tl-tick {
@@ -3573,7 +3555,7 @@ input { font-family: inherit; }
   /* tl-inner-scroll becomes position:relative on mobile, so padding-top
      must live on it (not tl-wrap) to push rows below the absolute axis */
   .tl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-top: 0; }
-  .tl-inner-scroll { min-width: 520px; position: relative; padding-top: 42px; }
+  .tl-inner-scroll { min-width: 520px; position: relative; padding-top: 32px; }
   .tl-row-label { width: 96px; min-width: 96px; }
   .tl-cn, .tl-tz { display: none; }
   .tl-nws-tag { display: inline-flex; font-size: 9px; padding: 0 3px; }
@@ -3584,7 +3566,6 @@ input { font-family: inherit; }
   .tl-legend { flex-wrap: wrap; gap: 5px; font-size: 10px; }
   .tl-model-badge { font-size: 10px; padding: 3px 8px; }
   .tl-nws-line-label { font-size: 6px; left: 1px; }
-  .tl-nws-chip { font-size: 6px; padding: 1px 3px; bottom: 2px; }
 
   /* ════════════════════════════════════════════════════════
    * KPI cards — 2-column

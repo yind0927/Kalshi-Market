@@ -640,30 +640,17 @@ function CityTimeline({ markets, bjtDec, liveData }) {
   //             OKX (NYC) estimated ~14:00 EDT     = BJT 26.0 (02:00)
   //             LOX (LA) estimated  ~12:00 PDT     = BJT 27.0 (03:00)
   //
-  // labelTop: stagger vertical position inside axis band (0-26px) so labels don't collide.
-  // CT/PT morning are only 45min apart → PT bumped to BJT 23.5 (8:30 PDT, within ±30min margin).
+  // Cycle 2 — Afternoon green dashed lines only.
+  // CT before ET is correct: Chicago issues at 12:30 CDT (UTC-5) = BJT 01:30,
+  // New York issues at ~14:00 EDT (UTC-4) = BJT 02:00 — Chicago's local noon
+  // converts to an earlier BJT than NY's 2pm despite CT being "behind" ET.
+  // labelTop: 28px positions label just below the 26px axis border-bottom.
   const nwsUpdateLines = [
-    // ── Cycle 0: Pre-dawn (blue, OOB — pin to left edge) ────────────────────
-    // All before TL_S=19; shown as faded ◀ markers at the left edge
-    { bjtH: 15.5,  label: "ET", kind: "morning",   labelTop: 2,
-      title: "NY·Miami NWS 凌晨预报 · 实测 03:30 EDT = BJT 15:30 · 窗口开盘前基准，市场在此定价" },
-    { bjtH: 16.0,  label: "CT", kind: "morning",   labelTop: 12,
-      title: "Chicago·Austin·Dallas NWS 凌晨预报 · 实测 03:00 CDT = BJT 16:00 · 开盘基准预报" },
-    { bjtH: 17.0,  label: "PT", kind: "morning",   labelTop: 22,
-      title: "LA NWS 凌晨预报 · 实测 02:00 PDT = BJT 17:00 · 开盘基准预报" },
-    // ── Cycle 1: Morning (blue) ─────────────────────────────────────────────
-    { bjtH: 19.5,  label: "ET", kind: "morning",   labelTop: 2,
-      title: "NY·Miami NWS 早间精更 · 实测 07:30 EDT = BJT 19:30 · 窗口刚开，最佳入场信号" },
-    { bjtH: 22.75, label: "CT", kind: "morning",   labelTop: 2,
-      title: "Chicago·Austin·Dallas NWS 早间精更 · 实测 09:45 CDT = BJT 22:45 · 早晨观测融入" },
-    { bjtH: 23.5,  label: "PT", kind: "morning",   labelTop: 14,
-      title: "LA NWS 早间精更 · 估算 08:30 PDT = BJT 23:30 · 海雾消散情况纳入" },
-    // ── Cycle 2: Afternoon (green) ─────────────────────────────────────────
-    { bjtH: 25.5,  label: "CT", kind: "afternoon", labelTop: 2,
+    { bjtH: 25.5,  label: "CT", kind: "afternoon", labelTop: 28,
       title: "Chicago·Austin·Dallas NWS 午后精更 · 实测 12:30 CDT = BJT 01:30 · 精度最高，Edge接近消失" },
-    { bjtH: 26.0,  label: "ET", kind: "afternoon", labelTop: 14,
+    { bjtH: 26.0,  label: "ET", kind: "afternoon", labelTop: 28,
       title: "NY·Miami NWS 午后精更 · 估算 14:00 EDT = BJT 02:00 · 12Z模型全量数据融入" },
-    { bjtH: 27.0,  label: "PT", kind: "afternoon", labelTop: 2,
+    { bjtH: 27.0,  label: "PT", kind: "afternoon", labelTop: 28,
       title: "LA NWS 午后精更 · 估算 12:00 PDT = BJT 03:00 · 含海雾午间实测数据" },
   ];
 
@@ -674,7 +661,7 @@ function CityTimeline({ markets, bjtDec, liveData }) {
       <div className="tl-card-head">
         <div>
           <h3>City Trading Timeline <em>城市交易时间轴</em></h3>
-          <div className="sub">北京时间 (BJT) · 绿色 = 入场窗口 · ▲ = 高温峰值 · <span style={{color:"var(--accent)"}}>蓝虚线</span> = NWS更新(◀淡色=窗口前已发布) · <span style={{color:"var(--pos)"}}>绿虚线</span> = NWS午后精更(最高精度)</div>
+          <div className="sub">北京时间 (BJT) · 绿色 = 入场窗口 · ▲ = 高温峰值 · NWS早间更新 ET <strong>19:30</strong> · CT <strong>22:45</strong> · PT <strong>23:30</strong> · <span style={{color:"var(--pos)"}}>绿虚线</span> = NWS午后精更(最高精度)</div>
         </div>
         <div className="tl-legend">
           <span><i className="tl-i entry" /> 入场窗口</span>
@@ -702,24 +689,14 @@ function CityTimeline({ markets, bjtDec, liveData }) {
             <div className="tl-now-label">NOW</div>
           </div>
         )}
-        {/* NWS forecast update markers — afternoon only as faded dashed lines;
-             OOB pre-dawn as edge pins; morning shown as chips in axis below */}
+        {/* NWS afternoon forecast update markers */}
         {nwsUpdateLines.map((m, i) => {
           const hn = normH(m.bjtH);
-          if (hn > TL_E) return null;
-          const oob = hn < TL_S;
-          if (m.kind === "morning" && !oob) return null; // in-bounds morning → chip in axis
-          const x = oob ? "0%" : ((hn - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
+          if (hn < TL_S || hn > TL_E) return null;
+          const x = ((hn - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
           return (
-            <div
-              key={i}
-              className={`tl-nws-line ${m.kind}${oob ? " oob" : ""}`}
-              style={{ left: x }}
-              title={m.title}
-            >
-              <span className="tl-nws-line-label" style={{ top: m.labelTop }}>
-                {oob ? `◀${m.label}` : m.label}
-              </span>
+            <div key={i} className="tl-nws-line afternoon" style={{ left: x }} title={m.title}>
+              <span className="tl-nws-line-label" style={{ top: m.labelTop }}>{m.label}</span>
             </div>
           );
         })}
@@ -738,18 +715,6 @@ function CityTimeline({ markets, bjtDec, liveData }) {
               </div>
             );
           })}
-          {/* NWS morning update chips — text labels at update positions */}
-          {nwsUpdateLines
-            .filter(n => n.kind === "morning" && normH(n.bjtH) >= TL_S && normH(n.bjtH) <= TL_E)
-            .map((n, idx) => {
-              const x = ((normH(n.bjtH) - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
-              return (
-                <div key={`nchip-${idx}`} className="tl-nws-chip" style={{ left: x }} title={n.title}>
-                  {n.label}
-                </div>
-              );
-            })
-          }
         </div>
         {/* City rows */}
         {markets.map((m) => {
