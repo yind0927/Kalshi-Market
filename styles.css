@@ -175,7 +175,14 @@ input { font-family: inherit; }
   background: radial-gradient(circle at 70% 20%, rgba(255,255,255,0.35), transparent 60%);
   pointer-events: none;
 }
-.brand-mark svg { position: relative; z-index: 1; }
+.brand-mark svg {
+  position: relative;
+  z-index: 1;
+  display: block;
+  /* cloud path's visual mass sits ~1.8u below the 32-viewBox center;
+     nudge up so the glyph is optically centered in the rounded box */
+  transform: translateY(-1px);
+}
 [data-theme="dark"] .brand-mark {
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.20),
@@ -3778,15 +3785,28 @@ input { font-family: inherit; }
   /* ════════════════════════════════════════════════════════
    * Analysis page
    * ════════════════════════════════════════════════════════ */
-  .ana-hero { flex-direction: column; gap: 14px; border-radius: 16px; padding: 18px 16px; }
-  .ana-hero-right { width: 100%; }
-  .ana-hero-title { font-size: 20px; font-weight: 800; }
+  .ana-hero { gap: 14px; border-radius: 16px; padding: 18px 16px; }
+  .ana-hero-title { font-size: 20px; font-weight: 700; }
   .ana-hero-title .cn { display: block; font-size: 12px; margin-top: 2px; }
   .ana-hero-sub { font-size: 11px; }
   .ana-hero-tags { flex-wrap: wrap; gap: 5px; }
   .ana-selector { flex-wrap: wrap; font-size: 12px; gap: 6px; margin-bottom: 14px; }
   .ana-selector select { font-size: 12px; padding: 5px 24px 5px 8px; }
   .ana-back-btn { padding: 5px 10px; font-size: 12px; }
+  /* hero metrics: obs + edge side-by-side, left-aligned, separated panel */
+  .ana-hero-right {
+    width: 100%;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .ana-hero-obs, .ana-hero-edge { flex: 1; text-align: left; }
+  .ana-hero-obs .l, .ana-hero-edge .l { justify-content: flex-start; }
+  .ana-hero-obs .v { font-size: 30px; }
+  .ana-hero-edge .v { font-size: 30px; }
+  .ana-hero-edge { text-align: left; }
 
   /* ════════════════════════════════════════════════════════
    * Prob distribution
@@ -3803,6 +3823,30 @@ input { font-family: inherit; }
   .ens-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
   .ens-model { padding: 12px; border-radius: 14px; }
   .ens-model-temp { font-size: 24px; font-weight: 800; }
+
+  /* ════════════════════════════════════════════════════════
+   * Hourly list — drop temp-bar + tighten to fit narrow screens
+   * ════════════════════════════════════════════════════════ */
+  .hourly-list-head,
+  .hourly-row {
+    grid-template-columns: 40px 50px 66px 1fr;
+    gap: 8px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .hourly-list-head span:nth-child(3),
+  .hl-bar-wrap { display: none; }
+  .hourly-date-label { padding-left: 8px; }
+  .hl-time { font-size: 11.5px; }
+  .hl-temp { font-size: 12px; }
+  .hl-wind { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hl-cond { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ════════════════════════════════════════════════════════
+   * Suggested position — stack CTA full-width under icon+body
+   * ════════════════════════════════════════════════════════ */
+  .reco { grid-template-columns: auto 1fr; gap: 12px; padding: 14px; }
+  .reco .cta { grid-column: 1 / -1; justify-content: center; padding: 11px; }
 
   /* ════════════════════════════════════════════════════════
    * Chart
