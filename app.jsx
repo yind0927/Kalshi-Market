@@ -661,13 +661,13 @@ function CityTimeline({ markets, bjtDec, liveData }) {
       <div className="tl-card-head">
         <div>
           <h3>City Trading Timeline <em>城市交易时间轴</em></h3>
-          <div className="sub">北京时间 (BJT) · 绿色 = 入场窗口 · ▲ = 高温峰值 · NWS早间更新 ET <strong>19:30</strong> · CT <strong>22:45</strong> · PT <strong>23:30</strong> · <span style={{color:"var(--pos)"}}>绿虚线</span> = NWS午后精更(最高精度)</div>
+          <div className="sub">北京时间 (BJT) · 绿色 = 入场窗口 · ▲ = 高温峰值 · NWS三轮更新：①凌晨基准 BJT 15–17 · ②早间精更 ET <strong>19:30</strong> / CT <strong>22:45</strong> / PT <strong>23:30</strong> · ③<span style={{color:"var(--pos)"}}>绿虚线</span> 午后精更(最高精度)</div>
         </div>
         <div className="tl-legend">
           <span><i className="tl-i entry" /> 入场窗口</span>
           <span
             className={`tl-model-badge ${nwsLoaded > 0 ? "updated" : "pending"}`}
-            title={`NWS 官方预报 — Kalshi 结算参考。每日三次更新：①凌晨03-04时本地(BJT 15-17，窗口前基准) ②早间07-10时本地(BJT 19-23，最佳入场窗口，蓝线) ③午后12-14时本地(BJT 01-03，最高精度，绿线)。${lastFetchBJT ? `最近拉取 BJT ${lastFetchBJT}` : "尚未加载"}`}
+            title={`NWS 官方预报 — Kalshi 高温结算参考。三轮更新：①凌晨基准 02-04时本地(BJT 15-17)，窗口开盘前市场定价基准；②早间精更 07-10时本地(ET 19:30 / CT 22:45 / PT 23:30 BJT)，窗口开盘关键信号；③午后精更 12-14时本地(BJT 01-03，绿虚线)，精度最高但Edge已收窄。${lastFetchBJT ? `最近拉取 BJT ${lastFetchBJT}` : "尚未加载"}`}
           >
             <i className="tl-i model-upd" />
             NWS 预报
