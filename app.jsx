@@ -619,12 +619,23 @@ function CityTimeline({ markets, bjtDec, liveData }) {
         { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false })
     : null;
 
-  // NWS morning forecast update times in BJT (when api.weather.gov issues new daily high)
-  // ET (UTC-4): ~07:00 ET = BJT 19:00 | CT (UTC-5): ~07:00 CT = BJT 20:00 | PT (UTC-7): ~07:00 PT = BJT 22:00
+  // NWS has TWO forecast update cycles per day.
+  // ① Pre-dawn (overnight model run): 03:00-05:00 local — happens BEFORE the trading window
+  //    ET BJT ~15:00 | CT BJT ~16:00 | PT BJT ~18:00  (off-screen left of timeline)
+  // ② Midday (12Z model run): 10:00-12:00 local — the KEY event WITHIN the trading window
+  //    ET BJT ~22:00 | CT BJT ~23:00 | PT BJT ~01:00  ← rendered as solid markers below
+  //
+  // The pre-dawn update is already factored in by the time window opens.
+  // The midday update is when market pricing most often lags the new NWS data.
   const nwsUpdateLines = [
-    { bjtH: 19, label: "NWS ET", title: "NY·Miami NWS 早间预报更新 ~07:00 ET = BJT 19:00" },
-    { bjtH: 20, label: "NWS CT", title: "Chicago·Austin·Dallas NWS 早间预报更新 ~07:00 CT = BJT 20:00" },
-    { bjtH: 22, label: "NWS PT", title: "LA NWS 早间预报更新 ~07:00 PT = BJT 22:00" },
+    // Pre-dawn (before window — shown faded at left if in range)
+    { bjtH: 15.5, label: "NWS↑", kind: "predawn", title: "NY·Miami NWS 凌晨更新 ~03:30 ET = BJT 15:30 · 此时窗口未开，市场定价基于此预报" },
+    { bjtH: 16.5, label: "NWS↑", kind: "predawn", title: "Chicago·Austin·Dallas NWS 凌晨更新 ~03:30 CT = BJT 16:30" },
+    { bjtH: 18.5, label: "NWS↑", kind: "predawn", title: "LA NWS 凌晨更新 ~03:30 PT = BJT 18:30 · 窗口刚开时已更新" },
+    // Midday (12Z-based — within trading window, most tradeable)
+    { bjtH: 22,   label: "NWS↺ET", kind: "midday", title: "NY·Miami NWS 午前更新 ~10:00 ET = BJT 22:00 · 12Z模型融合 · 最关键入场信号" },
+    { bjtH: 23,   label: "NWS↺CT", kind: "midday", title: "Chicago·Austin·Dallas NWS 午前更新 ~10:00 CT = BJT 23:00 · 12Z模型融合" },
+    { bjtH: 25,   label: "NWS↺PT", kind: "midday", title: "LA NWS 午前更新 ~10:00 PT = BJT 01:00 · 12Z模型融合" },
   ];
 
   const ticks = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
@@ -634,13 +645,13 @@ function CityTimeline({ markets, bjtDec, liveData }) {
       <div className="tl-card-head">
         <div>
           <h3>City Trading Timeline <em>城市交易时间轴</em></h3>
-          <div className="sub">北京时间 (BJT) · 绿色 = 入场窗口 · ▲ = 高温峰值 (红=NWS实时 · 灰=估算) · 竖线 = NWS 早间预报更新时刻</div>
+          <div className="sub">北京时间 (BJT) · 绿色 = 入场窗口 · ▲ = 高温峰值 (红=NWS实时 · 灰=估算) · 虚线 = NWS凌晨更新 · 实线 = NWS午前更新 (最关键)</div>
         </div>
         <div className="tl-legend">
           <span><i className="tl-i entry" /> 入场窗口</span>
           <span
             className={`tl-model-badge ${nwsLoaded > 0 ? "updated" : "pending"}`}
-            title={`NWS 官方预报 — Kalshi 结算参考来源。NWS 每天早间 ~07:00 本地时更新日高温预报。${lastFetchBJT ? `最近拉取 BJT ${lastFetchBJT}` : "尚未加载"}`}
+            title={`NWS 官方预报 — Kalshi 结算参考。每日两次更新：凌晨03-05时本地(BJT 15-19)和午前10-12时本地(BJT 22-01)。午前更新是最关键的入场信号。${lastFetchBJT ? `最近拉取 BJT ${lastFetchBJT}` : "尚未加载"}`}
           >
             <i className="tl-i model-upd" />
             NWS 预报
@@ -662,6 +673,22 @@ function CityTimeline({ markets, bjtDec, liveData }) {
             <div className="tl-now-label">NOW</div>
           </div>
         )}
+        {/* NWS forecast update markers — pre-dawn (dashed/faded) and midday (solid/key) */}
+        {nwsUpdateLines.map((m, i) => {
+          const hn = normH(m.bjtH);
+          if (hn < TL_S || hn > TL_E) return null;
+          const x = ((hn - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
+          return (
+            <div
+              key={i}
+              className={`tl-nws-line ${m.kind}`}
+              style={{ left: x }}
+              title={m.title}
+            >
+              <span className="tl-nws-line-label">{m.label}</span>
+            </div>
+          );
+        })}
         {/* Hour axis */}
         <div className="tl-axis">
           {ticks.map((h) => {
