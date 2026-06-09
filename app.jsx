@@ -645,6 +645,18 @@ function CityTimeline({ markets, bjtDec, liveData }) {
   // New York issues at ~14:00 EDT (UTC-4) = BJT 02:00 — Chicago's local noon
   // converts to an earlier BJT than NY's 2pm despite CT being "behind" ET.
   // labelTop: 28px positions label just below the 26px axis border-bottom.
+  // ── Cycle 1 (early) — Morning精更: the KEY ENTRY SIGNAL. Lands right as the
+  // trading window opens; market is slow to digest it → largest edge. Drawn as
+  // prominent accent (blue) lines with labels.
+  const nwsMorningLines = [
+    { bjtH: 19.5,  label: "ET", labelTop: 28,
+      title: "NY·Miami NWS 早间精更 · 07:30 EDT = BJT 19:30 · 关键入场信号（窗口开盘，市场尚未消化）" },
+    { bjtH: 22.75, label: "CT", labelTop: 28,
+      title: "Chicago·Austin·Dallas NWS 早间精更 · 09:45 CDT = BJT 22:45 · 关键入场信号" },
+    { bjtH: 23.5,  label: "PT", labelTop: 28,
+      title: "LA NWS 早间精更 · 08:30 PDT = BJT 23:30 · 关键入场信号" },
+  ];
+
   const nwsUpdateLines = [
     { bjtH: 25.5,  label: "CT", kind: "afternoon", labelTop: 28,
       title: "Chicago·Austin·Dallas NWS 午后精更 · 实测 12:30 CDT = BJT 01:30 · 精度最高，Edge接近消失" },
@@ -677,10 +689,11 @@ function CityTimeline({ markets, bjtDec, liveData }) {
         <div className="tl-legend">
           <span className="tl-leg"><i className="tl-i entry" /> 入场窗口</span>
           <span className="tl-leg"><span className="tl-leg-peak">▲</span> 高温峰值</span>
+          <span className="tl-leg"><i className="tl-i locked" /> 峰值后·高温锁定</span>
+          <span className="tl-leg"><span className="tl-leg-nws">NWS</span> 结算高温</span>
           <span className="tl-leg-sep" />
-          <span className="tl-leg tl-leg-dim">① 凌晨 BJT 15–17</span>
-          <span className="tl-leg">② 早间 ET <strong>19:30</strong> · CT <strong>22:45</strong> · PT <strong>23:30</strong></span>
-          <span className="tl-leg">③ <span style={{color:"var(--pos)"}}>— —</span> 午后精更</span>
+          <span className="tl-leg"><i className="tl-i nws-morning" /> ② 早间精更 · <strong>入场信号</strong></span>
+          <span className="tl-leg tl-leg-dim"><i className="tl-i nws-afternoon" /> ③ 午后精更 · Edge 收窄</span>
         </div>
       </div>
 
@@ -700,7 +713,18 @@ function CityTimeline({ markets, bjtDec, liveData }) {
               </div>
             </div>
           )}
-          {/* NWS afternoon forecast update markers */}
+          {/* ② Morning NWS update markers — KEY ENTRY SIGNAL (prominent accent) */}
+          {nwsMorningLines.map((m, i) => {
+            const hn = normH(m.bjtH);
+            if (hn < TL_S || hn > TL_E) return null;
+            const x = ((hn - TL_S) / TL_SPAN * 100).toFixed(2) + "%";
+            return (
+              <div key={`m${i}`} className="tl-nws-line morning" style={{ left: x }} title={m.title}>
+                <span className="tl-nws-line-label" style={{ top: m.labelTop }}>{m.label}</span>
+              </div>
+            );
+          })}
+          {/* ③ Afternoon NWS update markers — edge已收窄 (dim) */}
           {nwsUpdateLines.map((m, i) => {
             const hn = normH(m.bjtH);
             if (hn < TL_S || hn > TL_E) return null;
@@ -741,8 +765,16 @@ function CityTimeline({ markets, bjtDec, liveData }) {
           const peakX = peakBJT <= TL_E ? `${((peakBJT - TL_S) / TL_SPAN * 100).toFixed(2)}%` : null;
           const wsInfo = windowStatusLabel(m, bjtDec);
           const nwsHigh = liveData?.[m.id]?.models?.NWS?.dailyMax;
-          const mktHigh = maxEdgeBucket(m);
-          const nwsEdge = nwsHigh != null ? nwsHigh - (mktHigh.market * 100 + (m.forecastHigh ?? 0)) / 2 : null;
+          // Post-peak "high locked" edge zone (③): once the forecast peak passes, the
+          // settled high is essentially fixed, so the max-so-far floor zeroes the
+          // low buckets — but the market is slow to reprice. Draw a hatched segment
+          // from the peak forward (~2.5h) to flag that fresh, near-riskless edge.
+          let lockX = null, lockW = null;
+          if (peakX && peakBJT < TL_E) {
+            const lockEnd = Math.min(peakBJT + 2.5, TL_E);
+            lockX = `${((peakBJT - TL_S) / TL_SPAN * 100).toFixed(2)}%`;
+            lockW = `${((lockEnd - peakBJT) / TL_SPAN * 100).toFixed(2)}%`;
+          }
           return (
             <div className="tl-row" key={m.id}>
               <div className="tl-row-label">
@@ -750,7 +782,7 @@ function CityTimeline({ markets, bjtDec, liveData }) {
                 <span className="tl-cn">{m.cnCity}</span>
                 <span className="tl-tz">{m.timezone}</span>
                 {nwsHigh != null && (
-                  <span className="tl-nws-tag" title={`NWS 官方预报高温 — Kalshi 结算参考`}>
+                  <span className="tl-nws-tag" title={`NWS 官方预报高温 ${nwsHigh}°F — Kalshi 即按此官方观测值结算（非模型均值）`}>
                     {nwsHigh}°
                   </span>
                 )}
@@ -761,6 +793,13 @@ function CityTimeline({ markets, bjtDec, liveData }) {
                     className={`tl-bar entry ${wsInfo.cls}`}
                     style={{ left: toX(es), width: barW + "%" }}
                   />
+                  {lockX && lockW && parseFloat(lockW) > 0 && (
+                    <div
+                      className="tl-bar locked"
+                      style={{ left: lockX, width: lockW }}
+                      title="峰值后·高温锁定 — 当日高温已基本固定，市场常慢于将不可能的低区间归零（max-so-far 地板 Edge，近乎无风险）"
+                    />
+                  )}
                 </div>
                 {peakX && (
                   <div

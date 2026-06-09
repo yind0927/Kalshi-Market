@@ -2457,6 +2457,35 @@ input { font-family: inherit; }
   display: inline-block;
 }
 .tl-i.entry { background: var(--pos); opacity: 0.55; }
+.tl-i.locked {
+  width: 14px; height: 7px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--pos) 55%, transparent) 0 2px,
+    transparent 2px 4px
+  );
+}
+.tl-i.nws-morning {
+  width: 0; height: 11px;
+  border-radius: 0;
+  border-left: 2px dashed var(--accent);
+}
+.tl-i.nws-afternoon {
+  width: 0; height: 11px;
+  border-radius: 0;
+  border-left: 2px dashed var(--pos);
+}
+.tl-leg-nws {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--pos);
+  background: color-mix(in oklab, var(--pos) 10%, transparent);
+  border: 1px solid color-mix(in oklab, var(--pos) 25%, transparent);
+  padding: 0 3px;
+  border-radius: 3px;
+}
 .tl-i.model-upd {
   width: 2px; height: 12px;
   background: var(--accent);
@@ -2717,6 +2746,19 @@ input { font-family: inherit; }
 .tl-bar.entry.pre {
   background: var(--accent);
   opacity: 0.25;
+}
+/* Post-peak "high locked" edge zone — hatched, reads as a distinct opportunity band */
+.tl-bar.locked {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--pos) 40%, transparent) 0 3px,
+    transparent 3px 7px
+  );
+  border: 1px solid color-mix(in oklab, var(--pos) 28%, transparent);
+  border-radius: 4px;
+  z-index: 1;
+  pointer-events: all;
+  cursor: help;
 }
 .tl-peak-marker {
   position: absolute;
