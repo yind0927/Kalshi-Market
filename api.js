@@ -507,12 +507,39 @@ window.KW_API = (() => {
     } catch (_) { return null; }
   }
 
+  // Local calendar date (YYYY-MM-DD) of an ISO timestamp in a given tz.
+  // Used to keep "today's" running max from leaking in yesterday's high.
+  function getLocalDate(isoTimestamp, tz) {
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date(isoTimestamp));
+    } catch (_) { return null; }
+  }
+
+  // Highest temperature actually observed SO FAR today (city-local calendar day).
+  // The settled daily high can only be >= this value — it becomes a hard floor
+  // on the probability distribution. Returns null if no same-day obs exist.
+  function computeTodayMaxObs(hourlyObs, observation, tz) {
+    const todayStr = getLocalDate(Date.now(), tz);
+    if (!todayStr) return null;
+    let max = null;
+    const consider = (temp, ts) => {
+      if (temp == null || !isFinite(temp) || !ts) return;
+      if (getLocalDate(ts, tz) !== todayStr) return;   // only today's obs
+      if (max == null || temp > max) max = temp;
+    };
+    if (Array.isArray(hourlyObs)) for (const o of hourlyObs) consider(o.temp, o.timestamp);
+    if (observation) consider(observation.temperature, observation.timestamp);
+    return max;
+  }
+
   // ── Core distribution builder ───────────────────────────────────
   // options: { city, observation }
   //   city        — city name (for station bias + heating rate + onshore sector)
   //   observation — NWS ASOS obs object { temperature, dewpoint, windDirection, timestamp, ... }
   function buildDistribution(modelData, buckets, options = {}) {
-    const { city, observation } = options;
+    const { city, observation, todayMaxObs } = options;
     const cityCfg = city ? CITIES[city] : null;
 
     // Collect valid model values with their weights
@@ -665,6 +692,7 @@ window.KW_API = (() => {
       windDirMean:    effectiveWindDir != null ? +effectiveWindDir.toFixed(0) : null,
       impliedPeak:    impliedPeak     != null ? +impliedPeak.toFixed(1)     : null,
       obsBlendWeight: +obsBlendWeight.toFixed(3),
+      todayMaxObs:    (todayMaxObs != null && isFinite(todayMaxObs)) ? +todayMaxObs.toFixed(1) : null,
       corrections: {
         station:     +stationCorr.toFixed(2),
         wind:        +windCorr.toFixed(2),
@@ -674,13 +702,31 @@ window.KW_API = (() => {
         observation: +obsCorr.toFixed(2),
         total:       +totalCorr.toFixed(2),
       },
-      buckets: buckets.map(b => {
-        const lo = b.lowerBound ?? -Infinity;
-        const hi = b.upperBound ??  Infinity;
-        const prob = normalCDF(hi === Infinity ? 999 : hi, adjustedMean, adjustedStd)
-                   - normalCDF(lo === -Infinity ? -999 : lo, adjustedMean, adjustedStd);
-        return { ...b, modelProb: +prob.toFixed(4) };
-      }),
+      buckets: (() => {
+        // ── Max-so-far floor: the settled high can only be >= today's observed
+        // max, so truncate the Gaussian below that floor and renormalize. This
+        // is a logical certainty the raw bell curve ignores — it zeroes out
+        // impossible low buckets late in the day. No-op early (floor not binding).
+        const floor = (todayMaxObs != null && isFinite(todayMaxObs)) ? todayMaxObs : -Infinity;
+        const raw = buckets.map(b => {
+          const lo = b.lowerBound ?? -Infinity;
+          const hi = b.upperBound ??  Infinity;
+          const effLo = Math.max(lo, floor);                 // can't dip below the realized max
+          const hiV   = hi    === Infinity ?  999 : hi;
+          const loV   = effLo === -Infinity ? -999 : effLo;
+          // CDF difference; clamps to 0 when the bucket is entirely below the floor
+          const prob = Math.max(0,
+            normalCDF(hiV, adjustedMean, adjustedStd) - normalCDF(loV, adjustedMean, adjustedStd));
+          return { b, prob };
+        });
+        // Renormalize so probabilities sum to 1 (conditional on high >= floor,
+        // which is certain). Buckets tile the line, so this is a true PMF.
+        const sum = raw.reduce((s, r) => s + r.prob, 0);
+        return raw.map(({ b, prob }) => ({
+          ...b,
+          modelProb: +((sum > 0 ? prob / sum : 0)).toFixed(4),
+        }));
+      })(),
     };
   }
 
@@ -724,10 +770,13 @@ window.KW_API = (() => {
       : null;
 
     const effectiveBuckets = kalshiBuckets || buckets;
+    // Running max temperature observed so far today → hard floor on the distribution
+    const todayMaxObs = computeTodayMaxObs(hourlyObs, observation, cfg.tz);
     const distribution = modelsData
       ? buildDistribution(modelsData.models, effectiveBuckets, {
           city: cityName,
           observation,
+          todayMaxObs,
         })
       : null;
 

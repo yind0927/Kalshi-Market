@@ -1016,6 +1016,23 @@ input { font-family: inherit; }
   color: var(--ink-3);
 }
 
+/* Max-so-far floor banner */
+.prob-floor-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 14px;
+  padding: 9px 13px;
+  border-radius: 10px;
+  background: var(--pos-soft);
+  border: 1px solid color-mix(in oklab, var(--pos) 28%, var(--border));
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.prob-floor-note strong { color: var(--pos); font-weight: 700; }
+.prob-floor-lock { font-size: 14px; flex-shrink: 0; }
+
 /* Probability distribution table */
 .prob-list { margin: 0; padding: 0; list-style: none; }
 .prob-row {

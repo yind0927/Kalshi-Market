@@ -1243,6 +1243,12 @@ function ProbDistribution({ market, live, kalshiStatus }) {
   });
   const maxV = Math.max(...buckets.flatMap((b) => [b.market || 0, b.model || 0])) || 1;
 
+  // Max-so-far floor: today's realized high is a hard lower bound on settlement.
+  // "Binding" = at least one bucket sits entirely at/below it (now locked to 0).
+  const floorTemp = live?.distribution?.todayMaxObs;
+  const floorBinding = floorTemp != null &&
+    buckets.some(b => b.upperBound != null && isFinite(b.upperBound) && b.upperBound <= floorTemp);
+
   // Kalshi connection status indicator
   const kalshiErr = live?.kalshiError;
   const kalshiBadge = isLiveKalshi
@@ -1280,6 +1286,14 @@ function ProbDistribution({ market, live, kalshiStatus }) {
           </span>
         </div>
       </div>
+
+      {floorBinding && (
+        <div className="prob-floor-note">
+          <span className="prob-floor-lock">🔒</span>
+          今日已实测最高 <strong>{floorTemp}°F</strong> · 当日结算高温不可能更低，
+          低于此值的区间已锁定为 <strong>0%</strong> 并重新归一化
+        </div>
+      )}
 
       <ul className="prob-list">
         <li className="prob-row head">
