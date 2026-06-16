@@ -1,0 +1,107 @@
+{
+  "generatedAt": "2026-06-16T09:00:40.193Z",
+  "matchCount": 4616,
+  "wcMatchCount": 140,
+  "cutoffFrom": "2018-06-01",
+  "cutoffTo": "2026-06-15",
+  "brier": {
+    "model": 0.1644,
+    "naive": 0.2222,
+    "historical": 0.2126,
+    "skillScore": 26
+  },
+  "wcBrier": 0.2044,
+  "avgGoals": 2.78,
+  "wcAvgGoals": 2.71,
+  "optimalC": 225,
+  "currentC": 175,
+  "outcomeDist": {
+    "W": 47.2,
+    "D": 21.5,
+    "L": 31.3
+  },
+  "calibration": [
+    {
+      "bin": 0,
+      "meanPred": 0.047,
+      "meanActual": 0.08,
+      "n": 740
+    },
+    {
+      "bin": 0.1,
+      "meanPred": 0.148,
+      "meanActual": 0.201,
+      "n": 482
+    },
+    {
+      "bin": 0.2,
+      "meanPred": 0.25,
+      "meanActual": 0.316,
+      "n": 418
+    },
+    {
+      "bin": 0.3,
+      "meanPred": 0.352,
+      "meanActual": 0.348,
+      "n": 359
+    },
+    {
+      "bin": 0.4,
+      "meanPred": 0.452,
+      "meanActual": 0.413,
+      "n": 344
+    },
+    {
+      "bin": 0.5,
+      "meanPred": 0.551,
+      "meanActual": 0.522,
+      "n": 391
+    },
+    {
+      "bin": 0.6,
+      "meanPred": 0.65,
+      "meanActual": 0.584,
+      "n": 473
+    },
+    {
+      "bin": 0.7,
+      "meanPred": 0.753,
+      "meanActual": 0.721,
+      "n": 580
+    },
+    {
+      "bin": 0.8,
+      "meanPred": 0.853,
+      "meanActual": 0.854,
+      "n": 698
+    },
+    {
+      "bin": 0.9,
+      "meanPred": 0.91,
+      "meanActual": 0.977,
+      "n": 131
+    }
+  ],
+  "eloSnapshot": {
+    "Spain": 2199,
+    "Argentina": 2157,
+    "France": 2113,
+    "England": 2080,
+    "Brazil": 2041,
+    "Colombia": 2035,
+    "Portugal": 2026,
+    "Germany": 2016,
+    "Netherlands": 2005,
+    "Japan": 1994,
+    "Morocco": 1991,
+    "Mexico": 1969,
+    "Ecuador": 1961,
+    "Uruguay": 1957,
+    "Belgium": 1956,
+    "Croatia": 1953,
+    "Italy": 1914,
+    "United States": 1898,
+    "Senegal": 1895,
+    "Canada": 1865
+  }
+}

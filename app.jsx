@@ -2528,6 +2528,101 @@ function WCOutcomeRow({ label, sub, q, quote }) {
   );
 }
 
+function WCBacktestCard() {
+  const BT = window.KW_WC.BACKTEST;
+  const [open, setOpen] = useState(false);
+
+  // Calibration bars: compare predicted vs actual for home-win probability buckets
+  const calRows = BT.calibration;
+
+  return (
+    <div className="card wc-card wc-bt-card">
+      <div className="card-head" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
+        <div>
+          <h3>回测验证 <em>Backtest · {BT.matchCount.toLocaleString()} 场</em></h3>
+          <div className="sub">
+            {BT.cutoffFrom.slice(0, 7)} – {BT.cutoffTo.slice(0, 7)} · 国际正式赛事（含 {BT.wcMatchCount} 场世界杯）
+          </div>
+        </div>
+        <span className="wc-bt-toggle">{open ? "▲" : "▼"}</span>
+      </div>
+
+      {/* Always-visible summary row */}
+      <div className="wc-bt-summary">
+        <div className="wc-bt-metric">
+          <span className="wc-bt-val pos">+{BT.brier.skillScore}%</span>
+          <span className="wc-bt-lbl">Brier 技能分<br /><em>vs 随机基准</em></span>
+        </div>
+        <div className="wc-bt-metric">
+          <span className="wc-bt-val">{BT.brier.model}</span>
+          <span className="wc-bt-lbl">模型 Brier<br /><em>基准 {BT.brier.naive}</em></span>
+        </div>
+        <div className="wc-bt-metric">
+          <span className="wc-bt-val">{BT.wcBrier}</span>
+          <span className="wc-bt-lbl">世界杯 Brier<br /><em>{BT.wcMatchCount} 场</em></span>
+        </div>
+        <div className="wc-bt-metric">
+          <span className="wc-bt-val">{BT.wcAvgGoals}</span>
+          <span className="wc-bt-lbl">WC 场均进球<br /><em>μ 已更新</em></span>
+        </div>
+      </div>
+
+      {open && (
+        <div className="wc-bt-detail">
+          <div className="wc-bt-params">
+            <span className="wc-bt-param-row">
+              <span>⚙ 参数已根据回测更新</span>
+              <span>c: 175 → <strong>225</strong>（最优化 Brier 对应值）</span>
+              <span>μ: 2.55 → <strong>2.71</strong>（WC 场均实测）</span>
+              <span>Elo: 法国 2113 · 塞内加尔 1895（49k 场累计）</span>
+            </span>
+          </div>
+
+          <div className="wc-bt-cal-title">校准曲线 · 主队胜率（预测 vs 实际）</div>
+          <div className="wc-bt-cal">
+            {calRows.map((row, i) => {
+              const diff = row.meanActual - row.meanPred;
+              const absDiff = Math.abs(diff);
+              const pctPred   = (row.meanPred   * 100).toFixed(0);
+              const pctActual = (row.meanActual * 100).toFixed(0);
+              const barW = Math.round(row.meanActual * 100);
+              const errColor = absDiff > 0.08 ? "var(--neg)" : absDiff > 0.04 ? "var(--warn)" : "var(--pos)";
+              return (
+                <div className="wc-bt-cal-row" key={i}>
+                  <span className="wc-bt-cal-bin">{Math.round(row.bin * 100)}–{Math.round((row.bin + 0.1) * 100)}%</span>
+                  <div className="wc-bt-cal-bar-wrap">
+                    <div className="wc-bt-cal-bar-pred"  style={{ width: `${Math.round(row.meanPred   * 100)}%` }} />
+                    <div className="wc-bt-cal-bar-actual" style={{ width: `${Math.round(row.meanActual * 100)}%` }} />
+                  </div>
+                  <span className="wc-bt-cal-pred">{pctPred}%</span>
+                  <span className="wc-bt-cal-arr" style={{ color: errColor }}>{diff > 0 ? "▲" : "▼"}{Math.round(absDiff * 100)}pp</span>
+                  <span className="wc-bt-cal-actual">{pctActual}%</span>
+                  <span className="wc-bt-cal-n">n={row.n}</span>
+                </div>
+              );
+            })}
+            <div className="wc-bt-cal-legend">
+              <span><i className="bt-pred" /> 预测</span>
+              <span><i className="bt-actual" /> 实际</span>
+              <span className="wc-bt-cal-note">
+                低段偏低（保守），高段略偏高（好强队）→ c=225 已部分修正
+              </span>
+            </div>
+          </div>
+
+          <div className="wc-bt-assess">
+            <div className="wc-bt-assess-row pos">✓ 模型有真实预测能力：BSS +{BT.brier.skillScore}% 远超随机（零技能基准）</div>
+            <div className="wc-bt-assess-row pos">✓ c=225 为实证最优（原175偏激进），μ=2.71 符合 WC 历史均值</div>
+            <div className="wc-bt-assess-row warn">⚠ 低概率区（0–20%）偏保守约 5–8pp — 弱队被低估</div>
+            <div className="wc-bt-assess-row warn">⚠ 高概率区（60–70%）偏激进约 6pp — 强队被高估</div>
+            <div className="wc-bt-assess-row info">ℹ WC 样本仅 {BT.wcMatchCount} 场，置信区间宽；1X2 边际 &lt;1pp 后校准</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorldCupView() {
   const WC = window.KW_WC;
   const M = WC.MATCH;
@@ -2813,10 +2908,11 @@ function WorldCupView() {
         )}
       </div>
 
-      <div className="risk-card">
-        <strong>临时功能 · World Cup</strong>
-        样本数据：Elo 取自 World Football Elo（2026-01），市场价由 FRA −245 / SEN +550 去水推得。
-        k / μ / ρ 为未校准的默认值，正式使用前需用历史赛果回测校准（Brier / log-loss），并接入实时 Elo、sharp 赔率与 Kalshi 行情。
+      <WCBacktestCard />
+
+      <div className="risk-card" style={{ marginTop: 0 }}>
+        <strong>注意</strong> ρ（Dixon-Coles 相关系数）尚未回测校准；BTTS edge 可能是模型偏差而非真实 edge。
+        1X2 经市场收缩后 net edge 通常 &lt;1pp，属正常（流动性市场难有免费午餐）。
       </div>
     </div>
   );
