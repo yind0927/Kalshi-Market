@@ -170,15 +170,18 @@ window.KW_WC = (function () {
                  : { home, draw, away, overround: s };
   }
 
-  // Market-implied SUPREMACY scale c: the c that reproduces the market's
-  // home-win prob. home-win is monotonically DECREASING in c (bigger c → ratio
-  // closer to 1 → less dominance). Bisection.
-  function impliedC(params, targetHomeProb, lo = 40, hi = 700) {
-    if (targetHomeProb == null) return null;
-    for (let it = 0; it < 46; it++) {
+  // Market-implied SUPREMACY scale c. (Point 4) We match the home/away
+  // LOG-ODDS ratio log(P_home/P_away) — pure "who's better", independent of the
+  // draw/total level (which μ owns). Model supremacy is monotonically
+  // DECREASING in c (bigger c → ratio→1). Bisection.
+  function impliedC(params, market, lo = 40, hi = 800) {
+    if (!market || market.home == null || market.away == null || market.away <= 0) return null;
+    const target = Math.log(market.home / market.away);   // market supremacy (log-odds)
+    for (let it = 0; it < 48; it++) {
       const mid = (lo + hi) / 2;
-      const h = buildMatchModel({ ...params, c: mid }).probs.home;
-      if (h > targetHomeProb) lo = mid; else hi = mid;   // h decreases in c
+      const m = buildMatchModel({ ...params, c: mid }).probs;
+      const sup = Math.log(m.home / m.away);
+      if (sup > target) lo = mid; else hi = mid;          // model sup decreases in c
       void it;
     }
     return +((lo + hi) / 2).toFixed(0);
@@ -198,15 +201,17 @@ window.KW_WC = (function () {
   }
 
   // Joint two-market calibration: coordinate-descent on (c, μ).
-  //   c ← from the MONEYLINE (home-win prob)   — "who's better"
-  //   μ ← from the TOTALS market (Over-2.5)    — "how many goals"
-  // The two are near-orthogonal so 3-4 sweeps converge. Returns {c, mu}; leaves
-  // a parameter unchanged when its target market price is unavailable.
+  //   c ← from the MONEYLINE  (home/away log-odds) — "who's better"
+  //   μ ← from the TOTALS     (Over-2.5 price)     — "how many goals"
+  // Near-orthogonal coordinates, so 3-4 sweeps converge. The draw probability
+  // then falls out and matches the market better than a 1-D home-only fit.
+  // Leaves a parameter unchanged when its target market price is unavailable.
   function calibrate(params, market, iters = 4) {
     let c  = params.c       ?? 175;
     let mu = params.muTotal ?? 2.55;
     for (let i = 0; i < iters; i++) {
-      if (market && market.home   != null) c  = impliedC({ ...params, muTotal: mu }, market.home);
+      const cNew = impliedC({ ...params, muTotal: mu }, market);
+      if (cNew != null) c = cNew;
       if (market && market.over25 != null) mu = impliedMu({ ...params, c }, market.over25);
     }
     return { c, mu };
@@ -263,6 +268,42 @@ window.KW_WC = (function () {
     };
   }
 
+  // Pull the live Over-2.5 probability from the KXWCTOTAL event for this match.
+  // Kalshi totals come in two shapes; we handle both, else return null (→ seed):
+  //   (a) an explicit Over/Under 2.5 line  → use its mid directly
+  //   (b) per-total buckets (0,1,2,3,4,5+) → P(total≥3) = Σ mids of buckets ≥3
+  async function fetchKalshiTotal(ticker) {
+    const res = await fetch(`/api/kalshi?ticker=${encodeURIComponent(ticker)}`);
+    if (!res.ok) throw new Error(`Kalshi proxy ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const markets = (data.markets || []).filter(m => m.mid != null);
+    if (!markets.length) return { over25: null, resolvedTicker: data.resolvedTicker || null, marketCount: 0 };
+
+    // (a) explicit 2.5 line
+    for (const m of markets) {
+      const s = (m.subtitle || "").toLowerCase();
+      if (/(over|more than|above|\+).*2\.?5|2\.?5\s*(or more|\+|or above)|3\s*(\+|or more|or above)|≥\s*3/.test(s))
+        return { over25: m.mid, resolvedTicker: data.resolvedTicker, marketCount: markets.length, mode: "line" };
+      if (/(under|less than|below|fewer).*2\.?5|2\.?5\s*(or fewer|or less)|2\s*(or fewer|or less)|≤\s*2/.test(s))
+        return { over25: +(1 - m.mid).toFixed(4), resolvedTicker: data.resolvedTicker, marketCount: markets.length, mode: "line" };
+    }
+
+    // (b) numeric buckets → sum P(total ≥ 3)
+    let over = 0, matched = 0;
+    for (const m of markets) {
+      const s = (m.subtitle || "").trim();
+      const plus  = s.match(/(\d+)\s*(\+|or more|or above)/i);
+      const range = s.match(/(\d+)\s*[-–]\s*(\d+)/);
+      const exact = s.match(/^(\d+)\s*(goals?)?$/i);
+      if (plus)       { if (+plus[1]  >= 3) over += m.mid; matched++; }
+      else if (range) { if (+range[1] >= 3) over += m.mid; matched++; }
+      else if (exact) { if (+exact[1] >= 3) over += m.mid; matched++; }
+    }
+    if (matched >= 3) return { over25: +Math.min(1, over).toFixed(4), resolvedTicker: data.resolvedTicker, marketCount: markets.length, mode: "buckets" };
+    return { over25: null, resolvedTicker: data.resolvedTicker, marketCount: markets.length, mode: "unparsed" };
+  }
+
   // ── Sample match seed (TEMPORARY): France vs Senegal ─────
   // Elo from World Football Elo Ratings (Jan 2026): FRA 2063 (#3), SEN 1869 (#17).
   // Market = de-vigged from bookmaker FRA -245 / SEN +550 with draw inferred.
@@ -278,18 +319,19 @@ window.KW_WC = (function () {
     away: { code: "SEN", name: "Senegal", cn: "塞内加尔",   elo: 1869, fifaRank: 17, flag: "🇸🇳" },
     params: { c: 175, muTotal: 2.55, rho: 0.06, homeAdv: 0 },  // neutral venue (c≈175 reproduces the old k=150 point)
     odds:   { home: -245, away: 550 },
-    // Seed = real Kalshi 3-way (FRA 68% / draw ~19% / SEN 13%, observed
-    // 2026-06-16) as the fallback; overwritten live from the Kalshi proxy.
-    market: { home: 0.68, draw: 0.19, away: 0.13, over25: 0.52, btts: 0.46 },
-    // Kalshi event/series ticker. The proxy discovers by series prefix (chars
-    // before the first "-"). ⚠ VERIFY on kalshi.com — update this one line if
-    // the World Cup match-winner series differs (e.g. KXWCGAME / KXWCMATCH…).
-    kalshiTicker: "KXWCGAME-26JUN16FRASEN",
+    // Seed = real Kalshi prices (FRA 68% / draw ~19% / SEN 13%; Over-2.5 ~49%,
+    // observed 2026-06-16) as the fallback; overwritten live from the proxy.
+    market: { home: 0.68, draw: 0.19, away: 0.13, over25: 0.49, btts: 0.46 },
+    // Kalshi event tickers (proxy discovers by the series prefix before "-").
+    // Match-winner series KXWCGAME, total-goals series KXWCTOTAL — both verified
+    // on kalshi.com (…/kxwcgame/… and …/kxwctotal/…).
+    kalshiTicker:      "KXWCGAME-26JUN16FRASEN",   // moneyline (1X2) → calibrates c
+    kalshiTotalTicker: "KXWCTOTAL-26JUN16FRASEN",  // total goals    → calibrates μ
   };
 
   return {
     buildMatchModel, buildLiveModel, edgeKelly,
     americanToProb, devig, devig3way, impliedC, impliedMu, calibrate, shrinkToMarket,
-    fetchKalshiMatch, MATCH,
+    fetchKalshiMatch, fetchKalshiTotal, MATCH,
   };
 })();

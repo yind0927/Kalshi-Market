@@ -2535,17 +2535,22 @@ function WorldCupView() {
     []
   );
 
-  // ② Pull real Kalshi prices once on mount (browser → /api/kalshi proxy)
+  const [over25Live, setOver25Live] = useState(null); // live Over-2.5 from KXWCTOTAL
+
+  // ② Pull real Kalshi prices once on mount — moneyline (1X2) AND total goals
   useEffect(() => {
     let alive = true;
     WC.fetchKalshiMatch(M.kalshiTicker, M.home, M.away)
       .then(r => {
         if (!alive) return;
-        if (r && r.home != null && r.away != null) {
-          setKalshi(r); setKStatus("live");
-        } else { setKStatus("seed"); }
+        if (r && r.home != null && r.away != null) { setKalshi(r); setKStatus("live"); }
+        else { setKStatus("seed"); }
       })
       .catch(() => { if (alive) setKStatus("error"); });
+    // Totals market is independent — calibrates μ
+    WC.fetchKalshiTotal(M.kalshiTotalTicker)
+      .then(t => { if (alive && t && t.over25 != null) setOver25Live(t.over25); })
+      .catch(() => {});
     return () => { alive = false; };
   }, []);
 
@@ -2558,12 +2563,16 @@ function WorldCupView() {
     return WC.devig3way(M.market.home, M.market.draw, M.market.away);
   }, [kStatus, kalshi]);
 
+  // Over-2.5: live KXWCTOTAL if resolved, else seed
+  const over25Mkt = over25Live != null ? over25Live : M.market.over25;
+  const muIsLive  = over25Live != null;
+
   const params = { eloA: M.home.elo, eloB: M.away.elo, ...M.params };
   // ② Joint two-market calibration: c from the live moneyline, μ from the
-  // Over-2.5 price (seed totals until a live totals fetch is wired in).
+  // live Over-2.5 (KXWCTOTAL), else the seed totals.
   const cal = useMemo(
-    () => WC.calibrate(params, { ...market, over25: M.market.over25 }),
-    [market]
+    () => WC.calibrate(params, { ...market, over25: over25Mkt }),
+    [market, over25Mkt]
   );
   // Calibrated (shrunk) model probs drive the edge table
   const calModel = useMemo(() => WC.shrinkToMarket(model.probs, market, shrink), [model, market, shrink]);
@@ -2617,8 +2626,9 @@ function WorldCupView() {
         <div className="wc-model-line">
           泊松 + Dixon-Coles（乘性拆分）· Elo差 {M.home.elo - M.away.elo} → 净胜球 {model.supremacy} ·
           λ {model.lambdaA}/{model.lambdaB}<br />
-          强弱 c：你的 {M.params.c} · <strong>市场隐含 {cal.c ?? "—"}</strong>　|
-          总进球 μ：你的 {M.params.muTotal} · <strong>市场校准 {cal.mu ?? "—"}</strong> · Elo@{M.eloAsOf}
+          强弱 c：你的 {M.params.c} · <strong>市场隐含 {cal.c ?? "—"}</strong>（胜负盘）　|
+          总进球 μ：你的 {M.params.muTotal} · <strong>市场校准 {cal.mu ?? "—"}</strong>
+          （大小球盘 O/U2.5={over25Mkt != null ? (over25Mkt * 100).toFixed(0) + "%" : "—"}{muIsLive ? " 实时" : " 种子"}）· Elo@{M.eloAsOf}
         </div>
       </div>
 
