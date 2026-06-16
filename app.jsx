@@ -852,6 +852,10 @@ function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec, lastRefres
           </svg>
           Analysis <span className="cn">深度分析</span>
         </button>
+        <button className={`tab wc-tab ${tab === "worldcup" ? "active" : ""}`} onClick={() => setTab("worldcup")}>
+          <span style={{ fontSize: 14 }}>⚽</span>
+          World Cup <span className="cn">世界杯</span>
+        </button>
       </div>
 
       <div className="topbar-right">
@@ -2459,6 +2463,10 @@ function BottomTabBar({ tab, setTab, bjtDec, marketCity }) {
         </svg>
         <span>市场</span>
       </button>
+      <button className={`btab${tab === "worldcup" ? " active" : ""}`} onClick={() => setTab("worldcup")}>
+        <span style={{ fontSize: 21, lineHeight: 1 }}>⚽</span>
+        <span>世界杯</span>
+      </button>
       <div className="btab-center-pill">
         <div className={`btab-window${inWindow ? " active" : ""}`}>
           {inWindow ? <><span className="wd" />交易中</> : "窗口外"}
@@ -2481,6 +2489,208 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
   "tab": "markets"
 }/*EDITMODE-END*/;
+
+/* ─────────────────────────────────────────────────────────
+ * World Cup match prediction (TEMPORARY) — France vs Senegal sample
+ * Reuses the weather pipeline's distribution→edge→Kelly machinery.
+ * ───────────────────────────────────────────────────────── */
+function WCOutcomeRow({ label, sub, model, market }) {
+  const WC = window.KW_WC;
+  const { edge, kelly } = WC.edgeKelly(model, market);
+  const MIN = 0.03;
+  const signal = edge > MIN
+    ? <span className="sig-buy yes">↑ 买 YES +{Math.round(edge * 100)}pp</span>
+    : edge < -MIN
+      ? <span className="sig-buy no">↓ 买 NO {Math.round(edge * 100)}pp</span>
+      : <span className="sig-pass">— 观望</span>;
+  const maxV = 0.75;
+  return (
+    <li className="wc-row">
+      <div className="wc-row-label"><strong>{label}</strong>{sub && <span>{sub}</span>}</div>
+      <div className="wc-bars">
+        <div className="wc-bar market"><div className="fill" style={{ width: `${(market / maxV) * 100}%` }} /></div>
+        <div className="wc-bar model"><div className="fill" style={{ width: `${(model / maxV) * 100}%` }} /></div>
+      </div>
+      <div className="wc-num">{fmtPct(market)}</div>
+      <div className="wc-num accent">{fmtPct(model)}</div>
+      <div className="wc-num"><EdgePill value={edge} /></div>
+      <div className="wc-num wc-kelly">{kelly > 0.01 ? `${(kelly * 100).toFixed(0)}%` : "—"}</div>
+      <div className="wc-num">{signal}</div>
+    </li>
+  );
+}
+
+function WorldCupView() {
+  const WC = window.KW_WC;
+  const M = WC.MATCH;
+  // null = pre-match; otherwise { minute, scoreA, scoreB }
+  const [live, setLive] = useState(null);
+
+  const model = useMemo(
+    () => WC.buildMatchModel({ eloA: M.home.elo, eloB: M.away.elo, ...M.params }),
+    []
+  );
+  const liveModel = useMemo(
+    () => live ? WC.buildLiveModel({ eloA: M.home.elo, eloB: M.away.elo, ...M.params, ...live }) : null,
+    [live]
+  );
+  const shown = liveModel || model;
+
+  const setMin = (v) => setLive(l => ({ ...(l || { scoreA: 0, scoreB: 0 }), minute: +v }));
+  const bump = (side, d) => setLive(l => {
+    const base = l || { minute: 0, scoreA: 0, scoreB: 0 };
+    const key = side === "A" ? "scoreA" : "scoreB";
+    return { ...base, [key]: Math.max(0, (base[key] || 0) + d) };
+  });
+
+  return (
+    <div className="view wc-view" data-screen-label="worldcup">
+      {/* ── Match hero ── */}
+      <div className="wc-hero">
+        <div className="wc-hero-meta">
+          <span className="wc-comp">{M.competition}</span>
+          <span className="wc-ko">🇨🇳 BJT {M.koBJT} · {M.venue}{M.neutral ? " · 中立场" : ""}</span>
+        </div>
+        <div className="wc-teams">
+          <div className="wc-team">
+            <span className="wc-flag">{M.home.flag}</span>
+            <span className="wc-team-name">{M.home.name}</span>
+            <span className="wc-team-cn">{M.home.cn}</span>
+            <span className="wc-elo">Elo {M.home.elo} · #{M.home.fifaRank}</span>
+          </div>
+          <div className="wc-vs">
+            <span className="wc-vs-x">VS</span>
+            <span className="wc-vs-supr">预期比分 {model.lambdaA} – {model.lambdaB}</span>
+          </div>
+          <div className="wc-team away">
+            <span className="wc-flag">{M.away.flag}</span>
+            <span className="wc-team-name">{M.away.name}</span>
+            <span className="wc-team-cn">{M.away.cn}</span>
+            <span className="wc-elo">Elo {M.away.elo} · #{M.away.fifaRank}</span>
+          </div>
+        </div>
+        <div className="wc-model-line">
+          泊松 + Dixon-Coles 模型 · Elo差 {M.home.elo - M.away.elo} → 净胜球 {model.supremacy} ·
+          λ {model.lambdaA}/{model.lambdaB} · k={M.params.k} μ={M.params.muTotal}（参数需回测校准）
+        </div>
+      </div>
+
+      {/* ── 1X2 distribution vs market ── */}
+      <div className="card wc-card">
+        <div className="card-head">
+          <div>
+            <h3>胜平负 <em>Match Result · 1X2</em></h3>
+            <div className="sub">模型概率 vs Kalshi 市场价（去水后）· 单位 %</div>
+          </div>
+          <div className="legend">
+            <span><i className="market" /> 市场</span>
+            <span><i className="model" /> 模型</span>
+          </div>
+        </div>
+        <ul className="wc-list">
+          <li className="wc-row head">
+            <div>结果</div><div>分布</div><div className="wc-num">市场</div>
+            <div className="wc-num">模型</div><div className="wc-num">Edge</div>
+            <div className="wc-num">Kelly</div><div className="wc-num">信号</div>
+          </li>
+          <WCOutcomeRow label={M.home.cn + "胜"} sub={M.home.flag} model={model.probs.home} market={M.market.home} />
+          <WCOutcomeRow label="平局" sub="X" model={model.probs.draw} market={M.market.draw} />
+          <WCOutcomeRow label={M.away.cn + "胜"} sub={M.away.flag} model={model.probs.away} market={M.market.away} />
+        </ul>
+      </div>
+
+      {/* ── Derived markets + top scores ── */}
+      <div className="wc-grid2">
+        <div className="card wc-card">
+          <div className="card-head"><div><h3>衍生盘口 <em>Derived</em></h3>
+            <div className="sub">同一比分矩阵一次性导出</div></div></div>
+          <div className="wc-derived">
+            <div className="wc-d-item"><span className="wc-d-l">总进球 Over 2.5</span>
+              <span className="wc-d-v">{fmtPct(model.markets.over25)}</span></div>
+            <div className="wc-d-item"><span className="wc-d-l">总进球 Under 2.5</span>
+              <span className="wc-d-v">{fmtPct(model.markets.under25)}</span></div>
+            <div className="wc-d-item"><span className="wc-d-l">双方进球 BTTS · Yes</span>
+              <span className="wc-d-v">{fmtPct(model.markets.btts)}</span></div>
+            <div className="wc-d-item"><span className="wc-d-l">双方进球 BTTS · No</span>
+              <span className="wc-d-v">{fmtPct(model.markets.noBtts)}</span></div>
+          </div>
+        </div>
+        <div className="card wc-card">
+          <div className="card-head"><div><h3>最可能比分 <em>Top Scorelines</em></h3>
+            <div className="sub">{M.home.code} – {M.away.code}</div></div></div>
+          <div className="wc-scores">
+            {model.topScores.map((s, i) => (
+              <div className="wc-score" key={i}>
+                <span className="wc-score-v">{s.i}–{s.j}</span>
+                <span className="wc-score-p">{fmtPct(s.p, 1)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── LIVE in-play simulator — the max-so-far FLOOR analogue ── */}
+      <div className="card wc-card wc-live-card">
+        <div className="card-head">
+          <div>
+            <h3>🔴 比赛进行中模拟 <em>Live · in-play</em></h3>
+            <div className="sub">当前比分已锁定（已实现），仅对剩余时间建模 — 与天气「实测地板线」同理</div>
+          </div>
+          {live && <button className="wc-reset" onClick={() => setLive(null)}>↺ 回到赛前</button>}
+        </div>
+
+        <div className="wc-live-controls">
+          <div className="wc-score-stepper">
+            <span className="wc-flag">{M.home.flag}</span>
+            <button onClick={() => bump("A", -1)}>−</button>
+            <strong>{(live?.scoreA) ?? 0}</strong>
+            <button onClick={() => bump("A", +1)}>+</button>
+          </div>
+          <div className="wc-minute">
+            <input type="range" min="0" max="90" value={live?.minute ?? 0} onChange={e => setMin(e.target.value)} />
+            <span className="wc-minute-v">{live?.minute ?? 0}′</span>
+          </div>
+          <div className="wc-score-stepper">
+            <span className="wc-flag">{M.away.flag}</span>
+            <button onClick={() => bump("B", -1)}>−</button>
+            <strong>{(live?.scoreB) ?? 0}</strong>
+            <button onClick={() => bump("B", +1)}>+</button>
+          </div>
+        </div>
+
+        <div className="wc-live-probs">
+          {[["home", M.home.cn], ["draw", "平局"], ["away", M.away.cn]].map(([k, name]) => {
+            const lp = shown.probs[k];
+            const delta = liveModel ? lp - model.probs[k] : 0;
+            return (
+              <div className="wc-live-prob" key={k}>
+                <span className="wc-lp-name">{name}</span>
+                <span className="wc-lp-v">{fmtPct(lp)}</span>
+                {liveModel && Math.abs(delta) > 0.005 && (
+                  <span className={`wc-lp-delta ${delta > 0 ? "pos" : "neg"}`}>
+                    {delta > 0 ? "▲" : "▼"}{(Math.abs(delta) * 100).toFixed(0)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {liveModel && (
+          <div className="wc-live-note">
+            剩余 λ {liveModel.remLambdaA}/{liveModel.remLambdaB} · 当前 {liveModel.scoreA}–{liveModel.scoreB} @ {liveModel.minute}′ ·
+            市场若未及时重定价 → 与此模型的差即为近乎无风险 Edge
+          </div>
+        )}
+      </div>
+
+      <div className="risk-card">
+        <strong>临时功能 · World Cup</strong>
+        样本数据：Elo 取自 World Football Elo（2026-01），市场价由 FRA −245 / SEN +550 去水推得。
+        k / μ / ρ 为未校准的默认值，正式使用前需用历史赛果回测校准（Brier / log-loss），并接入实时 Elo、sharp 赔率与 Kalshi 行情。
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [tab, setTab] = useState(TWEAK_DEFAULTS.tab);
@@ -2627,7 +2837,9 @@ function App() {
         liveCount={liveCount}
         refreshCadence={refreshCadence}
       />
-      {tab === "markets" ? (
+      {tab === "worldcup" ? (
+        <WorldCupView />
+      ) : tab === "markets" ? (
         <MarketsView openAnalysis={openAnalysis} bjtDec={bjtDec} liveData={liveData} />
       ) : (
         <AnalysisView
