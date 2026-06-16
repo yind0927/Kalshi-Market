@@ -2525,16 +2525,49 @@ function WorldCupView() {
   const M = WC.MATCH;
   // null = pre-match; otherwise { minute, scoreA, scoreB }
   const [live, setLive] = useState(null);
+  // Live Kalshi market: null=loading, {...}=resolved, false=failed → use seed
+  const [kalshi, setKalshi] = useState(null);
+  const [kStatus, setKStatus] = useState("loading"); // loading | live | seed | error
+  const [shrink, setShrink] = useState(0);            // 0=pure model … 1=defer to market
 
   const model = useMemo(
     () => WC.buildMatchModel({ eloA: M.home.elo, eloB: M.away.elo, ...M.params }),
     []
   );
+
+  // ② Pull real Kalshi prices once on mount (browser → /api/kalshi proxy)
+  useEffect(() => {
+    let alive = true;
+    WC.fetchKalshiMatch(M.kalshiTicker, M.home, M.away)
+      .then(r => {
+        if (!alive) return;
+        if (r && r.home != null && r.away != null) {
+          setKalshi(r); setKStatus("live");
+        } else { setKStatus("seed"); }
+      })
+      .catch(() => { if (alive) setKStatus("error"); });
+    return () => { alive = false; };
+  }, []);
+
+  // ① De-vigged market (live Kalshi if resolved, else the seeded de-vig)
+  const market = useMemo(() => {
+    if (kStatus === "live" && kalshi) {
+      const draw = kalshi.draw != null ? kalshi.draw : Math.max(0, 1 - kalshi.home - kalshi.away);
+      return WC.devig3way(kalshi.home, draw, kalshi.away);
+    }
+    return WC.devig3way(M.market.home, M.market.draw, M.market.away);
+  }, [kStatus, kalshi]);
+
+  const params = { eloA: M.home.elo, eloB: M.away.elo, ...M.params };
+  const mImpliedK = useMemo(() => WC.impliedK(params, market.home), [market]);
+  // Calibrated (shrunk) model probs drive the edge table
+  const calModel = useMemo(() => WC.shrinkToMarket(model.probs, market, shrink), [model, market, shrink]);
+
   const liveModel = useMemo(
-    () => live ? WC.buildLiveModel({ eloA: M.home.elo, eloB: M.away.elo, ...M.params, ...live }) : null,
+    () => live ? WC.buildLiveModel({ ...params, ...live }) : null,
     [live]
   );
-  const shown = liveModel || model;
+  const shown = liveModel || { probs: calModel };
 
   const setMin = (v) => setLive(l => ({ ...(l || { scoreA: 0, scoreB: 0 }), minute: +v }));
   const bump = (side, d) => setLive(l => {
@@ -2542,6 +2575,13 @@ function WorldCupView() {
     const key = side === "A" ? "scoreA" : "scoreB";
     return { ...base, [key]: Math.max(0, (base[key] || 0) + d) };
   });
+
+  const kBadge = {
+    loading: <span className="wc-kbadge pending">⏳ Kalshi 连接中…</span>,
+    live:    <span className="wc-kbadge ok">✓ Kalshi LIVE · {kalshi?.resolvedTicker || M.kalshiTicker}</span>,
+    seed:    <span className="wc-kbadge warn" title={`未能解析三向盘口（解析到 ${kalshi?.marketCount ?? 0} 个市场）— 使用种子价。请在 worldcup.js 中核对 kalshiTicker`}>⚠ 种子市场（核对 ticker）</span>,
+    error:   <span className="wc-kbadge err">✗ Kalshi 失败 · 用种子价</span>,
+  }[kStatus];
 
   return (
     <div className="view wc-view" data-screen-label="worldcup">
@@ -2570,8 +2610,23 @@ function WorldCupView() {
           </div>
         </div>
         <div className="wc-model-line">
-          泊松 + Dixon-Coles 模型 · Elo差 {M.home.elo - M.away.elo} → 净胜球 {model.supremacy} ·
-          λ {model.lambdaA}/{model.lambdaB} · k={M.params.k} μ={M.params.muTotal}（参数需回测校准）
+          泊松 + Dixon-Coles · Elo差 {M.home.elo - M.away.elo} → 净胜球 {model.supremacy} ·
+          λ {model.lambdaA}/{model.lambdaB} · 你的 k={M.params.k} ·
+          <strong> 市场隐含 k={mImpliedK ?? "—"}</strong> · Elo@{M.eloAsOf}
+        </div>
+      </div>
+
+      {/* ── ① Calibration bar ── */}
+      <div className="wc-calib">
+        <div className="wc-calib-status">{kBadge}</div>
+        <div className="wc-calib-shrink">
+          <span className="wc-calib-l">向市场收缩 (shrink)</span>
+          <input type="range" min="0" max="100" value={Math.round(shrink * 100)}
+            onChange={e => setShrink(+e.target.value / 100)} />
+          <span className="wc-calib-v">{Math.round(shrink * 100)}%</span>
+        </div>
+        <div className="wc-calib-hint">
+          {shrink === 0 ? "纯模型视角（你的 k）" : shrink >= 0.99 ? "完全采信市场（Edge=0）" : "模型与市场加权混合"}
         </div>
       </div>
 
@@ -2593,9 +2648,9 @@ function WorldCupView() {
             <div className="wc-num">模型</div><div className="wc-num">Edge</div>
             <div className="wc-num">Kelly</div><div className="wc-num">信号</div>
           </li>
-          <WCOutcomeRow label={M.home.cn + "胜"} sub={M.home.flag} model={model.probs.home} market={M.market.home} />
-          <WCOutcomeRow label="平局" sub="X" model={model.probs.draw} market={M.market.draw} />
-          <WCOutcomeRow label={M.away.cn + "胜"} sub={M.away.flag} model={model.probs.away} market={M.market.away} />
+          <WCOutcomeRow label={M.home.cn + "胜"} sub={M.home.flag} model={calModel.home} market={market.home} />
+          <WCOutcomeRow label="平局" sub="X" model={calModel.draw} market={market.draw} />
+          <WCOutcomeRow label={M.away.cn + "胜"} sub={M.away.flag} model={calModel.away} market={market.away} />
         </ul>
       </div>
 

@@ -155,6 +155,70 @@ window.KW_WC = (function () {
     return { edge, kelly };
   }
 
+  // ── ① De-vig + calibration ───────────────────────────────
+  // Normalize a 3-way price set to a true PMF (removes overround / bid-ask slack).
+  function devig3way(home, draw, away) {
+    const s = (home || 0) + (draw || 0) + (away || 0);
+    return s > 0 ? { home: home / s, draw: draw / s, away: away / s, overround: s }
+                 : { home, draw, away, overround: s };
+  }
+
+  // Solve for the Elo→goals scale k that reproduces a target home-win probability.
+  // home-win prob is monotonically DECREASING in k (bigger k → smaller supremacy).
+  // Bisection — lets us read off the "market-implied k" and compare to our prior.
+  function impliedK(params, targetHomeProb, lo = 50, hi = 500) {
+    if (targetHomeProb == null) return null;
+    for (let it = 0; it < 44; it++) {
+      const mid = (lo + hi) / 2;
+      const h = buildMatchModel({ ...params, k: mid }).probs.home;
+      if (h > targetHomeProb) lo = mid; else hi = mid;
+    }
+    return +((lo + hi) / 2).toFixed(0);
+  }
+
+  // Shrink model probabilities toward the de-vigged market (0 = pure model,
+  // 1 = fully defer to market). The standard "trust the sharp price" dial;
+  // not circular — your model stays the prior, shrink is your confidence.
+  function shrinkToMarket(modelP, mktP, shrink) {
+    const s = Math.max(0, Math.min(1, shrink || 0));
+    const mix = (a, b) => a * (1 - s) + (b ?? a) * s;
+    const home = mix(modelP.home, mktP.home),
+          draw = mix(modelP.draw, mktP.draw),
+          away = mix(modelP.away, mktP.away);
+    const t = home + draw + away;
+    return { home: home / t, draw: draw / t, away: away / t };
+  }
+
+  // ── ② Live Kalshi prices via the existing /api/kalshi proxy ──
+  // Reuses the weather proxy's series-discovery; maps the 3-way outcomes by
+  // matching subtitle/ticker to team name/code or "draw". Returns null fields
+  // when an outcome can't be resolved → caller falls back to the seed market.
+  async function fetchKalshiMatch(ticker, home, away) {
+    const res = await fetch(`/api/kalshi?ticker=${encodeURIComponent(ticker)}`);
+    if (!res.ok) throw new Error(`Kalshi proxy ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const markets = data.markets || [];
+
+    const matchOne = (keys) => markets.find(m => {
+      const s = `${m.subtitle || ""} ${m.ticker || ""}`.toLowerCase();
+      return keys.some(k => k && s.includes(k.toLowerCase()));
+    });
+    const price = (m) => (m && m.mid != null) ? m.mid : null;
+
+    const hM = matchOne([home.name, home.code, home.cn]);
+    const aM = matchOne([away.name, away.code, away.cn]);
+    const dM = matchOne(["draw", "tie", "平"]);
+
+    return {
+      resolvedTicker: data.resolvedTicker || null,
+      marketCount: markets.length,
+      home: price(hM), draw: price(dM), away: price(aM),
+      fetchedAt: data.fetchedAt || null,
+      raw: markets,
+    };
+  }
+
   // ── Sample match seed (TEMPORARY): France vs Senegal ─────
   // Elo from World Football Elo Ratings (Jan 2026): FRA 2063 (#3), SEN 1869 (#17).
   // Market = de-vigged from bookmaker FRA -245 / SEN +550 with draw inferred.
@@ -165,14 +229,22 @@ window.KW_WC = (function () {
     neutral: true,
     koUTC: "2026-06-16T19:00:00Z",   // 15:00 ET = 19:00 UTC = BJT 03:00 (6/17)
     koBJT: "6/17 03:00",
+    eloAsOf: "2026-01",
     home: { code: "FRA", name: "France",  cn: "法国",       elo: 2063, fifaRank: 3,  flag: "🇫🇷" },
     away: { code: "SEN", name: "Senegal", cn: "塞内加尔",   elo: 1869, fifaRank: 17, flag: "🇸🇳" },
     params: { k: 150, muTotal: 2.55, rho: 0.06, homeAdv: 0 },  // neutral venue
     odds:   { home: -245, away: 550 },
-    // De-vigged 3-way market (seed; live version pulls from Kalshi proxy)
+    // De-vigged 3-way market (seed; overwritten live from the Kalshi proxy)
     market: { home: 0.63, draw: 0.22, away: 0.14, over25: 0.52, btts: 0.46 },
-    kalshiTicker: "KXWCMATCH-26JUN16FRASEN",
+    // Kalshi event/series ticker. The proxy discovers by series prefix (chars
+    // before the first "-"). ⚠ VERIFY on kalshi.com — update this one line if
+    // the World Cup match-winner series differs (e.g. KXWCGAME / KXWCMATCH…).
+    kalshiTicker: "KXWCGAME-26JUN16FRASEN",
   };
 
-  return { buildMatchModel, buildLiveModel, edgeKelly, americanToProb, devig, MATCH };
+  return {
+    buildMatchModel, buildLiveModel, edgeKelly,
+    americanToProb, devig, devig3way, impliedK, shrinkToMarket,
+    fetchKalshiMatch, MATCH,
+  };
 })();
