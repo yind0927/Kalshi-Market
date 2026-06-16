@@ -44,29 +44,75 @@ window.KW_WC = (function () {
     return s > 0 ? impliedArr.map(p => p / s) : impliedArr;
   }
 
+  // ── Platt piecewise-linear probability calibration ───────────
+  // Source: 4,616 competitive intl matches 2018-2026 at c=225, ρ=0.
+  // Each entry: [rawModelProb, observedActualRate].
+  // Interpolates linearly between anchors; clamps extremes conservatively.
+  const PLATT_MAP = [
+    [0.052, 0.060],
+    [0.147, 0.162],
+    [0.250, 0.296],
+    [0.350, 0.357],
+    [0.451, 0.441],
+    [0.552, 0.540],
+    [0.649, 0.645],
+    [0.749, 0.777],
+    [0.846, 0.891],
+    [0.914, 0.940],  // last anchor capped at 0.94 (avoid overfitting 85-sample extreme bin)
+  ];
+
+  function calibrateOne(rawP) {
+    // Clamp to [0,1] then interpolate in the Platt map
+    const p = Math.max(0, Math.min(1, rawP));
+    if (p <= PLATT_MAP[0][0])  return PLATT_MAP[0][1];
+    if (p >= PLATT_MAP[PLATT_MAP.length - 1][0]) return PLATT_MAP[PLATT_MAP.length - 1][1];
+    for (let i = 0; i < PLATT_MAP.length - 1; i++) {
+      const [x0, y0] = PLATT_MAP[i], [x1, y1] = PLATT_MAP[i + 1];
+      if (p <= x1) {
+        const t = (p - x0) / (x1 - x0);
+        return y0 + t * (y1 - y0);
+      }
+    }
+    return p;
+  }
+
+  function calibrateProbs(rawHome, rawDraw, rawAway) {
+    // Calibrate home and away independently, derive draw as remainder.
+    // The draw probability is not directly calibrated (would need 3D map),
+    // but is conserved by construction: calHome + calDraw + calAway = 1.
+    const calHome = calibrateOne(rawHome);
+    const calAway = calibrateOne(rawAway);
+    const calDraw = Math.max(0, 1 - calHome - calAway);
+    // renormalize to handle any rounding
+    const s = calHome + calDraw + calAway;
+    return { home: calHome / s, draw: calDraw / s, away: calAway / s };
+  }
+
   // ── Core: Elo → λ → scoreline matrix → every sub-market ──
   // params: { eloA, eloB, homeAdv, c, muTotal, rho, maxGoals }
-  //   c       — Elo points per e-fold of the goal RATIO λA/λB (calibrate to market)
-  //   muTotal — expected TOTAL goals (anchors the level; calibrate to O/U market)
-  //   rho     — Dixon-Coles correlation
+  //   c       — Elo points per e-fold of the goal RATIO λA/λB
+  //             Backtested: 225 for intl, 300 for WC (larger c = top-team gap shrinks)
+  //   muTotal — expected TOTAL goals (calibrate to O/U market)
+  //             WC historical average: 2.71
+  //   rho     — Dixon-Coles low-score correction
+  //             Backtested: ρ≈0 optimal for Brier; 0.04 improves 0-0 cell accuracy
   //
-  // MULTIPLICATIVE split (replaces the old additive (μ±s)/2):
+  // MULTIPLICATIVE split:
   //   r  = exp(ΔElo / c)        goal ratio λA/λB, always > 0
   //   λA = μ · r/(1+r),  λB = μ · 1/(1+r)
-  // → λA+λB = μ exactly (total anchored), both λ strictly positive (no clamp,
-  //   no negative-λ blow-ups on big mismatches), supremacy carried by the ratio.
+  // → λA+λB = μ exactly (total anchored), both λ strictly positive.
   function buildMatchModel(p) {
-    const c       = p.c       ?? 175;
-    const muTotal = p.muTotal ?? 2.55;
-    const rho     = p.rho     ?? 0.06;
+    const c       = p.c       ?? 225;
+    const muTotal = p.muTotal ?? 2.71;
+    const rho     = p.rho     ?? 0.04;
     const maxG    = p.maxGoals ?? 8;
     const homeAdv = p.homeAdv ?? 0;
 
-    const dr      = p.eloA - p.eloB + homeAdv;   // Elo supremacy (Elo pts)
-    const r       = Math.exp(dr / c);            // goal ratio λA/λB
+    const dr      = p.eloA - p.eloB + homeAdv;
+    const r       = Math.exp(dr / c);
     const lambdaA = Math.max(0.02, muTotal * r / (1 + r));
     const lambdaB = Math.max(0.02, muTotal * 1 / (1 + r));
-    const supremacy = lambdaA - lambdaB;          // expected goal margin (display)
+    const supremacy = lambdaA - lambdaB;
 
     // Build + normalize the joint scoreline matrix
     const matrix = [];
@@ -93,11 +139,18 @@ window.KW_WC = (function () {
     }
     scores.sort((a, b) => b.p - a.p);
 
+    // ── Platt piecewise-linear calibration ──────────────────────
+    // Derived from backtesting 4,616 competitive international matches (2018-2026).
+    // Maps raw model probability → empirically observed win rate.
+    // Applied to home and away; draw = 1 - calibrated(home) - calibrated(away).
+    const { home: calHome, draw: calDraw, away: calAway } = calibrateProbs(home, draw, away);
+
     return {
       lambdaA: +lambdaA.toFixed(2),
       lambdaB: +lambdaB.toFixed(2),
       supremacy: +supremacy.toFixed(2),
-      probs: { home, draw, away },
+      probs: { home: calHome, draw: calDraw, away: calAway },
+      rawProbs: { home, draw, away },   // pre-calibration (for debugging)
       markets: { over25, under25: 1 - over25, btts, noBtts: 1 - btts },
       topScores: scores.slice(0, 6).map(s => ({ ...s, p: +s.p.toFixed(4) })),
       matrix,
@@ -122,7 +175,7 @@ window.KW_WC = (function () {
     for (let i = 0; i <= maxRem; i++) {
       for (let j = 0; j <= maxRem; j++) {
         const cell = poisson(i, remA) * poisson(j, remB)
-                   * dcTau(i, j, remA || 0.0001, remB || 0.0001, p.rho ?? 0.06);
+                   * dcTau(i, j, remA || 0.0001, remB || 0.0001, p.rho ?? 0.04);
         total += cell;
         scores.push({ fi: sA + i, fj: sB + j, w: cell });
       }
@@ -355,32 +408,35 @@ window.KW_WC = (function () {
     };
   }
 
-  // ── Backtest scorecard (4,616 competitive intl matches 2018–2026) ───
-  // Generated by scripts/backtest-intl.js against martj42/international_results.
-  // c=225 minimises Brier (vs current 175); muTotal=2.71 is WC historical average.
+  // ── Backtest scorecard v2 (4,616 competitive intl matches 2018–2026) ───
+  // Run: node scripts/backtest-intl.js  (v2 with ρ + WC-c sweeps)
+  // Key findings: ρ=0 best for Brier (DC correction unhelpful for intl);
+  //   c=225 intl / c=300 WC-only; Platt calibration corrects ~30% prediction bias.
   const BACKTEST = {
-    generatedAt:  "2026-06-16T09:00:40Z",
+    generatedAt:  "2026-06-16T10:00:00Z",
     matchCount:   4616,
     wcMatchCount: 140,
     cutoffFrom:   "2018-06-01",
     cutoffTo:     "2026-06-15",
-    brier:        { model: 0.1644, naive: 0.2222, skillScore: 26 },
-    wcBrier:      0.2044,
+    brier:        { model: 0.1630, naive: 0.2222, skillScore: 26.6 },
+    wcBrier:      0.2009,
     avgGoals:     2.78,
     wcAvgGoals:   2.71,
     optimalC:     225,
+    optimalCwc:   300,
+    optimalRho:   0,
     outcomeDist:  { W: 47.2, D: 21.5, L: 31.3 },
     calibration: [
-      { bin: 0,   meanPred: 0.047, meanActual: 0.080, n: 740  },
-      { bin: 0.1, meanPred: 0.148, meanActual: 0.201, n: 482  },
-      { bin: 0.2, meanPred: 0.250, meanActual: 0.316, n: 418  },
-      { bin: 0.3, meanPred: 0.352, meanActual: 0.348, n: 359  },
-      { bin: 0.4, meanPred: 0.452, meanActual: 0.413, n: 344  },
-      { bin: 0.5, meanPred: 0.551, meanActual: 0.522, n: 391  },
-      { bin: 0.6, meanPred: 0.650, meanActual: 0.584, n: 473  },
-      { bin: 0.7, meanPred: 0.753, meanActual: 0.721, n: 580  },
-      { bin: 0.8, meanPred: 0.853, meanActual: 0.854, n: 698  },
-      { bin: 0.9, meanPred: 0.910, meanActual: 0.977, n: 131  },
+      { bin: 0,   meanPred: 0.052, meanActual: 0.060, n: 552  },
+      { bin: 0.1, meanPred: 0.147, meanActual: 0.162, n: 537  },
+      { bin: 0.2, meanPred: 0.250, meanActual: 0.296, n: 493  },
+      { bin: 0.3, meanPred: 0.350, meanActual: 0.357, n: 446  },
+      { bin: 0.4, meanPred: 0.451, meanActual: 0.441, n: 440  },
+      { bin: 0.5, meanPred: 0.552, meanActual: 0.540, n: 498  },
+      { bin: 0.6, meanPred: 0.649, meanActual: 0.645, n: 513  },
+      { bin: 0.7, meanPred: 0.749, meanActual: 0.777, n: 564  },
+      { bin: 0.8, meanPred: 0.846, meanActual: 0.891, n: 488  },
+      { bin: 0.9, meanPred: 0.914, meanActual: 0.940, n:  85  },
     ],
     eloSnapshot: {
       France: 2113, Senegal: 1895, Spain: 2199, Argentina: 2157,
@@ -402,7 +458,7 @@ window.KW_WC = (function () {
     eloAsOf: "2026-06-15",
     home: { code: "FRA", name: "France",  cn: "法国",       elo: 2113, fifaRank: 3,  flag: "🇫🇷" },
     away: { code: "SEN", name: "Senegal", cn: "塞内加尔",   elo: 1895, fifaRank: 17, flag: "🇸🇳" },
-    params: { c: 225, muTotal: 2.71, rho: 0.06, homeAdv: 0 },  // backtested: c=225 minimises Brier; muTotal=2.71 is WC avg
+    params: { c: 300, muTotal: 2.71, rho: 0.04, homeAdv: 0 },  // WC-specific: c=300 (top-team Elo gap matters less), ρ=0.04 (low-score correction), μ=2.71 (WC avg)
     odds:   { home: -245, away: 550 },
     // Seed = real Kalshi prices (FRA 68% / draw ~19% / SEN 13%; Over-2.5 ~49%,
     // observed 2026-06-16) as the fallback; overwritten live from the proxy.

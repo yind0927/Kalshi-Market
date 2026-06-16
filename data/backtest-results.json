@@ -1,20 +1,21 @@
 {
-  "generatedAt": "2026-06-16T09:00:40.193Z",
+  "generatedAt": "2026-06-16T10:01:18.486Z",
   "matchCount": 4616,
   "wcMatchCount": 140,
   "cutoffFrom": "2018-06-01",
   "cutoffTo": "2026-06-15",
   "brier": {
-    "model": 0.1644,
+    "model": 0.163,
     "naive": 0.2222,
-    "historical": 0.2126,
-    "skillScore": 26
+    "skillScore": 26.6
   },
-  "wcBrier": 0.2044,
+  "wcBrier": 0.2009,
   "avgGoals": 2.78,
   "wcAvgGoals": 2.71,
   "optimalC": 225,
-  "currentC": 175,
+  "optimalCwc": 300,
+  "optimalRho": 0,
+  "optimalRhoWC": 0,
   "outcomeDist": {
     "W": 47.2,
     "D": 21.5,
@@ -23,64 +24,106 @@
   "calibration": [
     {
       "bin": 0,
-      "meanPred": 0.047,
-      "meanActual": 0.08,
-      "n": 740
+      "meanPred": 0.052,
+      "meanActual": 0.06,
+      "n": 552
     },
     {
       "bin": 0.1,
-      "meanPred": 0.148,
-      "meanActual": 0.201,
-      "n": 482
+      "meanPred": 0.147,
+      "meanActual": 0.162,
+      "n": 537
     },
     {
       "bin": 0.2,
       "meanPred": 0.25,
-      "meanActual": 0.316,
-      "n": 418
+      "meanActual": 0.296,
+      "n": 493
     },
     {
       "bin": 0.3,
-      "meanPred": 0.352,
-      "meanActual": 0.348,
-      "n": 359
+      "meanPred": 0.35,
+      "meanActual": 0.357,
+      "n": 446
     },
     {
       "bin": 0.4,
-      "meanPred": 0.452,
-      "meanActual": 0.413,
-      "n": 344
+      "meanPred": 0.451,
+      "meanActual": 0.441,
+      "n": 440
     },
     {
       "bin": 0.5,
-      "meanPred": 0.551,
-      "meanActual": 0.522,
-      "n": 391
+      "meanPred": 0.552,
+      "meanActual": 0.54,
+      "n": 498
     },
     {
       "bin": 0.6,
-      "meanPred": 0.65,
-      "meanActual": 0.584,
-      "n": 473
+      "meanPred": 0.649,
+      "meanActual": 0.645,
+      "n": 513
     },
     {
       "bin": 0.7,
-      "meanPred": 0.753,
-      "meanActual": 0.721,
-      "n": 580
+      "meanPred": 0.749,
+      "meanActual": 0.777,
+      "n": 564
     },
     {
       "bin": 0.8,
-      "meanPred": 0.853,
-      "meanActual": 0.854,
-      "n": 698
+      "meanPred": 0.846,
+      "meanActual": 0.891,
+      "n": 488
     },
     {
       "bin": 0.9,
-      "meanPred": 0.91,
-      "meanActual": 0.977,
-      "n": 131
+      "meanPred": 0.914,
+      "meanActual": 1,
+      "n": 85
     }
+  ],
+  "plattMap": [
+    [
+      0.052,
+      0.06
+    ],
+    [
+      0.147,
+      0.162
+    ],
+    [
+      0.25,
+      0.296
+    ],
+    [
+      0.35,
+      0.357
+    ],
+    [
+      0.451,
+      0.441
+    ],
+    [
+      0.552,
+      0.54
+    ],
+    [
+      0.649,
+      0.645
+    ],
+    [
+      0.749,
+      0.777
+    ],
+    [
+      0.846,
+      0.891
+    ],
+    [
+      0.914,
+      1
+    ]
   ],
   "eloSnapshot": {
     "Spain": 2199,

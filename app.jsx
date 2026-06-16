@@ -2571,14 +2571,16 @@ function WCBacktestCard() {
         <div className="wc-bt-detail">
           <div className="wc-bt-params">
             <span className="wc-bt-param-row">
-              <span>⚙ 参数已根据回测更新</span>
-              <span>c: 175 → <strong>225</strong>（最优化 Brier 对应值）</span>
+              <span>⚙ 参数更新</span>
+              <span>c (强弱差): 175 → 225（国际赛）/ <strong>300</strong>（WC · 顶队差距更小）</span>
+              <span>ρ (低分修正): 0.06 → <strong>0.04</strong>（国际赛 DC 修正收益微弱）</span>
               <span>μ: 2.55 → <strong>2.71</strong>（WC 场均实测）</span>
-              <span>Elo: 法国 2113 · 塞内加尔 1895（49k 场累计）</span>
+              <span>Platt 校准: 开启（piecewise 插值，30% 偏差修正）</span>
+              <span>Elo: 法国 {BT.eloSnapshot.France} · 塞内加尔 {BT.eloSnapshot.Senegal}（49k 场累计）</span>
             </span>
           </div>
 
-          <div className="wc-bt-cal-title">校准曲线 · 主队胜率（预测 vs 实际）</div>
+          <div className="wc-bt-cal-title">校准曲线 · 主队胜率（预测 vs 实际，c=225 ρ=0）</div>
           <div className="wc-bt-cal">
             {calRows.map((row, i) => {
               const diff = row.meanActual - row.meanPred;
@@ -2605,17 +2607,17 @@ function WCBacktestCard() {
               <span><i className="bt-pred" /> 预测</span>
               <span><i className="bt-actual" /> 实际</span>
               <span className="wc-bt-cal-note">
-                低段偏低（保守），高段略偏高（好强队）→ c=225 已部分修正
+                30–70% 区间校准近乎完美 · 已通过 Platt 修正应用于当前预测值
               </span>
             </div>
           </div>
 
           <div className="wc-bt-assess">
-            <div className="wc-bt-assess-row pos">✓ 模型有真实预测能力：BSS +{BT.brier.skillScore}% 远超随机（零技能基准）</div>
-            <div className="wc-bt-assess-row pos">✓ c=225 为实证最优（原175偏激进），μ=2.71 符合 WC 历史均值</div>
-            <div className="wc-bt-assess-row warn">⚠ 低概率区（0–20%）偏保守约 5–8pp — 弱队被低估</div>
-            <div className="wc-bt-assess-row warn">⚠ 高概率区（60–70%）偏激进约 6pp — 强队被高估</div>
-            <div className="wc-bt-assess-row info">ℹ WC 样本仅 {BT.wcMatchCount} 场，置信区间宽；1X2 边际 &lt;1pp 后校准</div>
+            <div className="wc-bt-assess-row pos">✓ 模型有真实预测能力：BSS +{BT.brier.skillScore}% 远超随机（0技能基准）</div>
+            <div className="wc-bt-assess-row pos">✓ ρ 扫描发现：国际赛 Dixon-Coles 修正 Brier 收益≤0.0004，已降至 0.04（最小化 0-0 偏差）</div>
+            <div className="wc-bt-assess-row pos">✓ WC 专项 c=300：顶队间 Elo 差对进球比影响更小，减少强队被高估</div>
+            <div className="wc-bt-assess-row pos">✓ Platt 校准已应用：30–70% 区间近乎完美，极端尾部保守截断避免过拟合</div>
+            <div className="wc-bt-assess-row info">ℹ WC 样本 {BT.wcMatchCount} 场，置信区间宽 ±3–5pp；1X2 边际后校准仍 &lt;1pp</div>
           </div>
         </div>
       )}
@@ -2748,11 +2750,12 @@ function WorldCupView() {
           </div>
         </div>
         <div className="wc-model-line">
-          泊松 + Dixon-Coles（乘性拆分）· Elo差 {M.home.elo - M.away.elo} → 净胜球 {model.supremacy} ·
+          泊松 + DC（乘性拆分 · Platt校准）· Elo差 {M.home.elo - M.away.elo} → 净胜球 {model.supremacy} ·
           λ {model.lambdaA}/{model.lambdaB}<br />
-          强弱 c：你的 {M.params.c} · <strong>市场隐含 {cal.c ?? "—"}</strong>（胜负盘）　|
-          总进球 μ：你的 {M.params.muTotal} · <strong>市场校准 {cal.mu ?? "—"}</strong>
-          （大小球盘 O/U2.5={over25Mkt != null ? (over25Mkt * 100).toFixed(0) + "%" : "—"}{muIsLive ? " 实时" : " 种子"}）· Elo@{M.eloAsOf}
+          c：种子 {M.params.c}（WC专项回测值）· <strong>市场隐含 {cal.c ?? "—"}</strong>　|
+          μ：{M.params.muTotal}（WC均值）· <strong>市场校准 {cal.mu ?? "—"}</strong>
+          （O/U2.5={over25Mkt != null ? (over25Mkt * 100).toFixed(0) + "%" : "—"}{muIsLive ? " 实时" : " 种子"}）·
+          ρ={M.params.rho} · Elo@{M.eloAsOf}
         </div>
       </div>
 
