@@ -362,6 +362,8 @@ window.KW_WC = (function () {
     generatedAt:  "2026-06-16T09:00:40Z",
     matchCount:   4616,
     wcMatchCount: 140,
+    cutoffFrom:   "2018-06-01",
+    cutoffTo:     "2026-06-15",
     brier:        { model: 0.1644, naive: 0.2222, skillScore: 26 },
     wcBrier:      0.2044,
     avgGoals:     2.78,
