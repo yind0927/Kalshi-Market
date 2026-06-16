@@ -45,21 +45,28 @@ window.KW_WC = (function () {
   }
 
   // ── Core: Elo → λ → scoreline matrix → every sub-market ──
-  // params: { eloA, eloB, homeAdv, k, muTotal, rho, maxGoals }
-  //   k       — Elo points per goal of supremacy (MUST be calibrated by backtest)
-  //   muTotal — expected total goals (international ~2.5-2.6)
+  // params: { eloA, eloB, homeAdv, c, muTotal, rho, maxGoals }
+  //   c       — Elo points per e-fold of the goal RATIO λA/λB (calibrate to market)
+  //   muTotal — expected TOTAL goals (anchors the level; calibrate to O/U market)
   //   rho     — Dixon-Coles correlation
+  //
+  // MULTIPLICATIVE split (replaces the old additive (μ±s)/2):
+  //   r  = exp(ΔElo / c)        goal ratio λA/λB, always > 0
+  //   λA = μ · r/(1+r),  λB = μ · 1/(1+r)
+  // → λA+λB = μ exactly (total anchored), both λ strictly positive (no clamp,
+  //   no negative-λ blow-ups on big mismatches), supremacy carried by the ratio.
   function buildMatchModel(p) {
-    const k       = p.k       ?? 150;
+    const c       = p.c       ?? 175;
     const muTotal = p.muTotal ?? 2.55;
     const rho     = p.rho     ?? 0.06;
     const maxG    = p.maxGoals ?? 8;
     const homeAdv = p.homeAdv ?? 0;
 
-    const dr        = p.eloA - p.eloB + homeAdv;     // Elo supremacy (Elo pts)
-    const supremacy = dr / k;                         // → goal supremacy
-    const lambdaA   = Math.max(0.12, (muTotal + supremacy) / 2);
-    const lambdaB   = Math.max(0.12, (muTotal - supremacy) / 2);
+    const dr      = p.eloA - p.eloB + homeAdv;   // Elo supremacy (Elo pts)
+    const r       = Math.exp(dr / c);            // goal ratio λA/λB
+    const lambdaA = Math.max(0.02, muTotal * r / (1 + r));
+    const lambdaB = Math.max(0.02, muTotal * 1 / (1 + r));
+    const supremacy = lambdaA - lambdaB;          // expected goal margin (display)
 
     // Build + normalize the joint scoreline matrix
     const matrix = [];
@@ -163,17 +170,46 @@ window.KW_WC = (function () {
                  : { home, draw, away, overround: s };
   }
 
-  // Solve for the Elo→goals scale k that reproduces a target home-win probability.
-  // home-win prob is monotonically DECREASING in k (bigger k → smaller supremacy).
-  // Bisection — lets us read off the "market-implied k" and compare to our prior.
-  function impliedK(params, targetHomeProb, lo = 50, hi = 500) {
+  // Market-implied SUPREMACY scale c: the c that reproduces the market's
+  // home-win prob. home-win is monotonically DECREASING in c (bigger c → ratio
+  // closer to 1 → less dominance). Bisection.
+  function impliedC(params, targetHomeProb, lo = 40, hi = 700) {
     if (targetHomeProb == null) return null;
-    for (let it = 0; it < 44; it++) {
+    for (let it = 0; it < 46; it++) {
       const mid = (lo + hi) / 2;
-      const h = buildMatchModel({ ...params, k: mid }).probs.home;
-      if (h > targetHomeProb) lo = mid; else hi = mid;
+      const h = buildMatchModel({ ...params, c: mid }).probs.home;
+      if (h > targetHomeProb) lo = mid; else hi = mid;   // h decreases in c
+      void it;
     }
     return +((lo + hi) / 2).toFixed(0);
+  }
+
+  // Market-implied TOTAL-goals level μ: the μ that reproduces the market's
+  // Over-2.5 prob. P(total≥3) is monotonically INCREASING in μ. Bisection.
+  function impliedMu(params, targetOverProb, lo = 0.6, hi = 5.5) {
+    if (targetOverProb == null) return null;
+    for (let it = 0; it < 46; it++) {
+      const mid = (lo + hi) / 2;
+      const o = buildMatchModel({ ...params, muTotal: mid }).markets.over25;
+      if (o < targetOverProb) lo = mid; else hi = mid;   // o increases in μ
+      void it;
+    }
+    return +((lo + hi) / 2).toFixed(2);
+  }
+
+  // Joint two-market calibration: coordinate-descent on (c, μ).
+  //   c ← from the MONEYLINE (home-win prob)   — "who's better"
+  //   μ ← from the TOTALS market (Over-2.5)    — "how many goals"
+  // The two are near-orthogonal so 3-4 sweeps converge. Returns {c, mu}; leaves
+  // a parameter unchanged when its target market price is unavailable.
+  function calibrate(params, market, iters = 4) {
+    let c  = params.c       ?? 175;
+    let mu = params.muTotal ?? 2.55;
+    for (let i = 0; i < iters; i++) {
+      if (market && market.home   != null) c  = impliedC({ ...params, muTotal: mu }, market.home);
+      if (market && market.over25 != null) mu = impliedMu({ ...params, c }, market.over25);
+    }
+    return { c, mu };
   }
 
   // Shrink model probabilities toward the de-vigged market (0 = pure model,
@@ -240,7 +276,7 @@ window.KW_WC = (function () {
     eloAsOf: "2026-01",
     home: { code: "FRA", name: "France",  cn: "法国",       elo: 2063, fifaRank: 3,  flag: "🇫🇷" },
     away: { code: "SEN", name: "Senegal", cn: "塞内加尔",   elo: 1869, fifaRank: 17, flag: "🇸🇳" },
-    params: { k: 150, muTotal: 2.55, rho: 0.06, homeAdv: 0 },  // neutral venue
+    params: { c: 175, muTotal: 2.55, rho: 0.06, homeAdv: 0 },  // neutral venue (c≈175 reproduces the old k=150 point)
     odds:   { home: -245, away: 550 },
     // Seed = real Kalshi 3-way (FRA 68% / draw ~19% / SEN 13%, observed
     // 2026-06-16) as the fallback; overwritten live from the Kalshi proxy.
@@ -253,7 +289,7 @@ window.KW_WC = (function () {
 
   return {
     buildMatchModel, buildLiveModel, edgeKelly,
-    americanToProb, devig, devig3way, impliedK, shrinkToMarket,
+    americanToProb, devig, devig3way, impliedC, impliedMu, calibrate, shrinkToMarket,
     fetchKalshiMatch, MATCH,
   };
 })();

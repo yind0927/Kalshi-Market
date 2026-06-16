@@ -2559,7 +2559,12 @@ function WorldCupView() {
   }, [kStatus, kalshi]);
 
   const params = { eloA: M.home.elo, eloB: M.away.elo, ...M.params };
-  const mImpliedK = useMemo(() => WC.impliedK(params, market.home), [market]);
+  // ② Joint two-market calibration: c from the live moneyline, μ from the
+  // Over-2.5 price (seed totals until a live totals fetch is wired in).
+  const cal = useMemo(
+    () => WC.calibrate(params, { ...market, over25: M.market.over25 }),
+    [market]
+  );
   // Calibrated (shrunk) model probs drive the edge table
   const calModel = useMemo(() => WC.shrinkToMarket(model.probs, market, shrink), [model, market, shrink]);
 
@@ -2610,9 +2615,10 @@ function WorldCupView() {
           </div>
         </div>
         <div className="wc-model-line">
-          泊松 + Dixon-Coles · Elo差 {M.home.elo - M.away.elo} → 净胜球 {model.supremacy} ·
-          λ {model.lambdaA}/{model.lambdaB} · 你的 k={M.params.k} ·
-          <strong> 市场隐含 k={mImpliedK ?? "—"}</strong> · Elo@{M.eloAsOf}
+          泊松 + Dixon-Coles（乘性拆分）· Elo差 {M.home.elo - M.away.elo} → 净胜球 {model.supremacy} ·
+          λ {model.lambdaA}/{model.lambdaB}<br />
+          强弱 c：你的 {M.params.c} · <strong>市场隐含 {cal.c ?? "—"}</strong>　|
+          总进球 μ：你的 {M.params.muTotal} · <strong>市场校准 {cal.mu ?? "—"}</strong> · Elo@{M.eloAsOf}
         </div>
       </div>
 
