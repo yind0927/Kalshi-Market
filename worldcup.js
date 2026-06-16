@@ -217,17 +217,43 @@ window.KW_WC = (function () {
     return { c, mu };
   }
 
-  // Shrink model probabilities toward the de-vigged market (0 = pure model,
-  // 1 = fully defer to market). The standard "trust the sharp price" dial;
-  // not circular — your model stays the prior, shrink is your confidence.
+  // (Point 5) Blend model toward market in LOGIT space (logarithmic opinion
+  // pool): q'_i ∝ q_i^(1−s) · m_i^s, renormalized. Stable near 0/1 (no kink),
+  // and the multi-class generalization of logit mixing.
+  //   shrink s: 0 = pure model … 1 = fully defer to market.
+  // NB once c & μ are calibrated to market, model≈market on 1X2/totals so this
+  // barely moves them; its real job is confidence on UN-anchored markets.
   function shrinkToMarket(modelP, mktP, shrink) {
     const s = Math.max(0, Math.min(1, shrink || 0));
-    const mix = (a, b) => a * (1 - s) + (b ?? a) * s;
-    const home = mix(modelP.home, mktP.home),
-          draw = mix(modelP.draw, mktP.draw),
-          away = mix(modelP.away, mktP.away);
+    const g = (a, b) => Math.pow(Math.max(a, 1e-9), 1 - s) * Math.pow(Math.max(b ?? a, 1e-9), s);
+    const home = g(modelP.home, mktP.home),
+          draw = g(modelP.draw, mktP.draw),
+          away = g(modelP.away, mktP.away);
     const t = home + draw + away;
     return { home: home / t, draw: draw / t, away: away / t };
+  }
+
+  // (Points 6 & 7) Bid/ask-aware net edge + position sizing for ONE binary
+  // outcome. q = model prob; bid/ask = YES quotes (raw).
+  //   Buy YES: pay ask  → netYes = q − ask,   Kelly = netYes/(1−ask)
+  //   Buy NO : pay 1−bid → netNo  = bid − q,   Kelly = netNo /bid
+  // Then a FRACTIONAL-Kelly haircut (uncertainty in q) and a hard cap.
+  // The 3-way outcomes are mutually exclusive → caller takes the single best.
+  function tradeSignal(q, bid, ask, opts = {}) {
+    const { minNet = 0.02, kellyFraction = 0.5, cap = 0.25 } = opts;
+    const hasBA = bid != null && ask != null;
+    const netYes = hasBA ? q - ask : null;
+    const netNo  = hasBA ? bid - q : null;
+    const bestNet = hasBA ? Math.max(netYes, netNo) : (q != null ? q : null);
+
+    let side = null, net = null, entry = null, fullK = 0;
+    if (hasBA && netYes >= netNo && netYes > minNet) {
+      side = "YES"; net = netYes; entry = ask; fullK = ask < 1 ? netYes / (1 - ask) : 0;
+    } else if (hasBA && netNo > minNet) {
+      side = "NO";  net = netNo;  entry = +(1 - bid).toFixed(4); fullK = bid > 0 ? netNo / bid : 0;
+    }
+    const kelly = side ? Math.max(0, Math.min(cap, fullK * kellyFraction)) : 0;
+    return { side, net, entry, bestNet, fullKelly: +fullK.toFixed(4), kelly: +kelly.toFixed(4) };
   }
 
   // ── ② Live Kalshi prices via the existing /api/kalshi proxy ──
@@ -254,6 +280,11 @@ window.KW_WC = (function () {
       });
     });
     const price = (m) => (m && m.mid != null) ? m.mid : null;
+    const quote = (m) => ({
+      mid: m && m.mid != null ? m.mid : null,
+      bid: m && m.yes_bid != null ? m.yes_bid : null,
+      ask: m && m.yes_ask != null ? m.yes_ask : null,
+    });
 
     const hM = matchOne([home.name, home.cn, home.code]);   // "France" / "法国" / suffix "fra"
     const aM = matchOne([away.name, away.cn, away.code]);   // "Senegal" / "塞内加尔" / suffix "sen"
@@ -263,6 +294,7 @@ window.KW_WC = (function () {
       resolvedTicker: data.resolvedTicker || null,
       marketCount: markets.length,
       home: price(hM), draw: price(dM), away: price(aM),
+      quotes: { home: quote(hM), draw: quote(dM), away: quote(aM) },  // raw YES bid/ask
       fetchedAt: data.fetchedAt || null,
       raw: markets,
     };
@@ -330,7 +362,7 @@ window.KW_WC = (function () {
   };
 
   return {
-    buildMatchModel, buildLiveModel, edgeKelly,
+    buildMatchModel, buildLiveModel, edgeKelly, tradeSignal,
     americanToProb, devig, devig3way, impliedC, impliedMu, calibrate, shrinkToMarket,
     fetchKalshiMatch, fetchKalshiTotal, MATCH,
   };

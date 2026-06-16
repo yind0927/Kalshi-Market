@@ -2494,27 +2494,35 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
  * World Cup match prediction (TEMPORARY) — France vs Senegal sample
  * Reuses the weather pipeline's distribution→edge→Kelly machinery.
  * ───────────────────────────────────────────────────────── */
-function WCOutcomeRow({ label, sub, model, market }) {
+function WCOutcomeRow({ label, sub, q, quote }) {
   const WC = window.KW_WC;
-  const { edge, kelly } = WC.edgeKelly(model, market);
-  const MIN = 0.03;
-  const signal = edge > MIN
-    ? <span className="sig-buy yes">↑ 买 YES +{Math.round(edge * 100)}pp</span>
-    : edge < -MIN
-      ? <span className="sig-buy no">↓ 买 NO {Math.round(edge * 100)}pp</span>
+  const mid = quote?.mid != null ? quote.mid : null;
+  const bid = quote?.bid, ask = quote?.ask;
+  const hasBA = bid != null && ask != null;
+  const sig = WC.tradeSignal(q, hasBA ? bid : null, hasBA ? ask : null);
+  // Edge column: bid/ask-aware net when quotes exist (the honest tradeable
+  // number), else fall back to model−mid.
+  const shownEdge = hasBA ? sig.bestNet : (mid != null ? q - mid : 0);
+  const signal = sig.side === "YES"
+    ? <span className="sig-buy yes">↑ 买YES @{Math.round(sig.entry * 100)}¢</span>
+    : sig.side === "NO"
+      ? <span className="sig-buy no">↓ 买NO @{Math.round(sig.entry * 100)}¢</span>
       : <span className="sig-pass">— 观望</span>;
   const maxV = 0.75;
   return (
     <li className="wc-row">
       <div className="wc-row-label"><strong>{label}</strong>{sub && <span>{sub}</span>}</div>
       <div className="wc-bars">
-        <div className="wc-bar market"><div className="fill" style={{ width: `${(market / maxV) * 100}%` }} /></div>
-        <div className="wc-bar model"><div className="fill" style={{ width: `${(model / maxV) * 100}%` }} /></div>
+        <div className="wc-bar market"><div className="fill" style={{ width: `${((mid ?? 0) / maxV) * 100}%` }} /></div>
+        <div className="wc-bar model"><div className="fill" style={{ width: `${(q / maxV) * 100}%` }} /></div>
       </div>
-      <div className="wc-num">{fmtPct(market)}</div>
-      <div className="wc-num accent">{fmtPct(model)}</div>
-      <div className="wc-num"><EdgePill value={edge} /></div>
-      <div className="wc-num wc-kelly">{kelly > 0.01 ? `${(kelly * 100).toFixed(0)}%` : "—"}</div>
+      <div className="wc-num" title={hasBA ? `YES bid ${Math.round(bid * 100)}¢ / ask ${Math.round(ask * 100)}¢` : undefined}>
+        {mid != null ? fmtPct(mid) : "—"}
+        {hasBA && <span className="wc-ba">{Math.round(bid * 100)}–{Math.round(ask * 100)}</span>}
+      </div>
+      <div className="wc-num accent">{fmtPct(q)}</div>
+      <div className="wc-num"><EdgePill value={shownEdge} /></div>
+      <div className="wc-num wc-kelly">{sig.kelly > 0.005 ? `${(sig.kelly * 100).toFixed(0)}%` : "—"}</div>
       <div className="wc-num">{signal}</div>
     </li>
   );
@@ -2574,8 +2582,13 @@ function WorldCupView() {
     () => WC.calibrate(params, { ...market, over25: over25Mkt }),
     [market, over25Mkt]
   );
-  // Calibrated (shrunk) model probs drive the edge table
+  // Calibrated (logit-shrunk) model probs drive the edge table
   const calModel = useMemo(() => WC.shrinkToMarket(model.probs, market, shrink), [model, market, shrink]);
+  // Raw YES quotes (bid/ask) for tradeable-edge: live Kalshi if resolved, else
+  // seed mids only (no spread → net edge falls back to model−mid).
+  const quotes = (kStatus === "live" && kalshi?.quotes)
+    ? kalshi.quotes
+    : { home: { mid: M.market.home }, draw: { mid: M.market.draw }, away: { mid: M.market.away } };
 
   const liveModel = useMemo(
     () => live ? WC.buildLiveModel({ ...params, ...live }) : null,
@@ -2642,7 +2655,7 @@ function WorldCupView() {
           <span className="wc-calib-v">{Math.round(shrink * 100)}%</span>
         </div>
         <div className="wc-calib-hint">
-          {shrink === 0 ? "纯模型视角（你的 k）" : shrink >= 0.99 ? "完全采信市场（Edge=0）" : "模型与市场加权混合"}
+          {shrink === 0 ? "纯模型视角（你的 c/μ）" : shrink >= 0.99 ? "完全采信市场（Edge≈0）" : "logit 空间混合"}
         </div>
       </div>
 
@@ -2660,14 +2673,18 @@ function WorldCupView() {
         </div>
         <ul className="wc-list">
           <li className="wc-row head">
-            <div>结果</div><div>分布</div><div className="wc-num">市场</div>
-            <div className="wc-num">模型</div><div className="wc-num">Edge</div>
-            <div className="wc-num">Kelly</div><div className="wc-num">信号</div>
+            <div>结果</div><div>分布</div><div className="wc-num">市场(买卖)</div>
+            <div className="wc-num">模型</div><div className="wc-num">净Edge</div>
+            <div className="wc-num">½Kelly</div><div className="wc-num">信号</div>
           </li>
-          <WCOutcomeRow label={M.home.cn + "胜"} sub={M.home.flag} model={calModel.home} market={market.home} />
-          <WCOutcomeRow label="平局" sub="X" model={calModel.draw} market={market.draw} />
-          <WCOutcomeRow label={M.away.cn + "胜"} sub={M.away.flag} model={calModel.away} market={market.away} />
+          <WCOutcomeRow label={M.home.cn + "胜"} sub={M.home.flag} q={calModel.home} quote={quotes.home} />
+          <WCOutcomeRow label="平局" sub="X" q={calModel.draw} quote={quotes.draw} />
+          <WCOutcomeRow label={M.away.cn + "胜"} sub={M.away.flag} q={calModel.away} quote={quotes.away} />
         </ul>
+        <div className="wc-foot-note">
+          净Edge = 买 YES：模型−ask · 买 NO：bid−模型（已扣买卖价差）· 仓位 = ½-Kelly，上限 25%，净&gt;2pp 才出信号 ·
+          三向互斥，只取净 Edge 最高的一侧，勿三项叠加
+        </div>
       </div>
 
       {/* ── Derived markets + top scores ── */}
