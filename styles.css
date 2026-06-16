@@ -3528,46 +3528,99 @@ input { font-family: inherit; }
 .wc-tab .cn { margin-left: 4px; }
 
 .wc-hero {
-  background: linear-gradient(135deg, color-mix(in oklab, var(--accent) 8%, var(--surface)), var(--surface));
+  background: linear-gradient(160deg,
+    color-mix(in oklab, var(--accent) 10%, var(--surface)) 0%,
+    var(--surface) 60%);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 24px 28px;
-  margin-bottom: 16px;
+  padding: 20px 24px 18px;
+  margin-bottom: 12px;
 }
-.wc-hero-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
-.wc-comp { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: var(--accent); text-transform: uppercase; }
-.wc-ko { font-size: 12px; color: var(--ink-3); }
-.wc-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; }
-.wc-team { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.wc-flag { font-size: 38px; line-height: 1; }
-.wc-team-name { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
-.wc-team-cn { font-size: 13px; color: var(--ink-2); }
-.wc-elo { font-size: 11px; font-family: var(--mono); color: var(--ink-3); margin-top: 2px; }
-.wc-vs { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.wc-vs-x { font-size: 16px; font-weight: 800; color: var(--ink-4); letter-spacing: 0.1em; }
-.wc-vs-supr { font-size: 11px; font-family: var(--mono); color: var(--ink-3); white-space: nowrap; }
+.wc-hero-top {
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 4px; margin-bottom: 16px;
+}
+.wc-comp {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--accent); text-transform: uppercase;
+}
+.wc-ko { font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.wc-teams { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+.wc-team { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.wc-flag { font-size: 40px; line-height: 1; }
+.wc-team-name { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+.wc-team-cn { font-size: 13px; color: var(--ink-2); font-weight: 500; }
+.wc-elo { font-size: 10.5px; font-family: var(--mono); color: var(--ink-3); margin-top: 1px; }
+.wc-vs {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.wc-vs-circle {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--bg-2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--ink-3); letter-spacing: 0.05em;
+}
+.wc-vs-lambda { font-size: 13px; font-family: var(--mono); font-weight: 700; color: var(--ink-1); }
+.wc-vs-supr { font-size: 10px; font-family: var(--mono); color: var(--ink-4); white-space: nowrap; }
+
+/* Win-probability tri-bar */
+.wc-prob-bar-wrap { margin: 16px 0 4px; }
+.wc-prob-bar {
+  display: flex; height: 28px; border-radius: 8px; overflow: hidden;
+  gap: 2px; background: var(--bg-2);
+}
+.wc-pb-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff; transition: width 0.4s ease;
+  min-width: 0;
+}
+.wc-pb-seg.home { background: var(--accent); border-radius: 8px 0 0 8px; }
+.wc-pb-seg.draw { background: var(--ink-3); }
+.wc-pb-seg.away { background: color-mix(in oklab, var(--neg) 75%, var(--ink-3)); border-radius: 0 8px 8px 0; }
+.wc-pb-labels {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: var(--ink-3); margin-top: 4px; padding: 0 2px;
+}
+
+/* Calibration status bar */
+.wc-calib {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 14px; margin-bottom: 12px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px;
+}
+.wc-calib-row1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wc-calib-shrink { display: flex; align-items: center; gap: 8px; }
+.wc-calib-shrink input[type=range] { flex: 1; min-width: 80px; accent-color: var(--accent); }
+.wc-calib-hint { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
 .wc-model-line {
   margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
   font-size: 11.5px; color: var(--ink-3); line-height: 1.5; font-family: var(--mono);
 }
 
-/* ① Calibration bar */
-.wc-calib {
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  padding: 12px 16px; margin-bottom: 16px;
-  background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px;
+/* Pill stat strip (replaces wc-model-line in current JSX) */
+.wc-stats-strip {
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; gap: 6px;
 }
-.wc-calib-status { flex-shrink: 0; }
+.wc-stat-pill {
+  font-size: 11px; font-family: var(--mono); padding: 3px 9px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 20px;
+  color: var(--ink-2); white-space: nowrap;
+}
+.wc-stat-pill.accent {
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+  color: var(--accent); border-color: color-mix(in oklab, var(--accent) 30%, var(--border));
+  font-weight: 700;
+}
+
+/* Kalshi status badges */
 .wc-kbadge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; white-space: nowrap; }
 .wc-kbadge.ok { background: var(--pos-soft); color: var(--pos); }
 .wc-kbadge.pending { background: var(--bg-1); color: var(--ink-3); border: 1px solid var(--border); }
 .wc-kbadge.warn { background: color-mix(in oklab, var(--warn) 14%, transparent); color: var(--warn); cursor: help; }
 .wc-kbadge.err { background: color-mix(in oklab, var(--neg) 12%, transparent); color: var(--neg); }
-.wc-calib-shrink { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 220px; }
 .wc-calib-l { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
-.wc-calib-shrink input[type=range] { flex: 1; accent-color: var(--accent); }
-.wc-calib-v { font-family: var(--mono); font-size: 13px; font-weight: 700; min-width: 38px; text-align: right; }
-.wc-calib-hint { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.wc-calib-v { font-family: var(--mono); font-size: 13px; font-weight: 700; min-width: 32px; text-align: right; }
 
 .wc-card { margin-bottom: 16px; }
 .wc-ba { display: block; font-size: 9px; color: var(--ink-4); font-family: var(--mono); margin-top: 1px; }
@@ -3690,25 +3743,54 @@ i.bt-actual { background: var(--accent); }
 .bottom-tab-bar { display: none; }
 
 @media (max-width: 640px) {
-  /* World Cup view — stack + compress */
-  .wc-hero { padding: 16px; }
-  .wc-flag { font-size: 30px; }
-  .wc-team-name { font-size: 15px; }
-  .wc-teams { gap: 8px; }
-  .wc-vs-supr { font-size: 9px; }
-  .wc-model-line { font-size: 10px; }
-  .wc-grid2 { grid-template-columns: 1fr; }
-  .wc-calib { gap: 10px; padding: 12px; }
-  .wc-calib-shrink { min-width: 100%; order: 3; }
-  .wc-calib-hint { display: none; }
-  /* 1X2 rows: drop the bar (2nd) + Kelly (6th) columns, tighten to 5 cols */
-  .wc-row { grid-template-columns: 84px 46px 46px 60px 1fr; gap: 8px; }
-  .wc-bars, .wc-kelly { display: none; }
-  .wc-row.head > div:nth-child(2),
-  .wc-row.head > div:nth-child(6) { display: none; }
-  .wc-row-label strong { font-size: 13px; }
+  /* ── World Cup view — full mobile pass ── */
+
+  /* Hero */
+  .wc-hero { padding: 14px 14px 14px; margin-bottom: 10px; }
+  .wc-hero-top { margin-bottom: 12px; }
+  .wc-flag { font-size: 28px; }
+  .wc-team-name { font-size: 14px; }
+  .wc-team-cn { font-size: 11px; }
+  .wc-elo { font-size: 9.5px; }
+  .wc-teams { gap: 6px; }
+  .wc-vs-circle { width: 30px; height: 30px; font-size: 9px; }
+  .wc-vs-lambda { font-size: 11px; }
+  .wc-vs-supr { display: none; }
+  .wc-prob-bar { height: 24px; }
+  .wc-pb-seg { font-size: 10px; }
+  .wc-stats-strip { margin-top: 10px; padding-top: 10px; gap: 4px; }
+  .wc-stat-pill { font-size: 9.5px; padding: 2px 7px; }
+
+  /* Kalshi / shrink bar */
+  .wc-calib { gap: 6px; padding: 9px 12px; margin-bottom: 10px; }
+  .wc-calib-hint { font-size: 10px; }
+  .wc-calib-l { font-size: 11px; }
+
+  /* 1X2 table — 4 cols: label | bar | model | signal */
+  .wc-row { grid-template-columns: 72px 1fr 42px auto; gap: 6px; }
+  .wc-col-mkt, .wc-col-edge, .wc-col-kelly { display: none; }
+  .wc-row-label strong { font-size: 12px; }
+  .wc-foot-note { font-size: 10px; }
+  .wc-card { margin-bottom: 10px; }
+
+  /* Derived markets */
+  .wc-grid2 { grid-template-columns: 1fr; gap: 10px; }
+  .wc-d-row { font-size: 12px; gap: 6px; }
+  .wc-d-row { grid-template-columns: 1fr 50px 50px 76px; }
+
+  /* Live simulator */
   .wc-live-controls { gap: 10px; }
   .wc-live-note { font-size: 10px; }
+  .wc-lp-v { font-size: 20px; }
+
+  /* Backtest card */
+  .wc-bt-summary { grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 0 12px; }
+  .wc-bt-val { font-size: 18px; }
+  .wc-bt-lbl { font-size: 9px; }
+  .wc-bt-cal-row { grid-template-columns: 46px 1fr 46px; gap: 4px; }
+  .wc-bt-cal-pred, .wc-bt-cal-arr, .wc-bt-cal-n { display: none; }
+  .wc-bt-param-row { font-size: 10.5px; gap: 4px 8px; }
+  .wc-bt-assess-row { font-size: 10.5px; padding: 4px 8px; }
 
   /* ════════════════════════════════════════════════════════
    * Bottom tab bar

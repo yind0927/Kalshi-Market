@@ -2512,18 +2512,18 @@ function WCOutcomeRow({ label, sub, q, quote }) {
   return (
     <li className="wc-row">
       <div className="wc-row-label"><strong>{label}</strong>{sub && <span>{sub}</span>}</div>
-      <div className="wc-bars">
+      <div className="wc-col-bar wc-bars">
         <div className="wc-bar market"><div className="fill" style={{ width: `${((mid ?? 0) / maxV) * 100}%` }} /></div>
         <div className="wc-bar model"><div className="fill" style={{ width: `${(q / maxV) * 100}%` }} /></div>
       </div>
-      <div className="wc-num" title={hasBA ? `YES bid ${Math.round(bid * 100)}¢ / ask ${Math.round(ask * 100)}¢` : undefined}>
+      <div className="wc-col-mkt wc-num" title={hasBA ? `YES bid ${Math.round(bid * 100)}¢ / ask ${Math.round(ask * 100)}¢` : undefined}>
         {mid != null ? fmtPct(mid) : "—"}
         {hasBA && <span className="wc-ba">{Math.round(bid * 100)}–{Math.round(ask * 100)}</span>}
       </div>
-      <div className="wc-num accent">{fmtPct(q)}</div>
-      <div className="wc-num"><EdgePill value={shownEdge} /></div>
-      <div className="wc-num wc-kelly">{sig.kelly > 0.005 ? `${(sig.kelly * 100).toFixed(0)}%` : "—"}</div>
-      <div className="wc-num">{signal}</div>
+      <div className="wc-col-model wc-num accent">{fmtPct(q)}</div>
+      <div className="wc-col-edge wc-num"><EdgePill value={shownEdge} /></div>
+      <div className="wc-col-kelly wc-num wc-kelly">{sig.kelly > 0.005 ? `${(sig.kelly * 100).toFixed(0)}%` : "—"}</div>
+      <div className="wc-col-sig wc-num">{signal}</div>
     </li>
   );
 }
@@ -2727,10 +2727,11 @@ function WorldCupView() {
     <div className="view wc-view" data-screen-label="worldcup">
       {/* ── Match hero ── */}
       <div className="wc-hero">
-        <div className="wc-hero-meta">
+        <div className="wc-hero-top">
           <span className="wc-comp">{M.competition}</span>
-          <span className="wc-ko">🇨🇳 BJT {M.koBJT} · {M.venue}{M.neutral ? " · 中立场" : ""}</span>
+          <span className="wc-ko">🇨🇳 {M.koBJT}</span>
         </div>
+
         <div className="wc-teams">
           <div className="wc-team">
             <span className="wc-flag">{M.home.flag}</span>
@@ -2739,8 +2740,9 @@ function WorldCupView() {
             <span className="wc-elo">Elo {M.home.elo} · #{M.home.fifaRank}</span>
           </div>
           <div className="wc-vs">
-            <span className="wc-vs-x">VS</span>
-            <span className="wc-vs-supr">预期比分 {model.lambdaA} – {model.lambdaB}</span>
+            <div className="wc-vs-circle">VS</div>
+            <span className="wc-vs-lambda">{model.lambdaA}–{model.lambdaB}</span>
+            <span className="wc-vs-supr">预期进球</span>
           </div>
           <div className="wc-team away">
             <span className="wc-flag">{M.away.flag}</span>
@@ -2749,30 +2751,51 @@ function WorldCupView() {
             <span className="wc-elo">Elo {M.away.elo} · #{M.away.fifaRank}</span>
           </div>
         </div>
-        <div className="wc-model-line">
-          泊松 + DC（乘性拆分 · Platt校准）· Elo差 {M.home.elo - M.away.elo} → 净胜球 {model.supremacy} ·
-          λ {model.lambdaA}/{model.lambdaB}<br />
-          c：种子 {M.params.c}（WC专项回测值）· <strong>市场隐含 {cal.c ?? "—"}</strong>　|
-          μ：{M.params.muTotal}（WC均值）· <strong>市场校准 {cal.mu ?? "—"}</strong>
-          （O/U2.5={over25Mkt != null ? (over25Mkt * 100).toFixed(0) + "%" : "—"}{muIsLive ? " 实时" : " 种子"}）·
-          ρ={M.params.rho} · Elo@{M.eloAsOf}
+
+        {/* Win probability tri-bar — the most important signal at a glance */}
+        <div className="wc-prob-bar-wrap">
+          <div className="wc-prob-bar">
+            <div className="wc-pb-seg home" style={{ width: `${(calModel.home * 100).toFixed(1)}%` }}>
+              {calModel.home > 0.12 && <span>{(calModel.home * 100).toFixed(0)}%</span>}
+            </div>
+            <div className="wc-pb-seg draw" style={{ width: `${(calModel.draw * 100).toFixed(1)}%` }}>
+              {calModel.draw > 0.1 && <span>{(calModel.draw * 100).toFixed(0)}%</span>}
+            </div>
+            <div className="wc-pb-seg away" style={{ width: `${(calModel.away * 100).toFixed(1)}%` }}>
+              {calModel.away > 0.12 && <span>{(calModel.away * 100).toFixed(0)}%</span>}
+            </div>
+          </div>
+          <div className="wc-pb-labels">
+            <span>{M.home.cn}胜</span>
+            <span>平</span>
+            <span>{M.away.cn}胜</span>
+          </div>
+        </div>
+
+        <div className="wc-stats-strip">
+          <span className="wc-stat-pill">λ {model.lambdaA}–{model.lambdaB}</span>
+          <span className="wc-stat-pill">c {M.params.c}{cal.c ? ` → ${cal.c}` : ""}</span>
+          <span className="wc-stat-pill">μ {cal.mu ?? M.params.muTotal}{muIsLive ? " 实时" : ""}</span>
+          <span className="wc-stat-pill">ρ={M.params.rho}</span>
+          <span className="wc-stat-pill accent">Platt ✓</span>
+          <span className="wc-stat-pill">{M.venue.split("·")[0].trim()}</span>
         </div>
       </div>
 
-      {/* ── ① Calibration bar ── */}
+      {/* ── ① Kalshi status + shrink ── */}
       <div className="wc-calib">
-        <div className="wc-calib-status">
+        <div className="wc-calib-row1">
           {kBadge}
-          {lastRefresh && <span className="wc-refresh">↻ {lastRefresh.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · 30s 自动</span>}
+          {lastRefresh && <span className="wc-refresh">↻ {lastRefresh.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · 30s</span>}
         </div>
         <div className="wc-calib-shrink">
-          <span className="wc-calib-l">向市场收缩 (shrink)</span>
+          <span className="wc-calib-l">市场收缩</span>
           <input type="range" min="0" max="100" value={Math.round(shrink * 100)}
             onChange={e => setShrink(+e.target.value / 100)} />
           <span className="wc-calib-v">{Math.round(shrink * 100)}%</span>
-        </div>
-        <div className="wc-calib-hint">
-          {shrink === 0 ? "纯模型视角（你的 c/μ）" : shrink >= 0.99 ? "完全采信市场（Edge≈0）" : "logit 空间混合"}
+          <span className="wc-calib-hint">
+            {shrink === 0 ? "纯模型" : shrink >= 0.99 ? "纯市场" : "混合"}
+          </span>
         </div>
       </div>
 
@@ -2790,9 +2813,13 @@ function WorldCupView() {
         </div>
         <ul className="wc-list">
           <li className="wc-row head">
-            <div>结果</div><div>分布</div><div className="wc-num">市场(买卖)</div>
-            <div className="wc-num">模型</div><div className="wc-num">净Edge</div>
-            <div className="wc-num">½Kelly</div><div className="wc-num">信号</div>
+            <div>结果</div>
+            <div className="wc-col-bar">分布</div>
+            <div className="wc-col-mkt wc-num">市场</div>
+            <div className="wc-col-model wc-num">模型</div>
+            <div className="wc-col-edge wc-num">Net Edge</div>
+            <div className="wc-col-kelly wc-num">½K</div>
+            <div className="wc-col-sig wc-num">信号</div>
           </li>
           <WCOutcomeRow label={M.home.cn + "胜"} sub={M.home.flag} q={calModel.home} quote={quotes.home} />
           <WCOutcomeRow label="平局" sub="X" q={calModel.draw} quote={quotes.draw} />
