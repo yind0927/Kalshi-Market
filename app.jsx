@@ -2544,22 +2544,32 @@ function WorldCupView() {
   );
 
   const [over25Live, setOver25Live] = useState(null); // live Over-2.5 from KXWCTOTAL
+  const [btts, setBtts]             = useState(null);  // live BTTS quote {yes,bid,ask}
+  const [lastRefresh, setLastRefresh] = useState(null);
 
-  // ② Pull real Kalshi prices once on mount — moneyline (1X2) AND total goals
+  // ② Pull real Kalshi prices — moneyline (1X2) + total goals + BTTS — and
+  // auto-refresh every 30s so prices track the market (incl. in-play).
   useEffect(() => {
     let alive = true;
-    WC.fetchKalshiMatch(M.kalshiTicker, M.home, M.away)
-      .then(r => {
-        if (!alive) return;
-        if (r && r.home != null && r.away != null) { setKalshi(r); setKStatus("live"); }
-        else { setKStatus("seed"); }
-      })
-      .catch(() => { if (alive) setKStatus("error"); });
-    // Totals market is independent — calibrates μ
-    WC.fetchKalshiTotal(M.kalshiTotalTicker)
-      .then(t => { if (alive && t && t.over25 != null) setOver25Live(t.over25); })
-      .catch(() => {});
-    return () => { alive = false; };
+    const refresh = () => {
+      WC.fetchKalshiMatch(M.kalshiTicker, M.home, M.away)
+        .then(r => {
+          if (!alive) return;
+          if (r && r.home != null && r.away != null) { setKalshi(r); setKStatus("live"); }
+          else setKStatus(s => (s === "live" ? s : "seed"));
+        })
+        .catch(() => { if (alive) setKStatus(s => (s === "live" ? s : "error")); });
+      WC.fetchKalshiTotal(M.kalshiTotalTicker)
+        .then(t => { if (alive && t && t.over25 != null) setOver25Live(t.over25); })
+        .catch(() => {});
+      WC.fetchKalshiYesNo(M.kalshiBttsTicker, ["both", "yes", "score"])
+        .then(b => { if (alive && b && b.yes != null) setBtts(b); })
+        .catch(() => {});
+      if (alive) setLastRefresh(new Date());
+    };
+    refresh();
+    const id = setInterval(refresh, 30000);
+    return () => { alive = false; clearInterval(id); };
   }, []);
 
   // ① De-vigged market (live Kalshi if resolved, else the seeded de-vig)
@@ -2582,8 +2592,14 @@ function WorldCupView() {
     () => WC.calibrate(params, { ...market, over25: over25Mkt }),
     [market, over25Mkt]
   );
-  // Calibrated (logit-shrunk) model probs drive the edge table
+  // Calibrated (logit-shrunk) model probs drive the 1X2 edge table
   const calModel = useMemo(() => WC.shrinkToMarket(model.probs, market, shrink), [model, market, shrink]);
+  // Market-calibrated distribution (c,μ pinned to the liquid markets): its
+  // DERIVED markets (BTTS, exact scores) are the out-of-sample edge candidates.
+  const calibratedModel = useMemo(
+    () => WC.buildMatchModel({ ...params, c: cal.c, muTotal: cal.mu }),
+    [cal]
+  );
   // Raw YES quotes (bid/ask) for tradeable-edge: live Kalshi if resolved, else
   // seed mids only (no spread → net edge falls back to model−mid).
   const quotes = (kStatus === "live" && kalshi?.quotes)
@@ -2647,7 +2663,10 @@ function WorldCupView() {
 
       {/* ── ① Calibration bar ── */}
       <div className="wc-calib">
-        <div className="wc-calib-status">{kBadge}</div>
+        <div className="wc-calib-status">
+          {kBadge}
+          {lastRefresh && <span className="wc-refresh">↻ {lastRefresh.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · 30s 自动</span>}
+        </div>
         <div className="wc-calib-shrink">
           <span className="wc-calib-l">向市场收缩 (shrink)</span>
           <input type="range" min="0" max="100" value={Math.round(shrink * 100)}
@@ -2687,27 +2706,50 @@ function WorldCupView() {
         </div>
       </div>
 
-      {/* ── Derived markets + top scores ── */}
+      {/* ── Derived-market edge + top scores ── */}
       <div className="wc-grid2">
         <div className="card wc-card">
-          <div className="card-head"><div><h3>衍生盘口 <em>Derived</em></h3>
-            <div className="sub">同一比分矩阵一次性导出</div></div></div>
+          <div className="card-head"><div><h3>衍生盘口 Edge <em>Derived</em></h3>
+            <div className="sub">基于市场校准后的分布导出 · BTTS 未参与校准 = 真正的 edge 候选</div></div></div>
           <div className="wc-derived">
-            <div className="wc-d-item"><span className="wc-d-l">总进球 Over 2.5</span>
-              <span className="wc-d-v">{fmtPct(model.markets.over25)}</span></div>
-            <div className="wc-d-item"><span className="wc-d-l">总进球 Under 2.5</span>
-              <span className="wc-d-v">{fmtPct(model.markets.under25)}</span></div>
-            <div className="wc-d-item"><span className="wc-d-l">双方进球 BTTS · Yes</span>
-              <span className="wc-d-v">{fmtPct(model.markets.btts)}</span></div>
-            <div className="wc-d-item"><span className="wc-d-l">双方进球 BTTS · No</span>
-              <span className="wc-d-v">{fmtPct(model.markets.noBtts)}</span></div>
+            <div className="wc-d-row head"><span className="wc-d-l">盘口</span>
+              <span className="wc-d-mkt">市场</span><span className="wc-d-model">模型</span><span className="wc-d-sig">信号</span></div>
+            {(() => {
+              const q = calibratedModel.markets.btts;
+              const hasBA = btts && btts.bid != null && btts.ask != null;
+              const sig = WC.tradeSignal(q, hasBA ? btts.bid : null, hasBA ? btts.ask : null);
+              const mkt = btts && btts.yes != null ? btts.yes : null;
+              return (
+                <div className="wc-d-row">
+                  <span className="wc-d-l">双方进球 BTTS · Yes</span>
+                  <span className="wc-d-mkt">{mkt != null ? fmtPct(mkt) : <em className="wc-seed">种子</em>}</span>
+                  <span className="wc-d-model">{fmtPct(q)}</span>
+                  <span className="wc-d-sig">{sig.side
+                    ? <span className={`sig-buy ${sig.side === "YES" ? "yes" : "no"}`}>{sig.side === "YES" ? "买YES" : "买NO"} {(sig.kelly * 100).toFixed(0)}%</span>
+                    : <span className="sig-pass">观望</span>}</span>
+                </div>
+              );
+            })()}
+            <div className="wc-d-row anchor">
+              <span className="wc-d-l">总进球 Over 2.5 <em>校准锚</em></span>
+              <span className="wc-d-mkt">{over25Mkt != null ? fmtPct(over25Mkt) : "—"}</span>
+              <span className="wc-d-model">{fmtPct(calibratedModel.markets.over25)}</span>
+              <span className="wc-d-sig">—</span>
+            </div>
+            <div className="wc-d-row anchor">
+              <span className="wc-d-l">总进球 Under 2.5</span>
+              <span className="wc-d-mkt">{over25Mkt != null ? fmtPct(1 - over25Mkt) : "—"}</span>
+              <span className="wc-d-model">{fmtPct(calibratedModel.markets.under25)}</span>
+              <span className="wc-d-sig">—</span>
+            </div>
           </div>
+          <div className="wc-foot-note">BTTS 显示"种子"= 盘口未连接，核对 worldcup.js 的 kalshiBttsTicker</div>
         </div>
         <div className="card wc-card">
           <div className="card-head"><div><h3>最可能比分 <em>Top Scorelines</em></h3>
-            <div className="sub">{M.home.code} – {M.away.code}</div></div></div>
+            <div className="sub">{M.home.code} – {M.away.code} · 市场校准分布</div></div></div>
           <div className="wc-scores">
-            {model.topScores.map((s, i) => (
+            {calibratedModel.topScores.map((s, i) => (
               <div className="wc-score" key={i}>
                 <span className="wc-score-v">{s.i}–{s.j}</span>
                 <span className="wc-score-p">{fmtPct(s.p, 1)}</span>
@@ -2722,7 +2764,7 @@ function WorldCupView() {
         <div className="card-head">
           <div>
             <h3>🔴 比赛进行中模拟 <em>Live · in-play</em></h3>
-            <div className="sub">当前比分已锁定（已实现），仅对剩余时间建模 — 与天气「实测地板线」同理</div>
+            <div className="sub">当前比分已锁定（已实现），仅对剩余时间建模 — 与天气「实测地板线」同理。盘口已 30s 自动刷新；比分自动拉取需接入比分源（免费 CORS 源稀缺），暂用手动</div>
           </div>
           {live && <button className="wc-reset" onClick={() => setLive(null)}>↺ 回到赛前</button>}
         </div>

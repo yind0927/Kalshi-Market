@@ -336,6 +336,25 @@ window.KW_WC = (function () {
     return { over25: null, resolvedTicker: data.resolvedTicker, marketCount: markets.length, mode: "unparsed" };
   }
 
+  // Generic Yes/No market fetch (e.g. BTTS). Picks the "Yes" contract by
+  // keyword, or the sole market if there's only one. Returns its mid+bid+ask so
+  // the caller can run tradeSignal against a model-derived probability.
+  async function fetchKalshiYesNo(ticker, yesKeys = ["yes"]) {
+    const res = await fetch(`/api/kalshi?ticker=${encodeURIComponent(ticker)}`);
+    if (!res.ok) throw new Error(`Kalshi proxy ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const markets = (data.markets || []).filter(m => m.mid != null);
+    if (!markets.length) return { yes: null, bid: null, ask: null, resolvedTicker: data.resolvedTicker || null, marketCount: 0 };
+
+    let m = markets.find(mk => yesKeys.some(k => (mk.subtitle || "").toLowerCase().includes(k)));
+    if (!m) m = markets[0];           // single-contract events expose just the Yes side
+    return {
+      yes: m.mid, bid: m.yes_bid ?? null, ask: m.yes_ask ?? null,
+      resolvedTicker: data.resolvedTicker || null, marketCount: markets.length,
+    };
+  }
+
   // ── Sample match seed (TEMPORARY): France vs Senegal ─────
   // Elo from World Football Elo Ratings (Jan 2026): FRA 2063 (#3), SEN 1869 (#17).
   // Market = de-vigged from bookmaker FRA -245 / SEN +550 with draw inferred.
@@ -359,11 +378,12 @@ window.KW_WC = (function () {
     // on kalshi.com (…/kxwcgame/… and …/kxwctotal/…).
     kalshiTicker:      "KXWCGAME-26JUN16FRASEN",   // moneyline (1X2) → calibrates c
     kalshiTotalTicker: "KXWCTOTAL-26JUN16FRASEN",  // total goals    → calibrates μ
+    kalshiBttsTicker:  "KXWCBTTS-26JUN16FRASEN",   // both teams to score → edge hunt (⚠ verify)
   };
 
   return {
     buildMatchModel, buildLiveModel, edgeKelly, tradeSignal,
     americanToProb, devig, devig3way, impliedC, impliedMu, calibrate, shrinkToMarket,
-    fetchKalshiMatch, fetchKalshiTotal, MATCH,
+    fetchKalshiMatch, fetchKalshiTotal, fetchKalshiYesNo, MATCH,
   };
 })();
