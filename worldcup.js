@@ -200,15 +200,23 @@ window.KW_WC = (function () {
     if (data.error) throw new Error(data.error);
     const markets = data.markets || [];
 
+    // Match an outcome by SUBTITLE (authoritative) or the ticker's LAST segment
+    // only. NB: the event ticker itself (…FRASEN) contains both "fra" and "sen",
+    // so we must NOT substring-match the full ticker — that's ambiguous.
     const matchOne = (keys) => markets.find(m => {
-      const s = `${m.subtitle || ""} ${m.ticker || ""}`.toLowerCase();
-      return keys.some(k => k && s.includes(k.toLowerCase()));
+      const sub    = (m.subtitle || "").toLowerCase();
+      const suffix = (m.ticker || "").split("-").pop().toLowerCase();
+      return keys.some(k => {
+        if (!k) return false;
+        k = k.toLowerCase();
+        return sub.includes(k) || suffix === k;
+      });
     });
     const price = (m) => (m && m.mid != null) ? m.mid : null;
 
-    const hM = matchOne([home.name, home.code, home.cn]);
-    const aM = matchOne([away.name, away.code, away.cn]);
-    const dM = matchOne(["draw", "tie", "平"]);
+    const hM = matchOne([home.name, home.cn, home.code]);   // "France" / "法国" / suffix "fra"
+    const aM = matchOne([away.name, away.cn, away.code]);   // "Senegal" / "塞内加尔" / suffix "sen"
+    const dM = matchOne(["draw", "tie", "平局", "平"]);
 
     return {
       resolvedTicker: data.resolvedTicker || null,
@@ -234,8 +242,9 @@ window.KW_WC = (function () {
     away: { code: "SEN", name: "Senegal", cn: "塞内加尔",   elo: 1869, fifaRank: 17, flag: "🇸🇳" },
     params: { k: 150, muTotal: 2.55, rho: 0.06, homeAdv: 0 },  // neutral venue
     odds:   { home: -245, away: 550 },
-    // De-vigged 3-way market (seed; overwritten live from the Kalshi proxy)
-    market: { home: 0.63, draw: 0.22, away: 0.14, over25: 0.52, btts: 0.46 },
+    // Seed = real Kalshi 3-way (FRA 68% / draw ~19% / SEN 13%, observed
+    // 2026-06-16) as the fallback; overwritten live from the Kalshi proxy.
+    market: { home: 0.68, draw: 0.19, away: 0.13, over25: 0.52, btts: 0.46 },
     // Kalshi event/series ticker. The proxy discovers by series prefix (chars
     // before the first "-"). ⚠ VERIFY on kalshi.com — update this one line if
     // the World Cup match-winner series differs (e.g. KXWCGAME / KXWCMATCH…).

@@ -182,6 +182,21 @@ async function findMarkets(ticker) {
   dbg.todayTicker    = todayEventTicker;
   dbg.requestedTicker = ticker;
 
+  // ⓪ Fully-specified event ticker (suffix beyond the YYMONDD date, e.g.
+  //   KXWCGAME-26JUN16FRASEN) → the exact event is authoritative because many
+  //   events share the same series+date (multiple matches per day). Look it up
+  //   directly FIRST. Weather tickers (KXHIGHNY-26MAY26, date-only suffix)
+  //   don't match this and fall through to the discovery steps unchanged.
+  const isFullEvent = /^[A-Z0-9]+-\d{2}[A-Z]{3}\d{2}.+$/.test(ticker);
+  if (isFullEvent) {
+    try {
+      dbg.tried.push(`exact:${ticker}`);
+      const d = await kalshiGet(`/markets?event_ticker=${encodeURIComponent(ticker)}&limit=50`);
+      if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: ticker, dbg };
+      dbg.errors.push(`exact ${ticker}: 0 markets`);
+    } catch (e) { dbg.errors.push(`exact ${ticker}: ${e.message}`); }
+  }
+
   // ① series_ticker + status=open — primary confirmed approach
   //   Returns all currently open markets for the series (may include today + tomorrow);
   //   group by event_ticker to isolate today's markets.
