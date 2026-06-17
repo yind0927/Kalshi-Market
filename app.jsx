@@ -2976,21 +2976,30 @@ function WorldCupView() {
         </div>
 
         <div className="wc-live-controls">
-          <div className="wc-score-stepper">
-            <span className="wc-flag">{M.home.flag}</span>
-            <button onClick={() => bump("A", -1)}>−</button>
-            <strong>{(live?.scoreA) ?? 0}</strong>
-            <button onClick={() => bump("A", +1)}>+</button>
+          <div className="wc-live-scoreboard">
+            <div className="wc-live-side">
+              <span className="wc-flag">{M.home.flag}</span>
+              <span className="wc-live-cn">{M.home.cn}</span>
+              <div className="wc-live-stepper">
+                <button onClick={() => bump("A", -1)}>−</button>
+                <strong>{(live?.scoreA) ?? 0}</strong>
+                <button onClick={() => bump("A", +1)}>+</button>
+              </div>
+            </div>
+            <span className="wc-live-dash">–</span>
+            <div className="wc-live-side">
+              <span className="wc-flag">{M.away.flag}</span>
+              <span className="wc-live-cn">{M.away.cn}</span>
+              <div className="wc-live-stepper">
+                <button onClick={() => bump("B", -1)}>−</button>
+                <strong>{(live?.scoreB) ?? 0}</strong>
+                <button onClick={() => bump("B", +1)}>+</button>
+              </div>
+            </div>
           </div>
           <div className="wc-minute">
             <input type="range" min="0" max="90" value={live?.minute ?? 0} onChange={e => setMin(e.target.value)} />
             <span className="wc-minute-v">{live?.minute ?? 0}′</span>
-          </div>
-          <div className="wc-score-stepper">
-            <span className="wc-flag">{M.away.flag}</span>
-            <button onClick={() => bump("B", -1)}>−</button>
-            <strong>{(live?.scoreB) ?? 0}</strong>
-            <button onClick={() => bump("B", +1)}>+</button>
           </div>
         </div>
 
