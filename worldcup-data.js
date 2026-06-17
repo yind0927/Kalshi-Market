@@ -202,7 +202,12 @@ window.KW_WC_DATA = (function () {
       label:"K",
       order:["POR","COD","COL","UZB"],
       matches:[
-        m("WC2026-POR-COD",1,"POR","COD","2026-06-17T17:00:00Z","6/18 01:00","NRG Stadium · Houston, TX"),
+        { id:"WC2026-POR-COD", round:1, homeCode:"POR", awayCode:"COD",
+          koUTC:"2026-06-17T17:00:00Z", koBJT:"6/18 01:00", venue:"NRG Stadium · Houston, TX",
+          kalshiTicker:"KXWCGAME-26JUN17PORCOD",
+          kalshiTotalTicker:"KXWCTOTAL-26JUN17PORCOD",
+          kalshiBttsTicker:"KXWCBTTS-26JUN17PORCOD",
+          seedMarket:{ home:0.755, draw:0.167, away:0.078, over25:0.56, btts:0.52 } },
         m("WC2026-COL-UZB",1,"COL","UZB","2026-06-18T02:00:00Z","6/18 10:00","Estadio Azteca · Mexico City"),
         m("WC2026-POR-UZB",2,"POR","UZB","2026-06-23T17:00:00Z","6/24 01:00","NRG Stadium · Houston, TX"),
         m("WC2026-COL-COD",2,"COL","COD","2026-06-23T21:00:00Z","6/24 05:00","Estadio BBVA · Monterrey"),
