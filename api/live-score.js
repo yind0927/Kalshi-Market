@@ -17,7 +17,6 @@
  * ========================================================== */
 "use strict";
 
-const ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard";
 const FD_BASE  = "https://api.football-data.org/v4";
 
 function normalizeStatus(raw) {
@@ -29,10 +28,28 @@ function normalizeStatus(raw) {
   return "unknown";
 }
 
+// Aliases for teams whose ESPN display name differs from our internal name
+const NAME_ALIASES = {
+  "dr congo":  ["congo dr", "congo, dr", "dr. congo", "democratic republic of congo"],
+  "congo dr":  ["dr congo", "congo, dr"],
+  "ivory coast": ["côte d'ivoire", "cote d'ivoire", "cote divoire"],
+  "south korea": ["korea republic", "korea, republic of"],
+  "united states": ["usa", "united states of america"],
+  "cape verde": ["cabo verde"],
+};
+
 function nameMatch(a, b) {
   if (!a || !b) return false;
-  const al = a.toLowerCase(), bl = b.toLowerCase();
-  return al.includes(bl.slice(0, 4)) || bl.includes(al.slice(0, 4));
+  const al = a.toLowerCase().trim(), bl = b.toLowerCase().trim();
+  if (al === bl) return true;
+  // 4-char prefix heuristic
+  if (al.includes(bl.slice(0, 4)) || bl.includes(al.slice(0, 4))) return true;
+  // alias lookup
+  const aliasesA = NAME_ALIASES[al] || [];
+  const aliasesB = NAME_ALIASES[bl] || [];
+  if (aliasesA.some(x => x === bl || bl.includes(x.slice(0,4)))) return true;
+  if (aliasesB.some(x => x === al || al.includes(x.slice(0,4)))) return true;
+  return false;
 }
 
 // ── Source 1: football-data.org ───────────────────────────────
@@ -71,14 +88,29 @@ async function tryFootballData(homeTeam, awayTeam, date) {
 }
 
 // ── Source 2: ESPN unofficial (no key) ────────────────────────
-async function tryESPN(homeTeam, awayTeam) {
-  const r = await fetch(ESPN_URL, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; KalshiWeather/1.0)" },
-  });
-  if (!r.ok) throw new Error(`ESPN ${r.status}`);
-  const d = await r.json();
+const ESPN_LEAGUES = ["fifa.world", "world.world", "fifa.worldcup"];
 
-  for (const evt of (d.events || [])) {
+async function fetchESPNScoreboard(dateStr) {
+  // dateStr: YYYYMMDD or YYYY-MM-DD
+  const d = dateStr ? dateStr.replace(/-/g, "") : "";
+  const headers = { "User-Agent": "Mozilla/5.0 (compatible; KalshiWeather/1.0)" };
+  for (const league of ESPN_LEAGUES) {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/scoreboard${d ? `?dates=${d}` : ""}`;
+    try {
+      const r = await fetch(url, { headers });
+      if (!r.ok) continue;
+      const j = await r.json();
+      if ((j.events || []).length > 0) return j.events;
+    } catch (_) { /* try next */ }
+  }
+  return [];
+}
+
+async function tryESPN(homeTeam, awayTeam, date) {
+  const events = await fetchESPNScoreboard(date);
+  if (!events.length) throw new Error("no events");
+
+  for (const evt of events) {
     const comp = (evt.competitions || [])[0];
     if (!comp) continue;
     const home = comp.competitors?.find(c => c.homeAway === "home");
@@ -90,8 +122,8 @@ async function tryESPN(homeTeam, awayTeam) {
       const clockStr = evt.status?.displayClock || "0'";
       const minute   = parseInt(clockStr.replace(/[^0-9]/g, "")) || 0;
       return {
-        homeScore: parseInt(home.score || 0),
-        awayScore: parseInt(away.score || 0),
+        homeScore: parseInt(home.score ?? 0),
+        awayScore: parseInt(away.score ?? 0),
         minute,
         status:   normalizeStatus(evt.status?.type?.name || ""),
         homeTeam: hName,
@@ -100,7 +132,7 @@ async function tryESPN(homeTeam, awayTeam) {
       };
     }
   }
-  throw new Error("match not found");
+  throw new Error("match not found in ESPN");
 }
 
 // ── Handler ───────────────────────────────────────────────────
@@ -129,7 +161,7 @@ module.exports = async function handler(req, res) {
 
   // 2. ESPN unofficial
   try {
-    const result = await tryESPN(homeTeam, awayTeam);
+    const result = await tryESPN(homeTeam, awayTeam, isoDate);
     return res.status(200).json({ ...result, fetchedAt: new Date().toISOString() });
   } catch (e) { errors.push(`espn: ${e.message}`); }
 
