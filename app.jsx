@@ -2522,6 +2522,157 @@ function WCOutcomeRow({ label, sub, q, quote }) {
   );
 }
 
+/* ─────────────────────────────────────────────────────────
+ * Phase-aware trading guide: 赛前 / 赛中 / 半场 / 赛后
+ * ───────────────────────────────────────────────────────── */
+function WCPhaseCard({ phase, M, baseProbs, shownProbs, liveModel, quotes, scoreData, topScore, lambdaA, lambdaB }) {
+  const WC = window.KW_WC;
+  const name = k => ({ home: M.home.cn + "胜", draw: "平局", away: M.away.cn + "胜" }[k]);
+
+  // Trade signals from current shown probs + Kalshi bid/ask
+  const signals = ["home", "draw", "away"].flatMap(k => {
+    const q = shownProbs[k];
+    const qt = quotes[k] || {};
+    const sig = WC.tradeSignal(q, qt.bid ?? null, qt.ask ?? null);
+    return sig.side ? [{ k, sig }] : [];
+  });
+
+  // Post-match: derive actual outcome from final score
+  const actualOutcome = (phase === "finished" && scoreData?.homeScore != null)
+    ? (scoreData.homeScore > scoreData.awayScore ? "home"
+       : scoreData.homeScore < scoreData.awayScore ? "away" : "draw")
+    : null;
+
+  const topPredicted = Object.entries(baseProbs).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  const brier = actualOutcome != null
+    ? +["home", "draw", "away"].reduce((s, k) =>
+        s + (baseProbs[k] - (k === actualOutcome ? 1 : 0)) ** 2, 0).toFixed(3)
+    : null;
+
+  const meta = {
+    prematch: { emoji: "🟡", label: "赛前",   cls: "prematch" },
+    live:     { emoji: "🔴", label: "进行中", cls: "live" },
+    ht:       { emoji: "🟠", label: "半场",   cls: "ht" },
+    finished: { emoji: "✅", label: "赛后总结", cls: "finished" },
+  }[phase] ?? { emoji: "🟡", label: "赛前", cls: "prematch" };
+
+  const SignalRows = ({ list }) => list.length === 0
+    ? <p className="wc-phase-empty">暂无显著 Edge（净 &lt; 2pp）· 建议观望</p>
+    : <div className="wc-ps-list">
+        {list.map(({ k, sig }) => (
+          <div className="wc-ps-row" key={k}>
+            <span className={`wc-ps-dir ${sig.side === "YES" ? "yes" : "no"}`}>
+              {name(k)} · 买{sig.side}
+            </span>
+            <span className="wc-ps-info">入场 {fmtPct(sig.entry)} · 仓位 {(sig.kelly * 100).toFixed(0)}%</span>
+            <span className="wc-ps-edge">+{(sig.net * 100).toFixed(1)}pp</span>
+          </div>
+        ))}
+      </div>;
+
+  return (
+    <div className={`card wc-card wc-phase-card ph-${meta.cls}`}>
+
+      {/* ── Header ── */}
+      <div className="wc-phase-hdr">
+        <span className={`wc-phase-pill ph-${meta.cls}`}>{meta.emoji} {meta.label}</span>
+        {scoreData?.homeScore != null && (phase === "live" || phase === "ht" || phase === "finished") && (
+          <span className="wc-phase-inline-score">
+            {M.home.flag} <strong>{scoreData.homeScore}–{scoreData.awayScore}</strong> {M.away.flag}
+            {phase === "live" && scoreData.minute && <em>{scoreData.minute}'</em>}
+            {phase === "ht" && <em>HT</em>}
+          </span>
+        )}
+      </div>
+
+      {/* ── 赛前 ── */}
+      {phase === "prematch" && (<>
+        <div className="wc-phase-sec">交易建议</div>
+        <SignalRows list={signals} />
+        <div className="wc-phase-rationale">
+          Δ Elo {M.home.elo - M.away.elo} → λ {lambdaA}–{lambdaB} ·
+          最可能比分 {topScore?.i}–{topScore?.j}（{fmtPct(topScore?.p ?? 0, 1)}）·
+          WC c=300 · Platt 已校准 · 置信区间 ±3–5pp
+        </div>
+      </>)}
+
+      {/* ── 赛中 / 半场 ── */}
+      {(phase === "live" || phase === "ht") && (<>
+        <div className="wc-phase-sec">概率变化 <em>赛前 → 当前</em></div>
+        <div className="wc-pd-table">
+          {["home", "draw", "away"].map(k => {
+            const d = (shownProbs[k] || 0) - (baseProbs[k] || 0);
+            return (
+              <div className="wc-pd-row" key={k}>
+                <span className="wc-pd-name">{name(k)}</span>
+                <span className="wc-pd-b">{fmtPct(baseProbs[k] || 0)}</span>
+                <span className="wc-pd-arr">→</span>
+                <span className="wc-pd-a">{fmtPct(shownProbs[k] || 0)}</span>
+                <span className={`wc-pd-d ${Math.abs(d) < 0.005 ? "flat" : d > 0 ? "pos" : "neg"}`}>
+                  {Math.abs(d) >= 0.005 ? `${d > 0 ? "▲" : "▼"}${(Math.abs(d)*100).toFixed(0)}pp` : "—"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="wc-phase-sec" style={{ marginTop: 12 }}>当前机会</div>
+        <SignalRows list={signals} />
+        {phase === "ht" && (
+          <div className="wc-phase-ht-note">
+            💡 半场休息时市场流动性低、价差扩大，建议净 Edge &gt;5pp 才入场
+          </div>
+        )}
+      </>)}
+
+      {/* ── 赛后 ── */}
+      {phase === "finished" && (<>
+        <div className="wc-ph-bars">
+          {["home", "draw", "away"].map(k => (
+            <div className={`wc-pfp-row${k === actualOutcome ? " actual" : ""}`} key={k}>
+              <span className="wc-pfp-name">{name(k)}{k === actualOutcome ? " ✓" : ""}</span>
+              <div className="wc-pfp-track">
+                <div className="wc-pfp-fill" style={{ width: `${((baseProbs[k] || 0) * 100).toFixed(0)}%` }} />
+              </div>
+              <span className="wc-pfp-pct">{fmtPct(baseProbs[k] || 0)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="wc-ph-metrics">
+          <div className="wc-phm-cell">
+            <span className={`wc-phm-v ${topPredicted === actualOutcome ? "pos" : "neg"}`}>
+              {topPredicted === actualOutcome ? "✓" : "✗"}
+            </span>
+            <span className="wc-phm-l">方向预测</span>
+          </div>
+          <div className="wc-phm-cell">
+            <span className={`wc-phm-v mono ${brier != null && brier < 0.25 ? "pos" : "neg"}`}>
+              {brier ?? "—"}
+            </span>
+            <span className="wc-phm-l">此场 Brier</span>
+          </div>
+          <div className="wc-phm-cell">
+            <span className="wc-phm-v mono">0.201</span>
+            <span className="wc-phm-l">WC 历史均值</span>
+          </div>
+          <div className="wc-phm-cell">
+            <span className={`wc-phm-v ${brier != null && brier < 0.201 ? "pos" : "neg"}`}>
+              {brier != null ? (brier < 0.201 ? "跑赢" : "跑输") : "—"}
+            </span>
+            <span className="wc-phm-l">vs 基线</span>
+          </div>
+        </div>
+        <div className="wc-phase-rationale">
+          赛前最高概率：{name(topPredicted)}（{fmtPct(baseProbs[topPredicted] || 0)}）·
+          实际：{actualOutcome ? name(actualOutcome) : "—"} ·
+          {brier != null && brier < 0.201 ? " 此场模型优于历史均值" : " 此场模型差于历史均值"}
+        </div>
+      </>)}
+
+    </div>
+  );
+}
+
 function WCBacktestCard() {
   const BT = window.KW_WC.BACKTEST;
   const [open, setOpen] = useState(false);
@@ -2841,6 +2992,20 @@ function WorldCupView() {
           <span className="wc-stat-pill">{M.venue.split("·")[0].trim()}</span>
         </div>
       </div>
+
+      {/* ── Phase-aware trading guide ── */}
+      <WCPhaseCard
+        phase={isFinished ? "finished" : isHT ? "ht" : isLiveNow ? "live" : "prematch"}
+        M={M}
+        baseProbs={model.probs}
+        shownProbs={shown.probs}
+        liveModel={liveModel}
+        quotes={quotes}
+        scoreData={scoreData}
+        topScore={calibratedModel.topScores[0]}
+        lambdaA={model.lambdaA}
+        lambdaB={model.lambdaB}
+      />
 
       {/* ── ① Kalshi status + shrink ── */}
       <div className="wc-calib">
