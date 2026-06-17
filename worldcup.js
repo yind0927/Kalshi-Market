@@ -472,17 +472,26 @@ window.KW_WC = (function () {
     eloAsOf: "2026-06-15",
     home: { code: "FRA", name: "France",  cn: "法国",       elo: 2113, fifaRank: 3,  flag: "🇫🇷" },
     away: { code: "SEN", name: "Senegal", cn: "塞内加尔",   elo: 1895, fifaRank: 17, flag: "🇸🇳" },
-    params: { c: 300, muTotal: 2.71, rho: 0.04, homeAdv: 0 },  // WC-specific: c=300 (top-team Elo gap matters less), ρ=0.04 (low-score correction), μ=2.71 (WC avg)
+    params: { c: 300, muTotal: 2.71, rho: 0.04, homeAdv: 0 },
     odds:   { home: -245, away: 550 },
-    // Seed = real Kalshi prices (FRA 68% / draw ~19% / SEN 13%; Over-2.5 ~49%,
-    // observed 2026-06-16) as the fallback; overwritten live from the proxy.
     market: { home: 0.68, draw: 0.19, away: 0.13, over25: 0.49, btts: 0.46 },
-    // Kalshi event tickers (proxy discovers by the series prefix before "-").
-    // Match-winner series KXWCGAME, total-goals series KXWCTOTAL — both verified
-    // on kalshi.com (…/kxwcgame/… and …/kxwctotal/…).
-    kalshiTicker:      "KXWCGAME-26JUN16FRASEN",   // moneyline (1X2) → calibrates c
-    kalshiTotalTicker: "KXWCTOTAL-26JUN16FRASEN",  // total goals    → calibrates μ
-    kalshiBttsTicker:  "KXWCBTTS-26JUN16FRASEN",   // both teams to score → edge hunt (⚠ verify)
+    kalshiTicker:      "KXWCGAME-26JUN16FRASEN",
+    kalshiTotalTicker: "KXWCTOTAL-26JUN16FRASEN",
+    kalshiBttsTicker:  "KXWCBTTS-26JUN16FRASEN",
+    // ── Confirmed final result (source: FIFA / ESPN) ──────
+    result: {
+      status:    "finished",
+      homeScore: 3,
+      awayScore: 1,
+      minute:    96,
+      source:    "FIFA",
+      scorers: [
+        { name: "Mbappé",   min: 66,  team: "home" },
+        { name: "Barcola",  min: 82,  team: "home" },
+        { name: "I. Mbaye", min: 95,  team: "away" },
+        { name: "Mbappé",   min: 96,  team: "home" },
+      ],
+    },
   };
 
   return {

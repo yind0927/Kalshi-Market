@@ -2627,6 +2627,17 @@ function WCPhaseCard({ phase, M, baseProbs, shownProbs, liveModel, quotes, score
 
       {/* ── 赛后 ── */}
       {phase === "finished" && (<>
+        {/* Scorers */}
+        {scoreData?.scorers?.length > 0 && (
+          <div className="wc-scorers">
+            {scoreData.scorers.map((s, i) => (
+              <span key={i} className={`wc-scorer-chip ${s.team}`}>
+                {s.team === "home" ? M.home.flag : M.away.flag} {s.name} {s.min}'
+              </span>
+            ))}
+          </div>
+        )}
+        {/* Probability bars */}
         <div className="wc-ph-bars">
           {["home", "draw", "away"].map(k => (
             <div className={`wc-pfp-row${k === actualOutcome ? " actual" : ""}`} key={k}>
@@ -2638,6 +2649,7 @@ function WCPhaseCard({ phase, M, baseProbs, shownProbs, liveModel, quotes, score
             </div>
           ))}
         </div>
+        {/* Metrics grid */}
         <div className="wc-ph-metrics">
           <div className="wc-phm-cell">
             <span className={`wc-phm-v ${topPredicted === actualOutcome ? "pos" : "neg"}`}>
@@ -2663,9 +2675,9 @@ function WCPhaseCard({ phase, M, baseProbs, shownProbs, liveModel, quotes, score
           </div>
         </div>
         <div className="wc-phase-rationale">
-          赛前最高概率：{name(topPredicted)}（{fmtPct(baseProbs[topPredicted] || 0)}）·
+          赛前预测：{name(topPredicted)}（{fmtPct(baseProbs[topPredicted] || 0)}）·
           实际：{actualOutcome ? name(actualOutcome) : "—"} ·
-          {brier != null && brier < 0.201 ? " 此场模型优于历史均值" : " 此场模型差于历史均值"}
+          {brier != null && brier < 0.201 ? " 此场模型优于WC历史均值 ✓" : " 此场模型差于WC历史均值"}
         </div>
       </>)}
 
@@ -2798,7 +2810,19 @@ function WorldCupView() {
 
   // Check whether to start polling (30min before KO)
   const koMs = new Date(M.koUTC).getTime();
+  const matchIsPast = () => Date.now() > koMs + 3 * 60 * 60 * 1000; // 3h after KO
   const shouldPollScore = () => Date.now() >= koMs - 30 * 60 * 1000;
+
+  // Seed from hardcoded M.result immediately (before first API fetch)
+  useEffect(() => {
+    if (M.result && !scoreData) {
+      setScoreData(M.result);
+      setScoreStatus("ok");
+      if (!liveManual) {
+        setLive({ minute: M.result.minute, scoreA: M.result.homeScore, scoreB: M.result.awayScore });
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh every 30s: Kalshi prices + live score
   useEffect(() => {
@@ -2822,24 +2846,24 @@ function WorldCupView() {
         .then(b => { if (alive && b?.yes != null) setBtts(b); })
         .catch(() => {});
 
-      // ── Live score (only near/during match) ──
+      // ── Live score ──
       if (shouldPollScore()) {
         const matchDate = M.koUTC.slice(0, 10);
         WC.fetchLiveScore(M.home.name, M.away.name, matchDate)
           .then(sd => {
             if (!alive) return;
+            // If API returns unavailable but we have a known result, keep the known result
+            if (sd.status === "unavailable" && M.result) return;
             setScoreData(sd);
-            setScoreStatus(sd.status === "unavailable" ? "unavailable" : "ok");
-            // Auto-populate live simulator when match is in play (and user hasn't overridden)
+            setScoreStatus("ok");
             if (!liveManual && (sd.status === "live" || sd.status === "ht") && sd.minute != null) {
               setLive({ minute: sd.minute, scoreA: sd.homeScore ?? 0, scoreB: sd.awayScore ?? 0 });
             }
-            // Auto-clear on finished
             if (!liveManual && sd.status === "finished") {
-              setLive({ minute: 90, scoreA: sd.homeScore ?? 0, scoreB: sd.awayScore ?? 0 });
+              setLive({ minute: sd.minute ?? 90, scoreA: sd.homeScore ?? 0, scoreB: sd.awayScore ?? 0 });
             }
           })
-          .catch(() => { if (alive) setScoreStatus("error"); });
+          .catch(() => { if (alive && !M.result) setScoreStatus("error"); });
       }
 
       if (alive) setLastRefresh(new Date());
