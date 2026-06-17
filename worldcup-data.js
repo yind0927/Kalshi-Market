@@ -191,7 +191,7 @@ window.KW_WC_DATA = (function () {
       order:["ARG","ALG","AUT","JOR"],
       matches:[
         m("WC2026-ARG-ALG",1,"ARG","ALG","2026-06-16T22:00:00Z","6/17 06:00","Allegiant Stadium · Las Vegas, NV",         fin(3,0)),
-        m("WC2026-AUT-JOR",1,"AUT","JOR","2026-06-17T12:00:00Z","6/17 20:00","Levi's Stadium · Santa Clara, CA"),
+        m("WC2026-AUT-JOR",1,"AUT","JOR","2026-06-17T12:00:00Z","6/17 20:00","Levi's Stadium · Santa Clara, CA",           fin(3,1)),
         m("WC2026-ARG-AUT",2,"ARG","AUT","2026-06-22T16:00:00Z","6/23 00:00","AT&T Stadium · Arlington, TX"),
         m("WC2026-ALG-JOR",2,"ALG","JOR","2026-06-22T20:00:00Z","6/23 04:00","Arrowhead Stadium · Kansas City, MO"),
         m("WC2026-ARG-JOR",3,"ARG","JOR","2026-06-26T23:00:00Z","6/27 07:00","Allegiant Stadium · Las Vegas, NV"),
@@ -207,7 +207,8 @@ window.KW_WC_DATA = (function () {
           kalshiTicker:"KXWCGAME-26JUN17PORCOD",
           kalshiTotalTicker:"KXWCTOTAL-26JUN17PORCOD",
           kalshiBttsTicker:"KXWCBTTS-26JUN17PORCOD",
-          seedMarket:{ home:0.755, draw:0.167, away:0.078, over25:0.56, btts:0.52 } },
+          seedMarket:{ home:0.755, draw:0.167, away:0.078, over25:0.56, btts:0.52 },
+          result: fin(1,1) },
         m("WC2026-COL-UZB",1,"COL","UZB","2026-06-18T02:00:00Z","6/18 10:00","Estadio Azteca · Mexico City"),
         m("WC2026-POR-UZB",2,"POR","UZB","2026-06-23T17:00:00Z","6/24 01:00","NRG Stadium · Houston, TX"),
         m("WC2026-COL-COD",2,"COL","COD","2026-06-23T21:00:00Z","6/24 05:00","Estadio BBVA · Monterrey"),
