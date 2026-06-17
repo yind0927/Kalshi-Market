@@ -861,14 +861,6 @@ function TopBar({ tab, setTab, theme, setTheme, openSettings, bjtDec, lastRefres
       <div className="topbar-right">
         <div className="bjt-clock">
           <div className="bjt-time">{formatBJTDisplay(bjtDec)}</div>
-          <div className="bjt-label">
-            BJT 北京时间
-            {lastRefresh && (
-              <span className="refresh-stamp" title={`Kalshi refresh: every ${refreshCadence}`}>
-                · 更新 {lastRefresh.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})} · ⟳{refreshCadence}
-              </span>
-            )}
-          </div>
         </div>
         {liveCount > 0 && (
           <div className="live-count-badge">
