@@ -2782,9 +2782,109 @@ function WCBacktestCard() {
   );
 }
 
+function WCGroupHeader({ selectedMatchId, onSelect }) {
+  const WC = window.KW_WC;
+  const GI = WC.GROUP_I;
+  const elos   = Object.values(GI.currentElos);
+  const eloMin = Math.min(...elos);
+  const eloMax = Math.max(...elos);
+  const rounds = [1, 2, 3].map(r => ({ r, matches: GI.matches.filter(m => m.round === r) }));
+  const selMatch = GI.matches.find(m => m.id === selectedMatchId);
+
+  return (
+    <div className="wc-group-header card wc-card">
+      <div className="wc-group-title">
+        <span className="wc-group-name">第 I 组 <em>Group I</em></span>
+        <span className="wc-group-sub">FIFA World Cup 2026 · Elo 级联已更新</span>
+      </div>
+
+      {/* Standings table */}
+      <div className="wc-gt-wrap">
+        <div className="wc-gt-head">
+          <span>#</span>
+          <span>球队 Team</span>
+          <span className="wc-gt-c">积分</span>
+          <span className="wc-gt-c wc-gt-hide-sm">W-D-L</span>
+          <span className="wc-gt-c">净胜</span>
+          <span>Elo 实力</span>
+          <span className="wc-gt-c wc-gt-hide-sm">FIFA</span>
+        </div>
+        {GI.standings.map((row, i) => {
+          const team   = GI.teams[row.code];
+          const elo    = GI.currentElos[row.code];
+          const inSel  = selMatch && (selMatch.homeCode === row.code || selMatch.awayCode === row.code);
+          const gd     = row.gf - row.ga;
+          const barPct = Math.round((elo - eloMin) / (eloMax - eloMin) * 72 + 18);
+          return (
+            <div key={row.code} className={`wc-gt-row${inSel ? " in-match" : ""}`}>
+              <span className={`wc-gt-pos${i < 2 ? " q" : ""}`}>{i + 1}</span>
+              <span className="wc-gt-team">
+                <span className="wc-gt-flag">{team.flag}</span>
+                <span className="wc-gt-cn">{team.cn}</span>
+                <span className="wc-gt-code">{row.code}</span>
+              </span>
+              <span className="wc-gt-c wc-gt-pts">{row.pts}</span>
+              <span className="wc-gt-c wc-gt-hide-sm wc-gt-wdl">{row.w}-{row.d}-{row.l}</span>
+              <span className={`wc-gt-c wc-gt-gd${gd > 0 ? " pos" : gd < 0 ? " neg" : ""}`}>
+                {gd > 0 ? "+" : ""}{gd}
+              </span>
+              <span className="wc-gt-elo">
+                <span className="wc-elo-track"><span className="wc-elo-fill" style={{ width: `${barPct}%` }} /></span>
+                <span className="wc-elo-num">{elo}</span>
+              </span>
+              <span className="wc-gt-c wc-gt-hide-sm wc-gt-rank">#{team.fifaRank}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Round switcher: match chips grouped by round */}
+      <div className="wc-rounds">
+        {rounds.map(({ r, matches }) => (
+          <div key={r} className="wc-round">
+            <div className="wc-round-lbl">第{r}轮 <em>R{r}</em></div>
+            <div className="wc-round-chips">
+              {matches.map(m => {
+                const home = GI.teams[m.homeCode];
+                const away = GI.teams[m.awayCode];
+                const sel  = m.id === selectedMatchId;
+                const done = !!m.result;
+                return (
+                  <button key={m.id}
+                    className={`wc-mc${sel ? " sel" : ""}${done ? " done" : " upcoming"}`}
+                    onClick={() => onSelect(m.id)}>
+                    <span className="wc-mc-side">
+                      <span className="wc-mc-flag">{home.flag}</span>
+                      <span className="wc-mc-code">{m.homeCode}</span>
+                    </span>
+                    <span className="wc-mc-ctr">
+                      {done
+                        ? <span className="wc-mc-score">{m.result.homeScore}–{m.result.awayScore}</span>
+                        : <span className="wc-mc-vs">vs</span>}
+                      {done && <span className="wc-mc-ft">FT</span>}
+                      {!done && <span className="wc-mc-dt">{m.koBJT}</span>}
+                    </span>
+                    <span className="wc-mc-side right">
+                      <span className="wc-mc-code">{m.awayCode}</span>
+                      <span className="wc-mc-flag">{away.flag}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WorldCupView() {
   const WC = window.KW_WC;
-  const M = WC.MATCH;
+  const GI = WC.GROUP_I;
+  const [selectedMatchId, setSelectedMatchId] = useState(GI.matches[0].id);
+  const matchDef = GI.matches.find(m => m.id === selectedMatchId) || GI.matches[0];
+  const M = useMemo(() => WC.buildMatchConfig(matchDef), [selectedMatchId]);
 
   // Live simulator state: null=pre-match, {...}=in-play override
   const [live, setLive]           = useState(null);
@@ -2801,7 +2901,7 @@ function WorldCupView() {
 
   const model = useMemo(
     () => WC.buildMatchModel({ eloA: M.home.elo, eloB: M.away.elo, ...M.params }),
-    []
+    [selectedMatchId]
   );
 
   const [over25Live, setOver25Live] = useState(null);
@@ -2813,16 +2913,17 @@ function WorldCupView() {
   const matchIsPast = () => Date.now() > koMs + 3 * 60 * 60 * 1000; // 3h after KO
   const shouldPollScore = () => Date.now() >= koMs - 30 * 60 * 1000;
 
-  // Seed from hardcoded M.result immediately (before first API fetch)
+  // Reset all state when match switches (also seeds on mount)
   useEffect(() => {
-    if (M.result && !scoreData) {
-      setScoreData(M.result);
-      setScoreStatus("ok");
-      if (!liveManual) {
-        setLive({ minute: M.result.minute, scoreA: M.result.homeScore, scoreB: M.result.awayScore });
-      }
+    setLive(null); setLiveManual(false);
+    setScoreData(null); setScoreStatus("loading");
+    setKalshi(null); setKStatus("loading");
+    setOver25Live(null); setBtts(null); setLastRefresh(null);
+    if (M.result) {
+      setScoreData(M.result); setScoreStatus("ok");
+      setLive({ minute: M.result.minute, scoreA: M.result.homeScore, scoreB: M.result.awayScore });
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedMatchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh every 30s: Kalshi prices + live score
   useEffect(() => {
@@ -2830,21 +2931,29 @@ function WorldCupView() {
 
     const refresh = () => {
       // ── Kalshi ──
-      WC.fetchKalshiMatch(M.kalshiTicker, M.home, M.away)
-        .then(r => {
-          if (!alive) return;
-          if (r && r.home != null && r.away != null) { setKalshi(r); setKStatus("live"); }
-          else setKStatus(s => s === "live" ? s : "seed");
-        })
-        .catch(() => { if (alive) setKStatus(s => s === "live" ? s : "error"); });
+      if (M.kalshiTicker) {
+        WC.fetchKalshiMatch(M.kalshiTicker, M.home, M.away)
+          .then(r => {
+            if (!alive) return;
+            if (r && r.home != null && r.away != null) { setKalshi(r); setKStatus("live"); }
+            else setKStatus(s => s === "live" ? s : "seed");
+          })
+          .catch(() => { if (alive) setKStatus(s => s === "live" ? s : "error"); });
+      } else {
+        setKStatus("seed");
+      }
 
-      WC.fetchKalshiTotal(M.kalshiTotalTicker)
-        .then(t => { if (alive && t?.over25 != null) setOver25Live(t.over25); })
-        .catch(() => {});
+      if (M.kalshiTotalTicker) {
+        WC.fetchKalshiTotal(M.kalshiTotalTicker)
+          .then(t => { if (alive && t?.over25 != null) setOver25Live(t.over25); })
+          .catch(() => {});
+      }
 
-      WC.fetchKalshiYesNo(M.kalshiBttsTicker, ["both", "yes", "score"])
-        .then(b => { if (alive && b?.yes != null) setBtts(b); })
-        .catch(() => {});
+      if (M.kalshiBttsTicker) {
+        WC.fetchKalshiYesNo(M.kalshiBttsTicker, ["both", "yes", "score"])
+          .then(b => { if (alive && b?.yes != null) setBtts(b); })
+          .catch(() => {});
+      }
 
       // ── Live score ──
       if (shouldPollScore()) {
@@ -2852,7 +2961,6 @@ function WorldCupView() {
         WC.fetchLiveScore(M.home.name, M.away.name, matchDate)
           .then(sd => {
             if (!alive) return;
-            // If API returns unavailable but we have a known result, keep the known result
             if (sd.status === "unavailable" && M.result) return;
             setScoreData(sd);
             setScoreStatus("ok");
@@ -2872,27 +2980,30 @@ function WorldCupView() {
     refresh();
     const id = setInterval(refresh, 30000);
     return () => { alive = false; clearInterval(id); };
-  }, [liveManual]);
+  }, [liveManual, selectedMatchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ① De-vigged market (live Kalshi if resolved, else the seeded de-vig)
   const market = useMemo(() => {
-    if (kStatus === "live" && kalshi) {
+    if (kStatus === "live" && kalshi && M.kalshiTicker) {
       const draw = kalshi.draw != null ? kalshi.draw : Math.max(0, 1 - kalshi.home - kalshi.away);
       return WC.devig3way(kalshi.home, draw, kalshi.away);
     }
     return WC.devig3way(M.market.home, M.market.draw, M.market.away);
-  }, [kStatus, kalshi]);
+  }, [kStatus, kalshi, selectedMatchId]);
 
   // Over-2.5: live KXWCTOTAL if resolved, else seed
   const over25Mkt = over25Live != null ? over25Live : M.market.over25;
   const muIsLive  = over25Live != null;
 
-  const params = { eloA: M.home.elo, eloB: M.away.elo, ...M.params };
+  const params = useMemo(
+    () => ({ eloA: M.home.elo, eloB: M.away.elo, ...M.params }),
+    [selectedMatchId]
+  );
   // ② Joint two-market calibration: c from the live moneyline, μ from the
   // live Over-2.5 (KXWCTOTAL), else the seed totals.
   const cal = useMemo(
     () => WC.calibrate(params, { ...market, over25: over25Mkt }),
-    [market, over25Mkt]
+    [params, market, over25Mkt]
   );
   // Calibrated (logit-shrunk) model probs drive the 1X2 edge table
   const calModel = useMemo(() => WC.shrinkToMarket(model.probs, market, shrink), [model, market, shrink]);
@@ -2900,17 +3011,17 @@ function WorldCupView() {
   // DERIVED markets (BTTS, exact scores) are the out-of-sample edge candidates.
   const calibratedModel = useMemo(
     () => WC.buildMatchModel({ ...params, c: cal.c, muTotal: cal.mu }),
-    [cal]
+    [params, cal]
   );
   // Raw YES quotes (bid/ask) for tradeable-edge: live Kalshi if resolved, else
   // seed mids only (no spread → net edge falls back to model−mid).
-  const quotes = (kStatus === "live" && kalshi?.quotes)
+  const quotes = (kStatus === "live" && kalshi?.quotes && M.kalshiTicker)
     ? kalshi.quotes
     : { home: { mid: M.market.home }, draw: { mid: M.market.draw }, away: { mid: M.market.away } };
 
   const liveModel = useMemo(
     () => live ? WC.buildLiveModel({ ...params, ...live }) : null,
-    [live]
+    [params, live]
   );
   const shown = liveModel || { probs: calModel };
 
@@ -2943,15 +3054,19 @@ function WorldCupView() {
   const scorers = scoreData?.scorers || M.result?.scorers || [];
   const maxMin  = scorers.length > 0 ? Math.max(90, ...scorers.map(s => s.min)) : 90;
 
-  const kBadge = {
-    loading: <span className="wc-kbadge pending">⏳ Kalshi 连接中…</span>,
-    live:    <span className="wc-kbadge ok">✓ Kalshi LIVE · {kalshi?.resolvedTicker || M.kalshiTicker}</span>,
-    seed:    <span className="wc-kbadge warn" title={`未能解析三向盘口（解析到 ${kalshi?.marketCount ?? 0} 个市场）— 使用种子价。请在 worldcup.js 中核对 kalshiTicker`}>⚠ 种子市场（核对 ticker）</span>,
-    error:   <span className="wc-kbadge err">✗ Kalshi 失败 · 用种子价</span>,
-  }[kStatus];
+  const kBadge = !M.kalshiTicker
+    ? <span className="wc-kbadge warn">📅 暂无 Kalshi 盘口 · 纯模型</span>
+    : {
+      loading: <span className="wc-kbadge pending">⏳ Kalshi 连接中…</span>,
+      live:    <span className="wc-kbadge ok">✓ Kalshi LIVE · {kalshi?.resolvedTicker || M.kalshiTicker}</span>,
+      seed:    <span className="wc-kbadge warn" title={`未能解析三向盘口（解析到 ${kalshi?.marketCount ?? 0} 个市场）— 使用种子价`}>⚠ 种子市场</span>,
+      error:   <span className="wc-kbadge err">✗ Kalshi 失败 · 用种子价</span>,
+    }[kStatus];
 
   return (
     <div className="view wc-view" data-screen-label="worldcup">
+      {/* ── Group I standings + match switcher ── */}
+      <WCGroupHeader selectedMatchId={selectedMatchId} onSelect={setSelectedMatchId} />
       {/* ── Match hero ── */}
       <div className="wc-hero">
         <div className="wc-hero-top">

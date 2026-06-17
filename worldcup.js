@@ -494,9 +494,114 @@ window.KW_WC = (function () {
     },
   };
 
+  // ── Group I data + Elo cascade (post R1) ─────────────────
+  const GROUP_I = {
+    teams: {
+      FRA: { name: "France",  cn: "法国",     flag: "🇫🇷", fifaRank: 3,  code: "FRA" },
+      SEN: { name: "Senegal", cn: "塞内加尔", flag: "🇸🇳", fifaRank: 17, code: "SEN" },
+      NOR: { name: "Norway",  cn: "挪威",     flag: "🇳🇴", fifaRank: 31, code: "NOR" },
+      IRQ: { name: "Iraq",    cn: "伊拉克",   flag: "🇮🇶", fifaRank: 63, code: "IRQ" },
+    },
+    // Elo after R1 cascade: K=60, GD multipliers (GD=2→1.5, GD=3→1.75)
+    currentElos: { FRA: 2126, SEN: 1882, NOR: 1945, IRQ: 1681 },
+    // Standings after R1 (sorted by pts DESC, GD DESC, GF DESC)
+    standings: [
+      { code: "NOR", pts: 3, w: 1, d: 0, l: 0, gf: 4, ga: 1 },
+      { code: "FRA", pts: 3, w: 1, d: 0, l: 0, gf: 3, ga: 1 },
+      { code: "SEN", pts: 0, w: 0, d: 0, l: 1, gf: 1, ga: 3 },
+      { code: "IRQ", pts: 0, w: 0, d: 0, l: 1, gf: 1, ga: 4 },
+    ],
+    matches: [
+      // ── Round 1 ──
+      {
+        id: "WC2026-FRA-SEN", round: 1,
+        homeCode: "FRA", awayCode: "SEN",
+        koUTC: "2026-06-16T19:00:00Z", koBJT: "6/17 03:00",
+        venue: "MetLife Stadium · East Rutherford, NJ",
+        preMatchElos: { home: 2113, away: 1895 },
+        kalshiTicker:      "KXWCGAME-26JUN16FRASEN",
+        kalshiTotalTicker: "KXWCTOTAL-26JUN16FRASEN",
+        kalshiBttsTicker:  "KXWCBTTS-26JUN16FRASEN",
+        seedMarket: { home: 0.68, draw: 0.19, away: 0.13, over25: 0.49, btts: 0.46 },
+        result: {
+          status: "finished", homeScore: 3, awayScore: 1, minute: 96, source: "FIFA",
+          scorers: [
+            { name: "Mbappé",   min: 66, team: "home" },
+            { name: "Barcola",  min: 82, team: "home" },
+            { name: "I. Mbaye", min: 95, team: "away" },
+            { name: "Mbappé",   min: 96, team: "home" },
+          ],
+        },
+      },
+      {
+        id: "WC2026-NOR-IRQ", round: 1,
+        homeCode: "NOR", awayCode: "IRQ",
+        koUTC: "2026-06-16T23:00:00Z", koBJT: "6/17 07:00",
+        venue: "Gillette Stadium · Foxborough, MA",
+        preMatchElos: { home: 1922, away: 1704 },
+        result: { status: "finished", homeScore: 4, awayScore: 1, minute: 90, source: "FIFA" },
+      },
+      // ── Round 2 ──
+      {
+        id: "WC2026-FRA-IRQ", round: 2,
+        homeCode: "FRA", awayCode: "IRQ",
+        koUTC: "2026-06-22T21:00:00Z", koBJT: "6/23 05:00",
+        venue: "Lincoln Financial Field · Philadelphia, PA",
+      },
+      {
+        id: "WC2026-NOR-SEN", round: 2,
+        homeCode: "NOR", awayCode: "SEN",
+        koUTC: "2026-06-23T00:00:00Z", koBJT: "6/23 08:00",
+        venue: "MetLife Stadium · East Rutherford, NJ",
+      },
+      // ── Round 3 ──
+      {
+        id: "WC2026-NOR-FRA", round: 3,
+        homeCode: "NOR", awayCode: "FRA",
+        koUTC: "2026-06-26T19:00:00Z", koBJT: "6/27 03:00",
+        venue: "Gillette Stadium · Foxborough, MA",
+      },
+      {
+        id: "WC2026-SEN-IRQ", round: 3,
+        homeCode: "SEN", awayCode: "IRQ",
+        koUTC: "2026-06-26T19:00:00Z", koBJT: "6/27 03:00",
+        venue: "BMO Field · Toronto, ON",
+      },
+    ],
+  };
+
+  // Build a MATCH-compatible config from a GROUP_I match definition.
+  // Uses preMatchElos for finished matches, currentElos for upcoming ones.
+  function buildMatchConfig(matchDef) {
+    if (!matchDef) return MATCH;
+    const t = GROUP_I.teams;
+    const e = GROUP_I.currentElos;
+    const homeElo = matchDef.preMatchElos ? matchDef.preMatchElos.home : e[matchDef.homeCode];
+    const awayElo = matchDef.preMatchElos ? matchDef.preMatchElos.away : e[matchDef.awayCode];
+    return {
+      id:          matchDef.id,
+      competition: "FIFA World Cup 2026 · 第 I 组",
+      venue:       matchDef.venue,
+      neutral:     true,
+      koUTC:       matchDef.koUTC,
+      koBJT:       matchDef.koBJT,
+      eloAsOf:     matchDef.preMatchElos ? "2026-06-15" : "2026-06-17",
+      home: { ...t[matchDef.homeCode], elo: homeElo },
+      away: { ...t[matchDef.awayCode], elo: awayElo },
+      params: { c: 300, muTotal: 2.71, rho: 0.04, homeAdv: 0 },
+      odds:   null,
+      market: matchDef.seedMarket || { home: null, draw: null, away: null, over25: null, btts: null },
+      kalshiTicker:      matchDef.kalshiTicker      || null,
+      kalshiTotalTicker: matchDef.kalshiTotalTicker || null,
+      kalshiBttsTicker:  matchDef.kalshiBttsTicker  || null,
+      result: matchDef.result || null,
+    };
+  }
+
   return {
     buildMatchModel, buildLiveModel, edgeKelly, tradeSignal,
     americanToProb, devig, devig3way, impliedC, impliedMu, calibrate, shrinkToMarket,
-    fetchKalshiMatch, fetchKalshiTotal, fetchKalshiYesNo, fetchLiveScore, MATCH, BACKTEST,
+    fetchKalshiMatch, fetchKalshiTotal, fetchKalshiYesNo, fetchLiveScore,
+    MATCH, BACKTEST, GROUP_I, buildMatchConfig,
   };
 })();
