@@ -2939,6 +2939,10 @@ function WorldCupView() {
   const isFinished  = matchStatus === "finished";
   const isPrematch  = !scoreData || matchStatus === "prematch" || matchStatus === "unavailable";
 
+  // Goal markers for the minute slider
+  const scorers = scoreData?.scorers || M.result?.scorers || [];
+  const maxMin  = scorers.length > 0 ? Math.max(90, ...scorers.map(s => s.min)) : 90;
+
   const kBadge = {
     loading: <span className="wc-kbadge pending">⏳ Kalshi 连接中…</span>,
     live:    <span className="wc-kbadge ok">✓ Kalshi LIVE · {kalshi?.resolvedTicker || M.kalshiTicker}</span>,
@@ -3179,7 +3183,22 @@ function WorldCupView() {
             </div>
           </div>
           <div className="wc-minute">
-            <input type="range" min="0" max="90" value={live?.minute ?? 0} onChange={e => setMin(e.target.value)} />
+            <div className="wc-timeline">
+              <input type="range" min="0" max={maxMin} value={live?.minute ?? 0}
+                onChange={e => setMin(e.target.value)} />
+              {scorers.length > 0 && (
+                <div className="wc-goal-markers" aria-hidden="true">
+                  {scorers.map((s, i) => (
+                    <div key={i} className={`wc-gm ${s.team}`}
+                         style={{ left: `${(s.min / maxMin * 100).toFixed(1)}%` }}
+                         title={`${s.name} ${s.min}'`}>
+                      <span className="wc-gm-tick" />
+                      <span className="wc-gm-min">{s.min}'</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <span className="wc-minute-v">{live?.minute ?? 0}′</span>
           </div>
         </div>

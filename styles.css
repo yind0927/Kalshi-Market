@@ -3752,8 +3752,22 @@ input { font-family: inherit; }
 .wc-live-stepper button:active { background: var(--border); }
 .wc-live-stepper strong { font-size: 28px; font-family: var(--mono); font-weight: 900; min-width: 24px; text-align: center; letter-spacing: -0.02em; }
 .wc-minute { display: flex; align-items: center; gap: 12px; }
-.wc-minute input[type=range] { flex: 1; accent-color: var(--neg); }
 .wc-minute-v { font-family: var(--mono); font-size: 14px; font-weight: 700; min-width: 36px; text-align: right; }
+
+/* Timeline with goal markers */
+.wc-timeline { flex: 1; position: relative; padding-bottom: 20px; }
+.wc-timeline input[type=range] { width: 100%; accent-color: var(--neg); display: block; }
+.wc-goal-markers { position: absolute; bottom: 0; left: 0; right: 0; height: 20px; pointer-events: none; }
+.wc-gm {
+  position: absolute; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+.wc-gm-tick { width: 2px; height: 7px; border-radius: 1px; }
+.wc-gm.home .wc-gm-tick { background: var(--accent); }
+.wc-gm.away .wc-gm-tick { background: var(--neg); }
+.wc-gm-min { font-size: 9px; font-family: var(--mono); font-weight: 700; line-height: 1; }
+.wc-gm.home .wc-gm-min { color: var(--accent); }
+.wc-gm.away .wc-gm-min { color: var(--neg); }
 .wc-live-probs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .wc-live-prob { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 14px 8px; background: var(--bg-2); border-radius: 12px; }
 .wc-lp-name { font-size: 12px; color: var(--ink-2); }
