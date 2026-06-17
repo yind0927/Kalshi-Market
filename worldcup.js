@@ -422,7 +422,7 @@ window.KW_WC = (function () {
     return res.json();
   }
 
- (4,616 competitive intl matches 2018–2026) ───
+  // (4,616 competitive intl matches 2018–2026) ───
   // Run: node scripts/backtest-intl.js  (v2 with ρ + WC-c sweeps)
   // Key findings: ρ=0 best for Brier (DC correction unhelpful for intl);
   //   c=225 intl / c=300 WC-only; Platt calibration corrects ~30% prediction bias.
