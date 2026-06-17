@@ -2458,24 +2458,26 @@ function BottomTabBar({ tab, setTab, bjtDec, marketCity }) {
   return (
     <nav className="bottom-tab-bar">
       <button className={`btab${tab === "markets" ? " active" : ""}`} onClick={() => setTab("markets")}>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" />
-        </svg>
+        <div className="btab-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" />
+          </svg>
+          {inWindow && <span className="btab-dot" />}
+        </div>
         <span>市场</span>
       </button>
-      <button className={`btab${tab === "worldcup" ? " active" : ""}`} onClick={() => setTab("worldcup")}>
-        <span style={{ fontSize: 21, lineHeight: 1 }}>⚽</span>
+      <button className={`btab btab-wc${tab === "worldcup" ? " active" : ""}`} onClick={() => setTab("worldcup")}>
+        <div className="btab-icon btab-icon-wc">
+          <span className="btab-ball">⚽</span>
+        </div>
         <span>世界杯</span>
       </button>
-      <div className="btab-center-pill">
-        <div className={`btab-window${inWindow ? " active" : ""}`}>
-          {inWindow ? <><span className="wd" />交易中</> : "窗口外"}
-        </div>
-      </div>
       <button className={`btab${tab === "analysis" ? " active" : ""}`} onClick={() => setTab("analysis")}>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M3 3v18h18" /><path d="m7 14 4-4 4 4 5-7" />
-        </svg>
+        <div className="btab-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M3 3v18h18" /><path d="m7 14 4-4 4 4 5-7" />
+          </svg>
+        </div>
         <span>{tab === "analysis" && marketCity ? marketCity : "分析"}</span>
       </button>
     </nav>
@@ -2952,25 +2954,24 @@ function WorldCupView() {
 
       {/* ── LIVE in-play simulator — the max-so-far FLOOR analogue ── */}
       <div className="card wc-card wc-live-card">
-        <div className="card-head">
-          <div>
-            <h3>🔴 比赛进行中模拟 <em>Live · in-play</em></h3>
-            <div className="wc-live-mode-row">
-              {liveManual
-                ? <span className="wc-live-badge manual">手动覆盖</span>
-                : <span className="wc-live-badge auto">AUTO</span>}
-              {scoreData?.source && !liveManual &&
-                <span className="wc-live-badge src">{scoreData.source === "football-data" ? "football-data.org" : "ESPN"}</span>}
-              {scoreStatus === "loading" && !scoreData &&
-                <span className="wc-live-badge unavail">比分获取中…</span>}
-              {scoreData?.status === "unavailable" && !liveManual &&
-                <span className="wc-live-badge unavail">比分源不可用 · 手动输入</span>}
+        <div className="wc-live-head">
+          <div className="wc-live-head-top">
+            <h3 className="wc-live-title">🔴 比赛模拟 <em>Live</em></h3>
+            <div className="wc-live-actions">
+              {liveManual && <button className="wc-reset" onClick={resetToAuto}>↺ 恢复自动</button>}
+              {live && !liveManual && <button className="wc-reset" onClick={() => { setLiveManual(false); setLive(null); }}>↺ 赛前</button>}
             </div>
-            <div className="sub">当前比分已锁定（已实现），仅对剩余时间建模 — 与天气「实测地板线」同理。比分每 30s 自动拉取；手动调整后点击「↺」恢复自动</div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {liveManual && <button className="wc-reset" onClick={resetToAuto}>↺ 恢复自动</button>}
-            {live && !liveManual && <button className="wc-reset" onClick={() => { setLiveManual(false); setLive(null); }}>↺ 回到赛前</button>}
+          <div className="wc-live-mode-row">
+            {liveManual
+              ? <span className="wc-live-badge manual">手动</span>
+              : <span className="wc-live-badge auto">AUTO</span>}
+            {scoreData?.source && !liveManual &&
+              <span className="wc-live-badge src">{scoreData.source === "football-data" ? "football-data.org" : "ESPN"}</span>}
+            {scoreStatus === "loading" && !scoreData &&
+              <span className="wc-live-badge unavail">获取中…</span>}
+            {scoreData?.status === "unavailable" && !liveManual &&
+              <span className="wc-live-badge unavail">比分源不可用</span>}
           </div>
         </div>
 
