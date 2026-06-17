@@ -2628,46 +2628,82 @@ function WCBacktestCard() {
 function WorldCupView() {
   const WC = window.KW_WC;
   const M = WC.MATCH;
-  // null = pre-match; otherwise { minute, scoreA, scoreB }
-  const [live, setLive] = useState(null);
-  // Live Kalshi market: null=loading, {...}=resolved, false=failed → use seed
-  const [kalshi, setKalshi] = useState(null);
-  const [kStatus, setKStatus] = useState("loading"); // loading | live | seed | error
-  const [shrink, setShrink] = useState(0);            // 0=pure model … 1=defer to market
+
+  // Live simulator state: null=pre-match, {...}=in-play override
+  const [live, setLive]           = useState(null);
+  const [liveManual, setLiveManual] = useState(false); // true = user overrode auto data
+
+  // Live score from /api/live-score (auto-fetched)
+  const [scoreData, setScoreData] = useState(null); // { status, minute, homeScore, awayScore, source }
+  const [scoreStatus, setScoreStatus] = useState("loading"); // loading | ok | error
+
+  // Kalshi markets
+  const [kalshi, setKalshi]       = useState(null);
+  const [kStatus, setKStatus]     = useState("loading");
+  const [shrink, setShrink]       = useState(0);
 
   const model = useMemo(
     () => WC.buildMatchModel({ eloA: M.home.elo, eloB: M.away.elo, ...M.params }),
     []
   );
 
-  const [over25Live, setOver25Live] = useState(null); // live Over-2.5 from KXWCTOTAL
-  const [btts, setBtts]             = useState(null);  // live BTTS quote {yes,bid,ask}
+  const [over25Live, setOver25Live] = useState(null);
+  const [btts, setBtts]             = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
 
-  // ② Pull real Kalshi prices — moneyline (1X2) + total goals + BTTS — and
-  // auto-refresh every 30s so prices track the market (incl. in-play).
+  // Check whether to start polling (30min before KO)
+  const koMs = new Date(M.koUTC).getTime();
+  const shouldPollScore = () => Date.now() >= koMs - 30 * 60 * 1000;
+
+  // Auto-refresh every 30s: Kalshi prices + live score
   useEffect(() => {
     let alive = true;
+
     const refresh = () => {
+      // ── Kalshi ──
       WC.fetchKalshiMatch(M.kalshiTicker, M.home, M.away)
         .then(r => {
           if (!alive) return;
           if (r && r.home != null && r.away != null) { setKalshi(r); setKStatus("live"); }
-          else setKStatus(s => (s === "live" ? s : "seed"));
+          else setKStatus(s => s === "live" ? s : "seed");
         })
-        .catch(() => { if (alive) setKStatus(s => (s === "live" ? s : "error")); });
+        .catch(() => { if (alive) setKStatus(s => s === "live" ? s : "error"); });
+
       WC.fetchKalshiTotal(M.kalshiTotalTicker)
-        .then(t => { if (alive && t && t.over25 != null) setOver25Live(t.over25); })
+        .then(t => { if (alive && t?.over25 != null) setOver25Live(t.over25); })
         .catch(() => {});
+
       WC.fetchKalshiYesNo(M.kalshiBttsTicker, ["both", "yes", "score"])
-        .then(b => { if (alive && b && b.yes != null) setBtts(b); })
+        .then(b => { if (alive && b?.yes != null) setBtts(b); })
         .catch(() => {});
+
+      // ── Live score (only near/during match) ──
+      if (shouldPollScore()) {
+        const matchDate = M.koUTC.slice(0, 10);
+        WC.fetchLiveScore(M.home.name, M.away.name, matchDate)
+          .then(sd => {
+            if (!alive) return;
+            setScoreData(sd);
+            setScoreStatus(sd.status === "unavailable" ? "unavailable" : "ok");
+            // Auto-populate live simulator when match is in play (and user hasn't overridden)
+            if (!liveManual && (sd.status === "live" || sd.status === "ht") && sd.minute != null) {
+              setLive({ minute: sd.minute, scoreA: sd.homeScore ?? 0, scoreB: sd.awayScore ?? 0 });
+            }
+            // Auto-clear on finished
+            if (!liveManual && sd.status === "finished") {
+              setLive({ minute: 90, scoreA: sd.homeScore ?? 0, scoreB: sd.awayScore ?? 0 });
+            }
+          })
+          .catch(() => { if (alive) setScoreStatus("error"); });
+      }
+
       if (alive) setLastRefresh(new Date());
     };
+
     refresh();
     const id = setInterval(refresh, 30000);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [liveManual]);
 
   // ① De-vigged market (live Kalshi if resolved, else the seeded de-vig)
   const market = useMemo(() => {
@@ -2709,12 +2745,30 @@ function WorldCupView() {
   );
   const shown = liveModel || { probs: calModel };
 
-  const setMin = (v) => setLive(l => ({ ...(l || { scoreA: 0, scoreB: 0 }), minute: +v }));
-  const bump = (side, d) => setLive(l => {
-    const base = l || { minute: 0, scoreA: 0, scoreB: 0 };
-    const key = side === "A" ? "scoreA" : "scoreB";
-    return { ...base, [key]: Math.max(0, (base[key] || 0) + d) };
-  });
+  const setMin = (v) => { setLiveManual(true); setLive(l => ({ ...(l || { scoreA: 0, scoreB: 0 }), minute: +v })); };
+  const bump = (side, d) => {
+    setLiveManual(true);
+    setLive(l => {
+      const base = l || { minute: 0, scoreA: 0, scoreB: 0 };
+      const key = side === "A" ? "scoreA" : "scoreB";
+      return { ...base, [key]: Math.max(0, (base[key] || 0) + d) };
+    });
+  };
+  const resetToAuto = () => {
+    setLiveManual(false);
+    if (scoreData && (scoreData.status === "live" || scoreData.status === "ht")) {
+      setLive({ minute: scoreData.minute ?? 0, scoreA: scoreData.homeScore ?? 0, scoreB: scoreData.awayScore ?? 0 });
+    } else {
+      setLive(null);
+    }
+  };
+
+  // Match status badge for hero
+  const matchStatus = scoreData?.status;
+  const isLiveNow   = matchStatus === "live";
+  const isHT        = matchStatus === "ht";
+  const isFinished  = matchStatus === "finished";
+  const isPrematch  = !scoreData || matchStatus === "prematch" || matchStatus === "unavailable";
 
   const kBadge = {
     loading: <span className="wc-kbadge pending">⏳ Kalshi 连接中…</span>,
@@ -2740,9 +2794,21 @@ function WorldCupView() {
             <span className="wc-elo">Elo {M.home.elo} · #{M.home.fifaRank}</span>
           </div>
           <div className="wc-vs">
-            <div className="wc-vs-circle">VS</div>
-            <span className="wc-vs-lambda">{model.lambdaA}–{model.lambdaB}</span>
-            <span className="wc-vs-supr">预期进球</span>
+            {(isLiveNow || isHT || isFinished) && scoreData ? (
+              <>
+                <div className={`wc-vs-score ${isLiveNow ? "live" : isHT ? "ht" : "ft"}`}>
+                  <span className="wc-vs-scoreline">{scoreData.homeScore ?? 0} – {scoreData.awayScore ?? 0}</span>
+                  <span className="wc-vs-status-tag">{isLiveNow ? `${scoreData.minute}'` : isHT ? "HT" : "FT"}</span>
+                </div>
+                <span className="wc-vs-lambda">{model.lambdaA}–{model.lambdaB} <em>预期</em></span>
+              </>
+            ) : (
+              <>
+                <div className="wc-vs-circle">VS</div>
+                <span className="wc-vs-lambda">{model.lambdaA}–{model.lambdaB}</span>
+                <span className="wc-vs-supr">预期进球</span>
+              </>
+            )}
           </div>
           <div className="wc-team away">
             <span className="wc-flag">{M.away.flag}</span>
@@ -2889,9 +2955,23 @@ function WorldCupView() {
         <div className="card-head">
           <div>
             <h3>🔴 比赛进行中模拟 <em>Live · in-play</em></h3>
-            <div className="sub">当前比分已锁定（已实现），仅对剩余时间建模 — 与天气「实测地板线」同理。盘口已 30s 自动刷新；比分自动拉取需接入比分源（免费 CORS 源稀缺），暂用手动</div>
+            <div className="wc-live-mode-row">
+              {liveManual
+                ? <span className="wc-live-badge manual">手动覆盖</span>
+                : <span className="wc-live-badge auto">AUTO</span>}
+              {scoreData?.source && !liveManual &&
+                <span className="wc-live-badge src">{scoreData.source === "football-data" ? "football-data.org" : "ESPN"}</span>}
+              {scoreStatus === "loading" && !scoreData &&
+                <span className="wc-live-badge unavail">比分获取中…</span>}
+              {scoreData?.status === "unavailable" && !liveManual &&
+                <span className="wc-live-badge unavail">比分源不可用 · 手动输入</span>}
+            </div>
+            <div className="sub">当前比分已锁定（已实现），仅对剩余时间建模 — 与天气「实测地板线」同理。比分每 30s 自动拉取；手动调整后点击「↺」恢复自动</div>
           </div>
-          {live && <button className="wc-reset" onClick={() => setLive(null)}>↺ 回到赛前</button>}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {liveManual && <button className="wc-reset" onClick={resetToAuto}>↺ 恢复自动</button>}
+            {live && !liveManual && <button className="wc-reset" onClick={() => { setLiveManual(false); setLive(null); }}>↺ 回到赛前</button>}
+          </div>
         </div>
 
         <div className="wc-live-controls">

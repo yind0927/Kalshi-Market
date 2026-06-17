@@ -3563,6 +3563,58 @@ input { font-family: inherit; }
 .wc-vs-lambda { font-size: 13px; font-family: var(--mono); font-weight: 700; color: var(--ink-1); }
 .wc-vs-supr { font-size: 10px; font-family: var(--mono); color: var(--ink-4); white-space: nowrap; }
 
+/* Live score in hero VS area */
+.wc-vs-score {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.wc-vs-scoreline {
+  font-size: 28px; font-weight: 900; font-family: var(--mono);
+  letter-spacing: -0.04em; line-height: 1; color: var(--ink-1);
+}
+.wc-vs-status-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 20px;
+}
+.wc-vs-score.live .wc-vs-status-tag {
+  background: color-mix(in oklab, var(--neg) 15%, transparent);
+  color: var(--neg);
+  animation: blink-live 1.4s ease-in-out infinite;
+}
+.wc-vs-score.ht .wc-vs-status-tag {
+  background: color-mix(in oklab, var(--warn) 15%, transparent);
+  color: var(--warn);
+}
+.wc-vs-score.ft .wc-vs-status-tag {
+  background: color-mix(in oklab, var(--pos) 15%, transparent);
+  color: var(--pos);
+}
+@keyframes blink-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* Live card auto/manual badges */
+.wc-live-mode-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.wc-live-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 20px;
+}
+.wc-live-badge.auto {
+  background: color-mix(in oklab, var(--pos) 15%, transparent);
+  color: var(--pos);
+}
+.wc-live-badge.manual {
+  background: color-mix(in oklab, var(--warn) 15%, transparent);
+  color: var(--warn);
+}
+.wc-live-badge.src {
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  color: var(--accent-ink);
+}
+.wc-live-badge.unavail {
+  background: var(--bg-2); color: var(--ink-4);
+}
+
 /* Win-probability tri-bar */
 .wc-prob-bar-wrap { margin: 16px 0 4px; }
 .wc-prob-bar {
@@ -3756,6 +3808,8 @@ i.bt-actual { background: var(--accent); }
   .wc-vs-circle { width: 30px; height: 30px; font-size: 9px; }
   .wc-vs-lambda { font-size: 11px; }
   .wc-vs-supr { display: none; }
+  .wc-vs-scoreline { font-size: 22px; }
+  .wc-vs-status-tag { font-size: 9px; padding: 1px 5px; }
   .wc-prob-bar { height: 24px; }
   .wc-pb-seg { font-size: 10px; }
   .wc-stats-strip { margin-top: 10px; padding-top: 10px; gap: 4px; }

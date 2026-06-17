@@ -408,7 +408,21 @@ window.KW_WC = (function () {
     };
   }
 
-  // ── Backtest scorecard v2 (4,616 competitive intl matches 2018–2026) ───
+  // ── Live match score from /api/live-score proxy ───────────
+  // Returns: { status, homeScore, awayScore, minute, source }
+  // status: "prematch" | "live" | "ht" | "finished" | "unavailable"
+  async function fetchLiveScore(homeTeam, awayTeam, matchDate) {
+    const params = new URLSearchParams({
+      homeTeam: homeTeam || "France",
+      awayTeam: awayTeam || "Senegal",
+      ...(matchDate ? { date: matchDate } : {}),
+    });
+    const res = await fetch(`/api/live-score?${params}`);
+    if (!res.ok) throw new Error(`live-score proxy ${res.status}`);
+    return res.json();
+  }
+
+ (4,616 competitive intl matches 2018–2026) ───
   // Run: node scripts/backtest-intl.js  (v2 with ρ + WC-c sweeps)
   // Key findings: ρ=0 best for Brier (DC correction unhelpful for intl);
   //   c=225 intl / c=300 WC-only; Platt calibration corrects ~30% prediction bias.
@@ -474,6 +488,6 @@ window.KW_WC = (function () {
   return {
     buildMatchModel, buildLiveModel, edgeKelly, tradeSignal,
     americanToProb, devig, devig3way, impliedC, impliedMu, calibrate, shrinkToMarket,
-    fetchKalshiMatch, fetchKalshiTotal, fetchKalshiYesNo, MATCH, BACKTEST,
+    fetchKalshiMatch, fetchKalshiTotal, fetchKalshiYesNo, fetchLiveScore, MATCH, BACKTEST,
   };
 })();
