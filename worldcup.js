@@ -598,10 +598,106 @@ window.KW_WC = (function () {
     };
   }
 
+  // ── Multi-group: Elo cascade through completed matches ───────
+  // K=60 (WC), GD multipliers as in backtest.
+  function cascadeElos(elo0Map, completedMatches) {
+    const elos = { ...elo0Map };
+    for (const mm of completedMatches) {
+      if (!mm.result || mm.result.status !== "finished") continue;
+      const h = mm.homeCode, a = mm.awayCode;
+      if (elos[h] == null || elos[a] == null) continue;
+      const eh = elos[h], ea = elos[a];
+      const exp = 1 / (1 + Math.pow(10, (ea - eh) / 400));
+      const hs = mm.result.homeScore, as_ = mm.result.awayScore;
+      const act = hs > as_ ? 1 : hs === as_ ? 0.5 : 0;
+      const gd  = Math.abs(hs - as_);
+      const gdM = gd <= 1 ? 1 : gd === 2 ? 1.5 : gd === 3 ? 1.75 : 1.75 + 0.05 * (gd - 3);
+      const delta = 60 * gdM * (act - exp);
+      elos[h] = Math.round(eh + delta);
+      elos[a] = Math.round(ea - delta);
+    }
+    return elos;
+  }
+
+  // Build standings array from group teams + all matches (uses current elos for Elo bar).
+  function buildStandings(teamCodes, allMatches, currentElos) {
+    const rows = {};
+    for (const c of teamCodes) rows[c] = { code:c, pts:0, w:0, d:0, l:0, gf:0, ga:0 };
+    for (const mm of allMatches) {
+      if (!mm.result || mm.result.status !== "finished") continue;
+      const h = mm.homeCode, a = mm.awayCode;
+      const hs = mm.result.homeScore, as_ = mm.result.awayScore;
+      rows[h].gf += hs; rows[h].ga += as_;
+      rows[a].gf += as_; rows[a].ga += hs;
+      if (hs > as_) {
+        rows[h].pts += 3; rows[h].w++;  rows[a].l++;
+      } else if (hs === as_) {
+        rows[h].pts += 1; rows[h].d++;  rows[a].pts += 1; rows[a].d++;
+      } else {
+        rows[a].pts += 3; rows[a].w++;  rows[h].l++;
+      }
+    }
+    return Object.values(rows).sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      const gdA = a.gf - a.ga, gdB = b.gf - b.ga;
+      if (gdB !== gdA) return gdB - gdA;
+      if (b.gf !== a.gf) return b.gf - a.gf;
+      return (currentElos[b.code] || 0) - (currentElos[a.code] || 0);
+    });
+  }
+
+  // Build a MATCH-compatible config from KW_WC_DATA for any group/match.
+  // preMatchElos: cascade Elos through all R1..R(round-1) completed matches.
+  // currentElos:  cascade through all completed matches (for upcoming match analysis).
+  function buildGroupMatchConfig(matchDef, groupLetter) {
+    const DATA = window.KW_WC_DATA;
+    if (!DATA) return null;
+    const grp   = DATA.GROUPS[groupLetter];
+    const teams  = DATA.TEAMS;
+
+    // Cascade Elos through matches completed BEFORE this match (for pre-match Elo).
+    const elo0Map = {};
+    for (const c of grp.order) elo0Map[c] = teams[c].elo0;
+
+    const doneBeforeThis = grp.matches.filter(mm =>
+      mm.result && mm.result.status === "finished" && mm.id !== matchDef.id
+    );
+    const preMatchElos = cascadeElos(elo0Map, doneBeforeThis);
+
+    // Current Elos: cascade through ALL completed matches (incl. this one if done).
+    const allDone = grp.matches.filter(mm => mm.result && mm.result.status === "finished");
+    const currentElos = cascadeElos(elo0Map, allDone);
+
+    const homeElo = matchDef.result ? preMatchElos[matchDef.homeCode] : currentElos[matchDef.homeCode];
+    const awayElo = matchDef.result ? preMatchElos[matchDef.awayCode] : currentElos[matchDef.awayCode];
+
+    return {
+      id:          matchDef.id,
+      competition: `FIFA World Cup 2026 · 第 ${groupLetter} 组`,
+      venue:       matchDef.venue,
+      neutral:     true,
+      koUTC:       matchDef.koUTC,
+      koBJT:       matchDef.koBJT,
+      eloAsOf:     matchDef.result ? "pre-match" : "2026-06-17",
+      home:        { ...teams[matchDef.homeCode], elo: homeElo },
+      away:        { ...teams[matchDef.awayCode], elo: awayElo },
+      params:      { c: 300, muTotal: 2.71, rho: 0.04, homeAdv: 0 },
+      odds:        null,
+      market:      matchDef.seedMarket || { home:null, draw:null, away:null, over25:null, btts:null },
+      kalshiTicker:      matchDef.kalshiTicker      || null,
+      kalshiTotalTicker: matchDef.kalshiTotalTicker || null,
+      kalshiBttsTicker:  matchDef.kalshiBttsTicker  || null,
+      result:      matchDef.result || null,
+      // expose for standings display
+      currentElos, groupLetter,
+    };
+  }
+
   return {
     buildMatchModel, buildLiveModel, edgeKelly, tradeSignal,
     americanToProb, devig, devig3way, impliedC, impliedMu, calibrate, shrinkToMarket,
     fetchKalshiMatch, fetchKalshiTotal, fetchKalshiYesNo, fetchLiveScore,
     MATCH, BACKTEST, GROUP_I, buildMatchConfig,
+    cascadeElos, buildStandings, buildGroupMatchConfig,
   };
 })();

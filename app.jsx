@@ -2782,20 +2782,53 @@ function WCBacktestCard() {
   );
 }
 
-function WCGroupHeader({ selectedMatchId, onSelect }) {
-  const WC = window.KW_WC;
-  const GI = WC.GROUP_I;
-  const elos   = Object.values(GI.currentElos);
-  const eloMin = Math.min(...elos);
-  const eloMax = Math.max(...elos);
-  const rounds = [1, 2, 3].map(r => ({ r, matches: GI.matches.filter(m => m.round === r) }));
-  const selMatch = GI.matches.find(m => m.id === selectedMatchId);
+const WC_GROUP_LABELS = ["A","B","C","D","E","F","G","H","I","J","K","L"];
+
+function WCGroupSelector({ selectedGroup, onSelect }) {
+  return (
+    <div className="wc-grp-sel">
+      {WC_GROUP_LABELS.map(g => (
+        <button key={g}
+          className={`wc-grp-btn${g === selectedGroup ? " sel" : ""}`}
+          onClick={() => onSelect(g)}>
+          {g}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function WCGroupHeader({ selectedGroup, selectedMatchId, onSelect }) {
+  const WC   = window.KW_WC;
+  const DATA = window.KW_WC_DATA;
+  const grp  = DATA.GROUPS[selectedGroup];
+  const teams = DATA.TEAMS;
+
+  // Cascade Elos through completed R1 to get current strengths
+  const elo0Map = useMemo(() => {
+    const m = {};
+    for (const c of grp.order) m[c] = teams[c].elo0;
+    return m;
+  }, [selectedGroup]);
+
+  const completedMatches = grp.matches.filter(mm => mm.result && mm.result.status === "finished");
+  const currentElos = useMemo(() => WC.cascadeElos(elo0Map, completedMatches), [selectedGroup, completedMatches.length]);
+
+  const standings = useMemo(() => WC.buildStandings(grp.order, grp.matches, currentElos), [selectedGroup, completedMatches.length]);
+
+  const eloVals = grp.order.map(c => currentElos[c]);
+  const eloMin  = Math.min(...eloVals);
+  const eloMax  = Math.max(...eloVals);
+  const rounds  = [1, 2, 3].map(r => ({ r, matches: grp.matches.filter(m => m.round === r) }));
+  const selMatch = grp.matches.find(m => m.id === selectedMatchId);
+
+  const eloUpdated = completedMatches.length > 0;
 
   return (
     <div className="wc-group-header card wc-card">
       <div className="wc-group-title">
-        <span className="wc-group-name">第 I 组 <em>Group I</em></span>
-        <span className="wc-group-sub">FIFA World Cup 2026 · Elo 级联已更新</span>
+        <span className="wc-group-name">第 {selectedGroup} 组 <em>Group {selectedGroup}</em></span>
+        <span className="wc-group-sub">FIFA World Cup 2026{eloUpdated ? " · Elo 级联已更新" : ""}</span>
       </div>
 
       {/* Standings table */}
@@ -2809,12 +2842,12 @@ function WCGroupHeader({ selectedMatchId, onSelect }) {
           <span>Elo 实力</span>
           <span className="wc-gt-c wc-gt-hide-sm">FIFA</span>
         </div>
-        {GI.standings.map((row, i) => {
-          const team   = GI.teams[row.code];
-          const elo    = GI.currentElos[row.code];
+        {standings.map((row, i) => {
+          const team   = teams[row.code];
+          const elo    = currentElos[row.code] || teams[row.code].elo0;
           const inSel  = selMatch && (selMatch.homeCode === row.code || selMatch.awayCode === row.code);
           const gd     = row.gf - row.ga;
-          const barPct = Math.round((elo - eloMin) / (eloMax - eloMin) * 72 + 18);
+          const barPct = eloMax > eloMin ? Math.round((elo - eloMin) / (eloMax - eloMin) * 72 + 18) : 50;
           return (
             <div key={row.code} className={`wc-gt-row${inSel ? " in-match" : ""}`}>
               <span className={`wc-gt-pos${i < 2 ? " q" : ""}`}>{i + 1}</span>
@@ -2845,8 +2878,8 @@ function WCGroupHeader({ selectedMatchId, onSelect }) {
             <div className="wc-round-lbl">第{r}轮 <em>R{r}</em></div>
             <div className="wc-round-chips">
               {matches.map(m => {
-                const home = GI.teams[m.homeCode];
-                const away = GI.teams[m.awayCode];
+                const home = teams[m.homeCode];
+                const away = teams[m.awayCode];
                 const sel  = m.id === selectedMatchId;
                 const done = !!m.result;
                 return (
@@ -2880,11 +2913,20 @@ function WCGroupHeader({ selectedMatchId, onSelect }) {
 }
 
 function WorldCupView() {
-  const WC = window.KW_WC;
-  const GI = WC.GROUP_I;
-  const [selectedMatchId, setSelectedMatchId] = useState(GI.matches[0].id);
-  const matchDef = GI.matches.find(m => m.id === selectedMatchId) || GI.matches[0];
-  const M = useMemo(() => WC.buildMatchConfig(matchDef), [selectedMatchId]);
+  const WC   = window.KW_WC;
+  const DATA = window.KW_WC_DATA;
+  const [selectedGroup, setSelectedGroup] = useState("I");
+  const grp = DATA.GROUPS[selectedGroup];
+  const [selectedMatchId, setSelectedMatchId] = useState(grp.matches[0].id);
+
+  // When group changes, default to first match of new group
+  const handleGroupChange = (g) => {
+    setSelectedGroup(g);
+    setSelectedMatchId(DATA.GROUPS[g].matches[0].id);
+  };
+
+  const matchDef = grp.matches.find(m => m.id === selectedMatchId) || grp.matches[0];
+  const M = useMemo(() => WC.buildGroupMatchConfig(matchDef, selectedGroup), [selectedMatchId, selectedGroup]);
 
   // Live simulator state: null=pre-match, {...}=in-play override
   const [live, setLive]           = useState(null);
@@ -2901,7 +2943,7 @@ function WorldCupView() {
 
   const model = useMemo(
     () => WC.buildMatchModel({ eloA: M.home.elo, eloB: M.away.elo, ...M.params }),
-    [selectedMatchId]
+    [selectedMatchId, selectedGroup]
   );
 
   const [over25Live, setOver25Live] = useState(null);
@@ -2923,7 +2965,7 @@ function WorldCupView() {
       setScoreData(M.result); setScoreStatus("ok");
       setLive({ minute: M.result.minute, scoreA: M.result.homeScore, scoreB: M.result.awayScore });
     }
-  }, [selectedMatchId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedMatchId, selectedGroup]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh every 30s: Kalshi prices + live score
   useEffect(() => {
@@ -2980,7 +3022,7 @@ function WorldCupView() {
     refresh();
     const id = setInterval(refresh, 30000);
     return () => { alive = false; clearInterval(id); };
-  }, [liveManual, selectedMatchId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [liveManual, selectedMatchId, selectedGroup]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ① De-vigged market (live Kalshi if resolved, else the seeded de-vig)
   const market = useMemo(() => {
@@ -2989,7 +3031,7 @@ function WorldCupView() {
       return WC.devig3way(kalshi.home, draw, kalshi.away);
     }
     return WC.devig3way(M.market.home, M.market.draw, M.market.away);
-  }, [kStatus, kalshi, selectedMatchId]);
+  }, [kStatus, kalshi, selectedMatchId, selectedGroup]);
 
   // Over-2.5: live KXWCTOTAL if resolved, else seed
   const over25Mkt = over25Live != null ? over25Live : M.market.over25;
@@ -2997,7 +3039,7 @@ function WorldCupView() {
 
   const params = useMemo(
     () => ({ eloA: M.home.elo, eloB: M.away.elo, ...M.params }),
-    [selectedMatchId]
+    [selectedMatchId, selectedGroup]
   );
   // ② Joint two-market calibration: c from the live moneyline, μ from the
   // live Over-2.5 (KXWCTOTAL), else the seed totals.
@@ -3065,8 +3107,9 @@ function WorldCupView() {
 
   return (
     <div className="view wc-view" data-screen-label="worldcup">
-      {/* ── Group I standings + match switcher ── */}
-      <WCGroupHeader selectedMatchId={selectedMatchId} onSelect={setSelectedMatchId} />
+      {/* ── Group selector + standings + match switcher ── */}
+      <WCGroupSelector selectedGroup={selectedGroup} onSelect={handleGroupChange} />
+      <WCGroupHeader selectedGroup={selectedGroup} selectedMatchId={selectedMatchId} onSelect={setSelectedMatchId} />
       {/* ── Match hero ── */}
       <div className="wc-hero">
         <div className="wc-hero-top">
