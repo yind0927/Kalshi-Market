@@ -3878,6 +3878,108 @@ input { font-family: inherit; }
 .wc-mc-ft    { font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pos); font-weight: 700; }
 .wc-mc-dt    { font-size: 8px; color: var(--ink-4); font-family: var(--mono); white-space: nowrap; }
 
+/* ── Sub-tab switcher (Group Analysis / Elo Rankings) ─────── */
+.wc-subtabs {
+  display: flex; gap: 6px; margin-bottom: 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 5px;
+}
+.wc-subtab {
+  flex: 1; border: 0; background: transparent; padding: 8px 16px;
+  border-radius: 8px; font-size: 13px; font-weight: 600;
+  color: var(--ink-3); cursor: pointer; transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.wc-subtab em { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-4); }
+.wc-subtab:hover { color: var(--ink-1); }
+.wc-subtab.sel {
+  background: var(--surface); color: var(--ink-1);
+  box-shadow: 0 0 0 1px var(--border-strong), 0 1px 3px oklch(0.20 0.02 250 / 0.08);
+}
+
+/* ── Elo Rankings wrapper + KPIs ─────────────────────────── */
+.wc-elo-rankings-wrap { display: flex; flex-direction: column; gap: 12px; }
+
+.wc-er-kpis {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+}
+.wc-er-kpi {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 18px;
+}
+.wc-er-kpi-l {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-3); font-weight: 600; margin-bottom: 6px;
+}
+.wc-er-kpi-v {
+  font-size: 22px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--ink-1); line-height: 1.1; margin-bottom: 3px;
+}
+.wc-er-kpi-v.wc-er-pos { color: var(--pos); }
+.wc-er-kpi-v.wc-er-neg { color: var(--neg); }
+.wc-er-kpi-s { font-size: 11px; color: var(--ink-3); font-family: var(--mono); }
+
+.wc-er-filters { display: flex; gap: 6px; margin-bottom: 14px; }
+
+/* ── Elo Rankings table ──────────────────────────────────── */
+.wc-ert { border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.wc-ert-head,
+.wc-ert-row {
+  display: grid;
+  grid-template-columns: 30px 1fr 34px 140px 54px 72px 30px 52px;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 6px 10px;
+}
+.wc-ert-head {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-4); background: var(--bg-2);
+  border-bottom: 1px solid var(--border); font-weight: 600;
+}
+.wc-ert-row { transition: background 0.1s; }
+.wc-ert-row + .wc-ert-row { border-top: 1px solid var(--border); }
+.wc-ert-row:hover { background: var(--bg-2); }
+.wc-ert-row.advancing { background: color-mix(in oklab, var(--pos) 5%, var(--surface)); }
+.wc-ert-row.advancing:hover { background: color-mix(in oklab, var(--pos) 9%, var(--surface)); }
+
+/* Columns */
+.wc-ert-rank { font-size: 11px; font-weight: 700; color: var(--ink-4); text-align: center; }
+.wc-ert-row:nth-child(-n+4) .wc-ert-rank { color: var(--accent); }
+
+.wc-ert-team { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.wc-ert-flag { font-size: 18px; line-height: 1; flex-shrink: 0; }
+.wc-ert-names { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.wc-ert-cn   { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wc-ert-code { font-size: 9px; color: var(--ink-3); font-weight: 500;
+               background: var(--bg-2); padding: 0 3px; border-radius: 3px;
+               display: inline-block; width: fit-content; }
+
+.wc-ert-grp { display: flex; align-items: center; justify-content: center; }
+.wc-ert-grp-badge {
+  width: 20px; height: 20px; border-radius: 6px;
+  background: var(--accent-soft); color: var(--accent-ink);
+  font-size: 11px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.wc-ert-elo { display: flex; align-items: center; gap: 6px; }
+.wc-ert-bar {
+  flex: 1; height: 5px; background: var(--border); border-radius: 3px;
+  overflow: hidden; min-width: 30px;
+}
+.wc-ert-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.4s; }
+.wc-ert-num { font-size: 11px; font-family: var(--mono); color: var(--ink-2); font-weight: 700; flex-shrink: 0; }
+
+.wc-ert-chg { font-size: 11.5px; font-family: var(--mono); font-weight: 700; text-align: right; }
+.wc-ert-chg.pos { color: var(--pos); }
+.wc-ert-chg.neg { color: var(--neg); }
+.wc-ert-chg.flat { color: var(--ink-4); }
+
+.wc-ert-wdl { font-size: 10.5px; color: var(--ink-3); font-family: var(--mono); text-align: center; }
+.wc-ert-pts { font-size: 13px; font-weight: 800; text-align: center; }
+.wc-ert-fifa { font-size: 10.5px; color: var(--ink-3); font-family: var(--mono); text-align: center; }
+.wc-ert-hide-sm { }
+
 /* ── Group A-L selector ──────────────────────────────────── */
 .wc-grp-sel {
   display: flex; flex-wrap: wrap; gap: 5px;
@@ -4029,6 +4131,13 @@ i.bt-actual { background: var(--accent); }
 
 @media (max-width: 640px) {
   /* ── World Cup view — full mobile pass ── */
+
+  /* Elo rankings — mobile */
+  .wc-er-kpis { grid-template-columns: repeat(2, 1fr); }
+  .wc-ert-head,
+  .wc-ert-row { grid-template-columns: 24px 1fr 28px 110px 40px 28px; gap: 2px 4px; padding: 5px 8px; }
+  .wc-ert-hide-sm { display: none !important; }
+  .wc-ert-cn { font-size: 11.5px; }
 
   /* Group header */
   .wc-group-sub { display: none; }

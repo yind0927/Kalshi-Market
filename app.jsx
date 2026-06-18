@@ -2912,6 +2912,144 @@ function WCGroupHeader({ selectedGroup, selectedMatchId, onSelect }) {
   );
 }
 
+function WCEloRankings() {
+  const WC   = window.KW_WC;
+  const DATA = window.KW_WC_DATA;
+  const [sortBy, setSortBy] = useState("elo");   // elo | change | fifa | pts
+  const [filter, setFilter] = useState("all");   // all | played
+
+  const allTeams = useMemo(() => {
+    const result = [];
+    for (const [gLetter, grp] of Object.entries(DATA.GROUPS)) {
+      const elo0Map = {};
+      for (const c of grp.order) elo0Map[c] = DATA.TEAMS[c].elo0;
+      const done = grp.matches.filter(m => m.result && m.result.status === "finished");
+      const curElos = WC.cascadeElos(elo0Map, done);
+      const stRows  = WC.buildStandings(grp.order, grp.matches, curElos);
+      const stMap   = {};
+      stRows.forEach((r, i) => { stMap[r.code] = { ...r, groupRank: i + 1 }; });
+      for (const code of grp.order) {
+        const team = DATA.TEAMS[code];
+        const cur  = curElos[code];
+        const st   = stMap[code];
+        result.push({
+          code, group: gLetter, groupRank: st.groupRank,
+          ...team, currentElo: cur, eloChange: cur - team.elo0,
+          pts: st.pts, w: st.w, d: st.d, l: st.l, gf: st.gf, ga: st.ga,
+          played: st.w + st.d + st.l,
+        });
+      }
+    }
+    result.sort((a, b) => b.currentElo - a.currentElo);
+    return result.map((t, i) => ({ ...t, eloRank: i + 1 }));
+  }, []);
+
+  const maxElo = allTeams[0]?.currentElo || 2200;
+  const minElo = allTeams[allTeams.length - 1]?.currentElo || 1300;
+  const eloSpan = maxElo - minElo || 1;
+
+  const displayed = useMemo(() => {
+    let arr = filter === "played" ? allTeams.filter(t => t.played > 0) : [...allTeams];
+    if      (sortBy === "change") arr.sort((a, b) => b.eloChange - a.eloChange);
+    else if (sortBy === "fifa")   arr.sort((a, b) => a.fifaRank  - b.fifaRank);
+    else if (sortBy === "pts")    arr.sort((a, b) => b.pts - a.pts || b.currentElo - a.currentElo);
+    return arr;
+  }, [sortBy, filter, allTeams]);
+
+  const playedCount = allTeams.filter(t => t.played > 0).length;
+  const movers = [...allTeams].sort((a, b) => Math.abs(b.eloChange) - Math.abs(a.eloChange)).slice(0, 3);
+
+  return (
+    <div className="wc-elo-rankings-wrap">
+      {/* KPI summary */}
+      <div className="wc-er-kpis">
+        <div className="wc-er-kpi">
+          <div className="wc-er-kpi-l">Elo 榜首</div>
+          <div className="wc-er-kpi-v">{allTeams[0]?.flag} {allTeams[0]?.cn}</div>
+          <div className="wc-er-kpi-s">{allTeams[0]?.currentElo} · {allTeams[0]?.group}组</div>
+        </div>
+        <div className="wc-er-kpi">
+          <div className="wc-er-kpi-l">最大涨幅</div>
+          <div className="wc-er-kpi-v wc-er-pos">+{Math.max(...allTeams.map(t=>t.eloChange))}</div>
+          <div className="wc-er-kpi-s">{allTeams.find(t=>t.eloChange===Math.max(...allTeams.map(x=>x.eloChange)))?.cn}</div>
+        </div>
+        <div className="wc-er-kpi">
+          <div className="wc-er-kpi-l">最大跌幅</div>
+          <div className="wc-er-kpi-v wc-er-neg">{Math.min(...allTeams.map(t=>t.eloChange))}</div>
+          <div className="wc-er-kpi-s">{allTeams.find(t=>t.eloChange===Math.min(...allTeams.map(x=>x.eloChange)))?.cn}</div>
+        </div>
+        <div className="wc-er-kpi">
+          <div className="wc-er-kpi-l">已出场球队</div>
+          <div className="wc-er-kpi-v">{playedCount}</div>
+          <div className="wc-er-kpi-s">共 48 支 · R1 赛事</div>
+        </div>
+      </div>
+
+      <div className="card wc-card">
+        <div className="card-head">
+          <div>
+            <h3>全队实力排名 <em>Power Rankings</em></h3>
+            <div className="sub">48支球队当前 Elo · eloratings.net 赛前基准 + 已完赛 R1 级联更新</div>
+          </div>
+          <div className="segmented">
+            {[["elo","Elo"],["change","涨跌"],["fifa","FIFA"],["pts","积分"]].map(([k,l]) => (
+              <button key={k} className={sortBy===k?"active":""} onClick={() => setSortBy(k)}>{l}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="wc-er-filters">
+          <button className={`chip ${filter==="all"?"active":""}`} onClick={() => setFilter("all")}>全部 48 队</button>
+          <button className={`chip ${filter==="played"?"active":""}`} onClick={() => setFilter("played")}>已出场 ({playedCount})</button>
+        </div>
+
+        <div className="wc-ert">
+          <div className="wc-ert-head">
+            <span className="wc-ert-rank">#</span>
+            <span className="wc-ert-team">球队 Team</span>
+            <span className="wc-ert-grp">组</span>
+            <span className="wc-ert-elo">Elo 实力</span>
+            <span className="wc-ert-chg">Δ</span>
+            <span className="wc-ert-wdl wc-ert-hide-sm">胜-平-负</span>
+            <span className="wc-ert-pts">分</span>
+            <span className="wc-ert-fifa wc-ert-hide-sm">FIFA</span>
+          </div>
+          {displayed.map((t, i) => {
+            const barPct = Math.round((t.currentElo - minElo) / eloSpan * 76 + 8);
+            const dispRank = sortBy === "elo" ? i + 1 : t.eloRank;
+            const advancing = t.groupRank <= 2 && t.played > 0;
+            return (
+              <div key={t.code} className={`wc-ert-row${t.played ? " played" : ""}${advancing ? " advancing" : ""}`}>
+                <span className="wc-ert-rank">{dispRank}</span>
+                <span className="wc-ert-team">
+                  <span className="wc-ert-flag">{t.flag}</span>
+                  <span className="wc-ert-names">
+                    <span className="wc-ert-cn">{t.cn}</span>
+                    <span className="wc-ert-code">{t.code}</span>
+                  </span>
+                </span>
+                <span className="wc-ert-grp"><span className="wc-ert-grp-badge">{t.group}</span></span>
+                <span className="wc-ert-elo">
+                  <span className="wc-ert-bar"><span className="wc-ert-bar-fill" style={{ width: `${barPct}%` }} /></span>
+                  <span className="wc-ert-num">{t.currentElo}</span>
+                </span>
+                <span className={`wc-ert-chg ${t.eloChange > 0 ? "pos" : t.eloChange < 0 ? "neg" : "flat"}`}>
+                  {t.eloChange === 0 ? "—" : (t.eloChange > 0 ? "+" : "") + t.eloChange}
+                </span>
+                <span className="wc-ert-wdl wc-ert-hide-sm">
+                  {t.played ? `${t.w}-${t.d}-${t.l}` : "—"}
+                </span>
+                <span className="wc-ert-pts">{t.played ? t.pts : "—"}</span>
+                <span className="wc-ert-fifa wc-ert-hide-sm">#{t.fifaRank}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WorldCupView() {
   const WC   = window.KW_WC;
   const DATA = window.KW_WC_DATA;
@@ -2946,6 +3084,7 @@ function WorldCupView() {
     [selectedMatchId, selectedGroup]
   );
 
+  const [wcSubView, setWcSubView]   = useState("group"); // "group" | "rankings"
   const [over25Live, setOver25Live] = useState(null);
   const [btts, setBtts]             = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -3107,6 +3246,16 @@ function WorldCupView() {
 
   return (
     <div className="view wc-view" data-screen-label="worldcup">
+      {/* Sub-tab: group analysis vs global Elo rankings */}
+      <div className="wc-subtabs">
+        <button className={`wc-subtab${wcSubView === "group" ? " sel" : ""}`} onClick={() => setWcSubView("group")}>
+          小组分析 <em>Group</em>
+        </button>
+        <button className={`wc-subtab${wcSubView === "rankings" ? " sel" : ""}`} onClick={() => setWcSubView("rankings")}>
+          ⚡ Elo 排名 <em>Power Rankings</em>
+        </button>
+      </div>
+      {wcSubView === "rankings" ? <WCEloRankings /> : (<>
       {/* ── Group selector + standings + match switcher ── */}
       <WCGroupSelector selectedGroup={selectedGroup} onSelect={handleGroupChange} />
       <WCGroupHeader selectedGroup={selectedGroup} selectedMatchId={selectedMatchId} onSelect={setSelectedMatchId} />
@@ -3392,6 +3541,7 @@ function WorldCupView() {
         <strong>注意</strong> ρ（Dixon-Coles 相关系数）尚未回测校准；BTTS edge 可能是模型偏差而非真实 edge。
         1X2 经市场收缩后 net edge 通常 &lt;1pp，属正常（流动性市场难有免费午餐）。
       </div>
+      </>)}
     </div>
   );
 }
