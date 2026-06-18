@@ -2798,29 +2798,33 @@ function WCGroupSelector({ selectedGroup, onSelect }) {
   );
 }
 
-function WCGroupHeader({ selectedGroup, selectedMatchId, onSelect }) {
+function WCGroupHeader({ selectedGroup, selectedMatchId, onSelect, resultOverrides = {} }) {
   const WC   = window.KW_WC;
   const DATA = window.KW_WC_DATA;
   const grp  = DATA.GROUPS[selectedGroup];
   const teams = DATA.TEAMS;
 
-  // Cascade Elos through completed R1 to get current strengths
+  // Cascade Elos through completed matches, including ESPN-fetched overrides
   const elo0Map = useMemo(() => {
     const m = {};
     for (const c of grp.order) m[c] = teams[c].elo0;
     return m;
   }, [selectedGroup]);
 
-  const completedMatches = grp.matches.filter(mm => mm.result && mm.result.status === "finished");
-  const currentElos = useMemo(() => WC.cascadeElos(elo0Map, completedMatches), [selectedGroup, completedMatches.length]);
+  const patchedMatches = useMemo(() =>
+    grp.matches.map(mm => resultOverrides[mm.id] && !mm.result ? { ...mm, result: resultOverrides[mm.id] } : mm),
+    [selectedGroup, resultOverrides]
+  );
+  const completedMatches = patchedMatches.filter(mm => mm.result && mm.result.status === "finished");
+  const currentElos = useMemo(() => WC.cascadeElos(elo0Map, completedMatches), [selectedGroup, resultOverrides]);
 
-  const standings = useMemo(() => WC.buildStandings(grp.order, grp.matches, currentElos), [selectedGroup, completedMatches.length]);
+  const standings = useMemo(() => WC.buildStandings(grp.order, patchedMatches, currentElos), [selectedGroup, resultOverrides]);
 
   const eloVals = grp.order.map(c => currentElos[c]);
   const eloMin  = Math.min(...eloVals);
   const eloMax  = Math.max(...eloVals);
-  const rounds  = [1, 2, 3].map(r => ({ r, matches: grp.matches.filter(m => m.round === r) }));
-  const selMatch = grp.matches.find(m => m.id === selectedMatchId);
+  const rounds  = [1, 2, 3].map(r => ({ r, matches: patchedMatches.filter(m => m.round === r) }));
+  const selMatch = patchedMatches.find(m => m.id === selectedMatchId);
 
   const eloUpdated = completedMatches.length > 0;
 
@@ -2912,7 +2916,7 @@ function WCGroupHeader({ selectedGroup, selectedMatchId, onSelect }) {
   );
 }
 
-function WCEloRankings() {
+function WCEloRankings({ resultOverrides = {} }) {
   const WC   = window.KW_WC;
   const DATA = window.KW_WC_DATA;
   const [sortBy, setSortBy] = useState("elo");   // elo | change | fifa | pts
@@ -2923,9 +2927,10 @@ function WCEloRankings() {
     for (const [gLetter, grp] of Object.entries(DATA.GROUPS)) {
       const elo0Map = {};
       for (const c of grp.order) elo0Map[c] = DATA.TEAMS[c].elo0;
-      const done = grp.matches.filter(m => m.result && m.result.status === "finished");
+      const patched = grp.matches.map(mm => resultOverrides[mm.id] && !mm.result ? { ...mm, result: resultOverrides[mm.id] } : mm);
+      const done = patched.filter(m => m.result && m.result.status === "finished");
       const curElos = WC.cascadeElos(elo0Map, done);
-      const stRows  = WC.buildStandings(grp.order, grp.matches, curElos);
+      const stRows  = WC.buildStandings(grp.order, patched, curElos);
       const stMap   = {};
       stRows.forEach((r, i) => { stMap[r.code] = { ...r, groupRank: i + 1 }; });
       for (const code of grp.order) {
@@ -2942,7 +2947,7 @@ function WCEloRankings() {
     }
     result.sort((a, b) => b.currentElo - a.currentElo);
     return result.map((t, i) => ({ ...t, eloRank: i + 1 }));
-  }, []);
+  }, [resultOverrides]);
 
   const maxElo = allTeams[0]?.currentElo || 2200;
   const minElo = allTeams[allTeams.length - 1]?.currentElo || 1300;
@@ -3121,6 +3126,14 @@ function WCSeedEditor({ matchId, homeCode, awayCode, homeCn, awayCn, current, on
               onChange={e => setVals(v => ({ ...v, btts: e.target.value }))} />
           </div>
           <div className="wc-se-hint">输入赔率公司的隐含概率（未去水）· 系统会自动去水后校准</div>
+          <div className="wc-se-sources">
+            赔率参考：{" "}
+            <a href="https://www.pinnacle.com/en/soccer/world-cup/matchups/" target="_blank" rel="noreferrer">Pinnacle</a>
+            {" · "}
+            <a href="https://www.oddsportal.com/football/world/world-cup/" target="_blank" rel="noreferrer">OddsPortal</a>
+            {" · "}
+            <a href="https://www.betexplorer.com/football/world/world-cup/" target="_blank" rel="noreferrer">BetExplorer</a>
+          </div>
           <div className="wc-se-actions">
             <button className="wc-se-save" onClick={handleSave}>保存 Save</button>
             {hasSeed && <button className="wc-se-clear" onClick={handleClear}>清除 Clear</button>}
@@ -3132,7 +3145,7 @@ function WCSeedEditor({ matchId, homeCode, awayCode, homeCn, awayCn, current, on
   );
 }
 
-function WorldCupView() {
+function WorldCupView({ resultOverrides = {} }) {
   const WC   = window.KW_WC;
   const DATA = window.KW_WC_DATA;
   const [selectedGroup, setSelectedGroup] = useState("I");
@@ -3146,7 +3159,7 @@ function WorldCupView() {
   };
 
   const matchDef = grp.matches.find(m => m.id === selectedMatchId) || grp.matches[0];
-  const M = useMemo(() => WC.buildGroupMatchConfig(matchDef, selectedGroup), [selectedMatchId, selectedGroup]);
+  const M = useMemo(() => WC.buildGroupMatchConfig(matchDef, selectedGroup, resultOverrides), [selectedMatchId, selectedGroup, resultOverrides]);
 
   // Live simulator state: null=pre-match, {...}=in-play override
   const [live, setLive]           = useState(null);
@@ -3340,13 +3353,24 @@ function WorldCupView() {
   const scorers = scoreData?.scorers || M.result?.scorers || [];
   const maxMin  = scorers.length > 0 ? Math.max(90, ...scorers.map(s => s.min)) : 90;
 
+  const copyTicker = () => navigator.clipboard?.writeText(effectiveM.kalshiTicker).catch(() => {});
   const kBadge = !effectiveM.kalshiTicker
     ? <span className="wc-kbadge warn">📅 暂无 Kalshi 盘口 · 纯模型</span>
     : {
       loading: <span className="wc-kbadge pending">⏳ Kalshi 连接中…</span>,
       live:    <span className="wc-kbadge ok">✓ Kalshi LIVE · {kalshi?.resolvedTicker || effectiveM.kalshiTicker}</span>,
-      seed:    <span className="wc-kbadge warn" title={`未能解析三向盘口（解析到 ${kalshi?.marketCount ?? 0} 个市场）— 使用种子价`}>⚠ 种子市场</span>,
-      error:   <span className="wc-kbadge err">✗ Kalshi 失败 · 用种子价</span>,
+      seed:    <span className="wc-kbadge warn">
+                 ⚠ 种子市场 ·{" "}
+                 <button className="wc-ticker-copy" onClick={copyTicker} title="点击复制 ticker，在 Kalshi 网站验证">
+                   {effectiveM.kalshiTicker}
+                 </button>
+               </span>,
+      error:   <span className="wc-kbadge err">
+                 ✗ Kalshi 失败 ·{" "}
+                 <button className="wc-ticker-copy err" onClick={copyTicker} title="点击复制 ticker 核查">
+                   {effectiveM.kalshiTicker}
+                 </button>
+               </span>,
     }[kStatus];
 
   return (
@@ -3360,10 +3384,10 @@ function WorldCupView() {
           ⚡ Elo 排名 <em>Power Rankings</em>
         </button>
       </div>
-      {wcSubView === "rankings" ? <WCEloRankings /> : (<>
+      {wcSubView === "rankings" ? <WCEloRankings resultOverrides={resultOverrides} /> : (<>
       {/* ── Group selector + standings + match switcher ── */}
       <WCGroupSelector selectedGroup={selectedGroup} onSelect={handleGroupChange} />
-      <WCGroupHeader selectedGroup={selectedGroup} selectedMatchId={selectedMatchId} onSelect={setSelectedMatchId} />
+      <WCGroupHeader selectedGroup={selectedGroup} selectedMatchId={selectedMatchId} onSelect={setSelectedMatchId} resultOverrides={resultOverrides} />
       {/* ── Match hero ── */}
       <div className="wc-hero">
         <div className="wc-hero-top">
@@ -3663,6 +3687,53 @@ function WorldCupView() {
   );
 }
 
+// ── ESPN result matching helpers ─────────────────────────────
+const ESPN_TEAM_ALIASES = {
+  COD: ["dr congo","congo dr","democratic republic of congo","congo, dr"],
+  KOR: ["korea republic","south korea","korea, republic of"],
+  USA: ["united states","usa","united states of america"],
+  CPV: ["cabo verde"],
+  CIV: ["côte d'ivoire","cote d'ivoire","ivory coast"],
+  BIH: ["bosnia","bosnia and herzegovina","bosnia-herzegovina"],
+  KSA: ["saudi arabia"],
+  NZL: ["new zealand"],
+  SCO: ["scotland"],
+  HAI: ["haiti"],
+  CUW: ["curaçao","curacao"],
+};
+function matchESPNTeam(displayName) {
+  if (!window.KW_WC_DATA) return null;
+  const dn = displayName.toLowerCase().trim();
+  for (const [code, team] of Object.entries(window.KW_WC_DATA.TEAMS)) {
+    if (team.name.toLowerCase() === dn) return code;
+    const aliases = ESPN_TEAM_ALIASES[code] || [];
+    if (aliases.some(a => dn === a || dn.startsWith(a.slice(0, 4)))) return code;
+    // Prefix heuristic: first 4 chars
+    if (dn.startsWith(team.name.toLowerCase().slice(0, 4)) && team.name.length >= 4) return code;
+  }
+  return null;
+}
+function buildWcResultOverrides(espnResults, groups) {
+  const overrides = {};
+  for (const r of espnResults) {
+    const hCode = matchESPNTeam(r.homeName);
+    const aCode = matchESPNTeam(r.awayName);
+    if (!hCode || !aCode || hCode === aCode) continue;
+    for (const grp of Object.values(groups)) {
+      for (const mm of grp.matches) {
+        if (mm.result) continue; // never overwrite manually seeded results
+        if (mm.homeCode === hCode && mm.awayCode === aCode) {
+          overrides[mm.id] = { status:"finished", homeScore:r.homeScore, awayScore:r.awayScore };
+        } else if (mm.homeCode === aCode && mm.awayCode === hCode) {
+          // ESPN home/away may be swapped vs. FIFA draw order
+          overrides[mm.id] = { status:"finished", homeScore:r.awayScore, awayScore:r.homeScore };
+        }
+      }
+    }
+  }
+  return overrides;
+}
+
 function App() {
   const [tab, setTab] = useState(TWEAK_DEFAULTS.tab);
   const [theme, setTheme] = useState(TWEAK_DEFAULTS.theme);
@@ -3673,6 +3744,20 @@ function App() {
   const [lastRefresh, setLastRefresh] = useState(null);
   const [kalshiStatus, setKalshiStatus] = useState(null);
   const [refreshCadence, setRefreshCadence] = useState("30s"); // lifted from SettingsDrawer
+
+  // Auto-fetch completed WC match results from ESPN (R2/R3 auto-population)
+  const [wcResultOverrides, setWcResultOverrides] = useState({});
+  useEffect(() => {
+    if (!window.KW_WC_DATA) return;
+    fetch("/api/wc-results")
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ok || !d.results?.length) return;
+        const overrides = buildWcResultOverrides(d.results, window.KW_WC_DATA.GROUPS);
+        if (Object.keys(overrides).length > 0) setWcResultOverrides(overrides);
+      })
+      .catch(() => {});
+  }, []);
 
   // Check Kalshi credential status once on mount
   useEffect(() => {
@@ -3809,7 +3894,7 @@ function App() {
         refreshCadence={refreshCadence}
       />
       {tab === "worldcup" ? (
-        <WorldCupView />
+        <WorldCupView resultOverrides={wcResultOverrides} />
       ) : tab === "markets" ? (
         <MarketsView openAnalysis={openAnalysis} bjtDec={bjtDec} liveData={liveData} />
       ) : (

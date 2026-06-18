@@ -665,47 +665,57 @@ window.KW_WC = (function () {
   // Build a MATCH-compatible config from KW_WC_DATA for any group/match.
   // preMatchElos: cascade Elos through all R1..R(round-1) completed matches.
   // currentElos:  cascade through all completed matches (for upcoming match analysis).
-  function buildGroupMatchConfig(matchDef, groupLetter) {
+  // resultOverrides: { [matchId]: { status, homeScore, awayScore } } — injected from ESPN fetch.
+  function buildGroupMatchConfig(matchDef, groupLetter, resultOverrides) {
     const DATA = window.KW_WC_DATA;
     if (!DATA) return null;
     const grp   = DATA.GROUPS[groupLetter];
     const teams  = DATA.TEAMS;
+    const ovr = resultOverrides || {};
+
+    // Patch group matches with live result overrides (only fills gaps — never overwrites seeded data)
+    const groupMatches = grp.matches.map(mm =>
+      ovr[mm.id] && !mm.result ? { ...mm, result: ovr[mm.id] } : mm
+    );
+    const effectiveDef = ovr[matchDef.id] && !matchDef.result
+      ? { ...matchDef, result: ovr[matchDef.id] }
+      : matchDef;
 
     // Cascade Elos through matches completed BEFORE this match (for pre-match Elo).
     const elo0Map = {};
     for (const c of grp.order) elo0Map[c] = teams[c].elo0;
 
-    const doneBeforeThis = grp.matches.filter(mm =>
-      mm.result && mm.result.status === "finished" && mm.id !== matchDef.id
+    const doneBeforeThis = groupMatches.filter(mm =>
+      mm.result && mm.result.status === "finished" && mm.id !== effectiveDef.id
     );
     const preMatchElos = cascadeElos(elo0Map, doneBeforeThis);
 
     // Current Elos: cascade through ALL completed matches (incl. this one if done).
-    const allDone = grp.matches.filter(mm => mm.result && mm.result.status === "finished");
+    const allDone = groupMatches.filter(mm => mm.result && mm.result.status === "finished");
     const currentElos = cascadeElos(elo0Map, allDone);
 
-    const homeElo = matchDef.result ? preMatchElos[matchDef.homeCode] : currentElos[matchDef.homeCode];
-    const awayElo = matchDef.result ? preMatchElos[matchDef.awayCode] : currentElos[matchDef.awayCode];
+    const homeElo = effectiveDef.result ? preMatchElos[effectiveDef.homeCode] : currentElos[effectiveDef.homeCode];
+    const awayElo = effectiveDef.result ? preMatchElos[effectiveDef.awayCode] : currentElos[effectiveDef.awayCode];
 
-    const guessed = guessKalshiTicker(matchDef);
+    const guessed = guessKalshiTicker(effectiveDef);
 
     return {
-      id:          matchDef.id,
+      id:          effectiveDef.id,
       competition: `FIFA World Cup 2026 · 第 ${groupLetter} 组`,
-      venue:       matchDef.venue,
+      venue:       effectiveDef.venue,
       neutral:     true,
-      koUTC:       matchDef.koUTC,
-      koBJT:       matchDef.koBJT,
-      eloAsOf:     matchDef.result ? "pre-match" : "2026-06-17",
-      home:        { ...teams[matchDef.homeCode], elo: homeElo },
-      away:        { ...teams[matchDef.awayCode], elo: awayElo },
+      koUTC:       effectiveDef.koUTC,
+      koBJT:       effectiveDef.koBJT,
+      eloAsOf:     effectiveDef.result ? "pre-match" : "2026-06-17",
+      home:        { ...teams[effectiveDef.homeCode], elo: homeElo },
+      away:        { ...teams[effectiveDef.awayCode], elo: awayElo },
       params:      { c: 300, muTotal: 2.71, rho: 0.04, homeAdv: 0 },
       odds:        null,
-      market:      matchDef.seedMarket || { home:null, draw:null, away:null, over25:null, btts:null },
-      kalshiTicker:      matchDef.kalshiTicker      || guessed.kalshiTicker,
-      kalshiTotalTicker: matchDef.kalshiTotalTicker || guessed.kalshiTotalTicker,
-      kalshiBttsTicker:  matchDef.kalshiBttsTicker  || guessed.kalshiBttsTicker,
-      result:      matchDef.result || null,
+      market:      effectiveDef.seedMarket || { home:null, draw:null, away:null, over25:null, btts:null },
+      kalshiTicker:      effectiveDef.kalshiTicker      || guessed.kalshiTicker,
+      kalshiTotalTicker: effectiveDef.kalshiTotalTicker || guessed.kalshiTotalTicker,
+      kalshiBttsTicker:  effectiveDef.kalshiBttsTicker  || guessed.kalshiBttsTicker,
+      result:      effectiveDef.result || null,
       // expose for standings display
       currentElos, groupLetter,
     };

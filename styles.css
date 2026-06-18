@@ -4026,6 +4026,21 @@ input { font-family: inherit; }
   padding: 6px 14px; border-radius: 7px; border: 1px solid var(--border-strong);
   background: transparent; color: var(--ink-2); font-size: 13px; cursor: pointer;
 }
+.wc-se-sources {
+  font-size: 11px; color: var(--ink-3); margin-top: 6px;
+}
+.wc-se-sources a { color: var(--accent-ink); text-decoration: none; }
+.wc-se-sources a:hover { text-decoration: underline; }
+
+/* Kalshi ticker inline copy button */
+.wc-ticker-copy {
+  display: inline; padding: 1px 6px; border-radius: 4px;
+  border: 1px solid currentColor; background: transparent; cursor: pointer;
+  font-family: var(--mono); font-size: 10.5px; color: inherit;
+  opacity: .85; transition: opacity .15s;
+}
+.wc-ticker-copy:hover { opacity: 1; background: rgba(0,0,0,.07); }
+.wc-ticker-copy.err { color: var(--neg); }
 
 /* ── Group A-L selector ──────────────────────────────────── */
 .wc-grp-sel {
