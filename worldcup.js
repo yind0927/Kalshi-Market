@@ -646,6 +646,22 @@ window.KW_WC = (function () {
     });
   }
 
+  // Auto-generate Kalshi ticker names from KO date + team codes.
+  // These follow the observed pattern: KXWCGAME-26JUN17PORCOD
+  function guessKalshiTicker(matchDef) {
+    if (!matchDef.koUTC) return {};
+    const d = new Date(matchDef.koUTC);
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    const mon = MONTHS[d.getUTCMonth()];
+    const base = `26${mon}${dd}${matchDef.homeCode}${matchDef.awayCode}`;
+    return {
+      kalshiTicker:      `KXWCGAME-${base}`,
+      kalshiTotalTicker: `KXWCTOTAL-${base}`,
+      kalshiBttsTicker:  `KXWCBTTS-${base}`,
+    };
+  }
+
   // Build a MATCH-compatible config from KW_WC_DATA for any group/match.
   // preMatchElos: cascade Elos through all R1..R(round-1) completed matches.
   // currentElos:  cascade through all completed matches (for upcoming match analysis).
@@ -671,6 +687,8 @@ window.KW_WC = (function () {
     const homeElo = matchDef.result ? preMatchElos[matchDef.homeCode] : currentElos[matchDef.homeCode];
     const awayElo = matchDef.result ? preMatchElos[matchDef.awayCode] : currentElos[matchDef.awayCode];
 
+    const guessed = guessKalshiTicker(matchDef);
+
     return {
       id:          matchDef.id,
       competition: `FIFA World Cup 2026 · 第 ${groupLetter} 组`,
@@ -684,9 +702,9 @@ window.KW_WC = (function () {
       params:      { c: 300, muTotal: 2.71, rho: 0.04, homeAdv: 0 },
       odds:        null,
       market:      matchDef.seedMarket || { home:null, draw:null, away:null, over25:null, btts:null },
-      kalshiTicker:      matchDef.kalshiTicker      || null,
-      kalshiTotalTicker: matchDef.kalshiTotalTicker || null,
-      kalshiBttsTicker:  matchDef.kalshiBttsTicker  || null,
+      kalshiTicker:      matchDef.kalshiTicker      || guessed.kalshiTicker,
+      kalshiTotalTicker: matchDef.kalshiTotalTicker || guessed.kalshiTotalTicker,
+      kalshiBttsTicker:  matchDef.kalshiBttsTicker  || guessed.kalshiBttsTicker,
       result:      matchDef.result || null,
       // expose for standings display
       currentElos, groupLetter,
@@ -698,6 +716,6 @@ window.KW_WC = (function () {
     americanToProb, devig, devig3way, impliedC, impliedMu, calibrate, shrinkToMarket,
     fetchKalshiMatch, fetchKalshiTotal, fetchKalshiYesNo, fetchLiveScore,
     MATCH, BACKTEST, GROUP_I, buildMatchConfig,
-    cascadeElos, buildStandings, buildGroupMatchConfig,
+    cascadeElos, buildStandings, buildGroupMatchConfig, guessKalshiTicker,
   };
 })();

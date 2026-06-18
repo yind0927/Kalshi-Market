@@ -3050,6 +3050,88 @@ function WCEloRankings() {
   );
 }
 
+// Seed market editor — lets the user enter bookmaker odds for any match so
+// every game gets the same full-model treatment as FRA-SEN.
+function WCSeedEditor({ matchId, homeCode, awayCode, homeCn, awayCn, current, onSave, onClear }) {
+  const [open, setOpen] = useState(false);
+  const [vals, setVals] = useState({
+    home:   current.home  != null ? (current.home  * 100).toFixed(1) : "",
+    draw:   current.draw  != null ? (current.draw  * 100).toFixed(1) : "",
+    away:   current.away  != null ? (current.away  * 100).toFixed(1) : "",
+    over25: current.over25 != null ? (current.over25 * 100).toFixed(1) : "",
+    btts:   current.btts   != null ? (current.btts   * 100).toFixed(1) : "",
+  });
+
+  const hasSeed = current.home != null || current.over25 != null;
+
+  const parseP = v => { const n = parseFloat(v); return isFinite(n) && n > 0 && n < 100 ? n / 100 : null; };
+
+  const handleSave = () => {
+    const p = {
+      home:   parseP(vals.home),
+      draw:   parseP(vals.draw),
+      away:   parseP(vals.away),
+      over25: parseP(vals.over25),
+      btts:   parseP(vals.btts),
+    };
+    if (p.home == null || p.draw == null || p.away == null) return alert("请输入有效的胜/平/负概率 (1–99%)");
+    onSave(p);
+    setOpen(false);
+  };
+
+  const handleClear = () => {
+    onClear();
+    setVals({ home: "", draw: "", away: "", over25: "", btts: "" });
+    setOpen(false);
+  };
+
+  return (
+    <div className="wc-seed-editor">
+      <button className={`wc-se-toggle${hasSeed ? " has-seed" : ""}`} onClick={() => setOpen(o => !o)}>
+        {hasSeed ? "✏ 编辑种子盘口" : "＋ 输入种子盘口"} <em>Seed Market</em>
+        {hasSeed && <span className="wc-se-dot" />}
+      </button>
+      {open && (
+        <div className="wc-se-panel">
+          <div className="wc-se-title">输入真实赔率（%概率）· 用于校准模型</div>
+          <div className="wc-se-grid">
+            <label className="wc-se-label">{homeCn}胜 Home</label>
+            <input className="wc-se-inp" type="number" min="1" max="99" step="0.1"
+              placeholder="e.g. 55.0" value={vals.home}
+              onChange={e => setVals(v => ({ ...v, home: e.target.value }))} />
+
+            <label className="wc-se-label">平局 Draw</label>
+            <input className="wc-se-inp" type="number" min="1" max="99" step="0.1"
+              placeholder="e.g. 25.0" value={vals.draw}
+              onChange={e => setVals(v => ({ ...v, draw: e.target.value }))} />
+
+            <label className="wc-se-label">{awayCn}胜 Away</label>
+            <input className="wc-se-inp" type="number" min="1" max="99" step="0.1"
+              placeholder="e.g. 20.0" value={vals.away}
+              onChange={e => setVals(v => ({ ...v, away: e.target.value }))} />
+
+            <label className="wc-se-label">Over 2.5 总球</label>
+            <input className="wc-se-inp" type="number" min="1" max="99" step="0.1"
+              placeholder="e.g. 55.0" value={vals.over25}
+              onChange={e => setVals(v => ({ ...v, over25: e.target.value }))} />
+
+            <label className="wc-se-label">BTTS 双进</label>
+            <input className="wc-se-inp" type="number" min="1" max="99" step="0.1"
+              placeholder="e.g. 50.0" value={vals.btts}
+              onChange={e => setVals(v => ({ ...v, btts: e.target.value }))} />
+          </div>
+          <div className="wc-se-hint">输入赔率公司的隐含概率（未去水）· 系统会自动去水后校准</div>
+          <div className="wc-se-actions">
+            <button className="wc-se-save" onClick={handleSave}>保存 Save</button>
+            {hasSeed && <button className="wc-se-clear" onClick={handleClear}>清除 Clear</button>}
+            <button className="wc-se-cancel" onClick={() => setOpen(false)}>取消</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorldCupView() {
   const WC   = window.KW_WC;
   const DATA = window.KW_WC_DATA;
@@ -3086,6 +3168,29 @@ function WorldCupView() {
 
   const [wcSubView, setWcSubView]   = useState("group"); // "group" | "rankings"
   const [over25Live, setOver25Live] = useState(null);
+
+  // localStorage-backed seed market overrides: { [matchId]: { home, draw, away, over25, btts } }
+  const [seedOverrides, setSeedOverrides] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("wc_seed_overrides") || "{}"); } catch { return {}; }
+  });
+  const saveSeedOverride = (id, market) => {
+    const next = { ...seedOverrides, [id]: market };
+    setSeedOverrides(next);
+    try { localStorage.setItem("wc_seed_overrides", JSON.stringify(next)); } catch {}
+  };
+  const clearSeedOverride = (id) => {
+    const next = { ...seedOverrides };
+    delete next[id];
+    setSeedOverrides(next);
+    try { localStorage.setItem("wc_seed_overrides", JSON.stringify(next)); } catch {}
+  };
+
+  // Merge user-entered overrides into the match config's market
+  const effectiveM = useMemo(() => {
+    const ov = seedOverrides[M.id];
+    if (!ov) return M;
+    return { ...M, market: { ...M.market, ...ov } };
+  }, [M, seedOverrides]);
   const [btts, setBtts]             = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
 
@@ -3165,15 +3270,15 @@ function WorldCupView() {
 
   // ① De-vigged market (live Kalshi if resolved, else the seeded de-vig)
   const market = useMemo(() => {
-    if (kStatus === "live" && kalshi && M.kalshiTicker) {
+    if (kStatus === "live" && kalshi && effectiveM.kalshiTicker) {
       const draw = kalshi.draw != null ? kalshi.draw : Math.max(0, 1 - kalshi.home - kalshi.away);
       return WC.devig3way(kalshi.home, draw, kalshi.away);
     }
-    return WC.devig3way(M.market.home, M.market.draw, M.market.away);
-  }, [kStatus, kalshi, selectedMatchId, selectedGroup]);
+    return WC.devig3way(effectiveM.market.home, effectiveM.market.draw, effectiveM.market.away);
+  }, [kStatus, kalshi, selectedMatchId, selectedGroup, effectiveM]);
 
   // Over-2.5: live KXWCTOTAL if resolved, else seed
-  const over25Mkt = over25Live != null ? over25Live : M.market.over25;
+  const over25Mkt = over25Live != null ? over25Live : effectiveM.market.over25;
   const muIsLive  = over25Live != null;
 
   const params = useMemo(
@@ -3198,7 +3303,7 @@ function WorldCupView() {
   // seed mids only (no spread → net edge falls back to model−mid).
   const quotes = (kStatus === "live" && kalshi?.quotes && M.kalshiTicker)
     ? kalshi.quotes
-    : { home: { mid: M.market.home }, draw: { mid: M.market.draw }, away: { mid: M.market.away } };
+    : { home: { mid: effectiveM.market.home }, draw: { mid: effectiveM.market.draw }, away: { mid: effectiveM.market.away } };
 
   const liveModel = useMemo(
     () => live ? WC.buildLiveModel({ ...params, ...live }) : null,
@@ -3235,11 +3340,11 @@ function WorldCupView() {
   const scorers = scoreData?.scorers || M.result?.scorers || [];
   const maxMin  = scorers.length > 0 ? Math.max(90, ...scorers.map(s => s.min)) : 90;
 
-  const kBadge = !M.kalshiTicker
+  const kBadge = !effectiveM.kalshiTicker
     ? <span className="wc-kbadge warn">📅 暂无 Kalshi 盘口 · 纯模型</span>
     : {
       loading: <span className="wc-kbadge pending">⏳ Kalshi 连接中…</span>,
-      live:    <span className="wc-kbadge ok">✓ Kalshi LIVE · {kalshi?.resolvedTicker || M.kalshiTicker}</span>,
+      live:    <span className="wc-kbadge ok">✓ Kalshi LIVE · {kalshi?.resolvedTicker || effectiveM.kalshiTicker}</span>,
       seed:    <span className="wc-kbadge warn" title={`未能解析三向盘口（解析到 ${kalshi?.marketCount ?? 0} 个市场）— 使用种子价`}>⚠ 种子市场</span>,
       error:   <span className="wc-kbadge err">✗ Kalshi 失败 · 用种子价</span>,
     }[kStatus];
@@ -3358,6 +3463,18 @@ function WorldCupView() {
           </span>
         </div>
       </div>
+
+      {/* ── Seed market editor (shown when Kalshi not live or user wants to override) ── */}
+      <WCSeedEditor
+        matchId={M.id}
+        homeCode={M.home.code}
+        awayCode={M.away.code}
+        homeCn={M.home.cn}
+        awayCn={M.away.cn}
+        current={effectiveM.market}
+        onSave={p => saveSeedOverride(M.id, p)}
+        onClear={() => clearSeedOverride(M.id)}
+      />
 
       {/* ── 1X2 distribution vs market ── */}
       <div className="card wc-card">
