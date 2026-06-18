@@ -3057,7 +3057,7 @@ function WCEloRankings({ resultOverrides = {} }) {
 
 // Seed market editor — lets the user enter bookmaker odds for any match so
 // every game gets the same full-model treatment as FRA-SEN.
-function WCSeedEditor({ matchId, homeCode, awayCode, homeCn, awayCn, current, onSave, onClear }) {
+function WCSeedEditor({ matchId, homeCode, awayCode, homeCn, awayCn, current, onSave, onClear, pinnacleOdds = null }) {
   const [open, setOpen] = useState(false);
   const [vals, setVals] = useState({
     home:   current.home  != null ? (current.home  * 100).toFixed(1) : "",
@@ -3066,6 +3066,17 @@ function WCSeedEditor({ matchId, homeCode, awayCode, homeCn, awayCn, current, on
     over25: current.over25 != null ? (current.over25 * 100).toFixed(1) : "",
     btts:   current.btts   != null ? (current.btts   * 100).toFixed(1) : "",
   });
+
+  const applyPinnacle = () => {
+    if (!pinnacleOdds) return;
+    setVals(v => ({
+      home:   pinnacleOdds.home  != null ? (pinnacleOdds.home  * 100).toFixed(1) : v.home,
+      draw:   pinnacleOdds.draw  != null ? (pinnacleOdds.draw  * 100).toFixed(1) : v.draw,
+      away:   pinnacleOdds.away  != null ? (pinnacleOdds.away  * 100).toFixed(1) : v.away,
+      over25: pinnacleOdds.over25 != null ? (pinnacleOdds.over25 * 100).toFixed(1) : v.over25,
+      btts:   v.btts,
+    }));
+  };
 
   const hasSeed = current.home != null || current.over25 != null;
 
@@ -3099,6 +3110,11 @@ function WCSeedEditor({ matchId, homeCode, awayCode, homeCn, awayCn, current, on
       {open && (
         <div className="wc-se-panel">
           <div className="wc-se-title">输入真实赔率（%概率）· 用于校准模型</div>
+          {pinnacleOdds && (
+            <button className="wc-se-pinnacle" onClick={applyPinnacle}>
+              📡 Pinnacle 自动填入 — {homeCn} {(pinnacleOdds.home * 100).toFixed(1)}% · 平 {pinnacleOdds.draw != null ? (pinnacleOdds.draw * 100).toFixed(1) + "%" : "—"} · {awayCn} {(pinnacleOdds.away * 100).toFixed(1)}%
+            </button>
+          )}
           <div className="wc-se-grid">
             <label className="wc-se-label">{homeCn}胜 Home</label>
             <input className="wc-se-inp" type="number" min="1" max="99" step="0.1"
@@ -3181,6 +3197,15 @@ function WorldCupView({ resultOverrides = {} }) {
 
   const [wcSubView, setWcSubView]   = useState("group"); // "group" | "rankings"
   const [over25Live, setOver25Live] = useState(null);
+
+  // Pinnacle odds (fetched once on mount, applied per-match)
+  const [pinnacleOdds, setPinnacleOdds] = useState(null);
+  useEffect(() => {
+    fetch("/api/match-odds")
+      .then(r => r.json())
+      .then(d => { if (d.ok && d.matches?.length) setPinnacleOdds(buildPinnacleOdds(d.matches)); })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // localStorage-backed seed market overrides: { [matchId]: { home, draw, away, over25, btts } }
   const [seedOverrides, setSeedOverrides] = useState(() => {
@@ -3349,6 +3374,12 @@ function WorldCupView({ resultOverrides = {} }) {
   const isFinished  = matchStatus === "finished";
   const isPrematch  = !scoreData || matchStatus === "prematch" || matchStatus === "unavailable";
 
+  // Hide trading interface for definitively finished matches; show retrospective analysis only
+  const showFinishedView = M.result?.status === "finished" || isFinished;
+
+  // Current match's Pinnacle odds (keyed by homeCode_awayCode)
+  const currentPinnacleOdds = pinnacleOdds?.[`${M.home.code}_${M.away.code}`] || null;
+
   // Goal markers for the minute slider
   const scorers = scoreData?.scorers || M.result?.scorers || [];
   const maxMin  = scorers.length > 0 ? Math.max(90, ...scorers.map(s => s.min)) : 90;
@@ -3472,33 +3503,54 @@ function WorldCupView({ resultOverrides = {} }) {
       />
 
       {/* ── ① Kalshi status + shrink ── */}
-      <div className="wc-calib">
-        <div className="wc-calib-row1">
-          {kBadge}
-          {lastRefresh && <span className="wc-refresh">↻ {lastRefresh.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · 30s</span>}
+      {!showFinishedView && (
+        <div className="wc-calib">
+          <div className="wc-calib-row1">
+            {kBadge}
+            {lastRefresh && <span className="wc-refresh">↻ {lastRefresh.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · 30s</span>}
+          </div>
+          <div className="wc-calib-shrink">
+            <span className="wc-calib-l">市场收缩</span>
+            <input type="range" min="0" max="100" value={Math.round(shrink * 100)}
+              onChange={e => setShrink(+e.target.value / 100)} />
+            <span className="wc-calib-v">{Math.round(shrink * 100)}%</span>
+            <span className="wc-calib-hint">
+              {shrink === 0 ? "纯模型" : shrink >= 0.99 ? "纯市场" : "混合"}
+            </span>
+          </div>
         </div>
-        <div className="wc-calib-shrink">
-          <span className="wc-calib-l">市场收缩</span>
-          <input type="range" min="0" max="100" value={Math.round(shrink * 100)}
-            onChange={e => setShrink(+e.target.value / 100)} />
-          <span className="wc-calib-v">{Math.round(shrink * 100)}%</span>
-          <span className="wc-calib-hint">
-            {shrink === 0 ? "纯模型" : shrink >= 0.99 ? "纯市场" : "混合"}
-          </span>
-        </div>
-      </div>
+      )}
 
-      {/* ── Seed market editor (shown when Kalshi not live or user wants to override) ── */}
-      <WCSeedEditor
-        matchId={M.id}
-        homeCode={M.home.code}
-        awayCode={M.away.code}
-        homeCn={M.home.cn}
-        awayCn={M.away.cn}
-        current={effectiveM.market}
-        onSave={p => saveSeedOverride(M.id, p)}
-        onClear={() => clearSeedOverride(M.id)}
-      />
+      {/* ── Pinnacle odds quick-apply (upcoming matches only) ── */}
+      {!showFinishedView && currentPinnacleOdds && (
+        <div className="wc-pinnacle-bar">
+          <span className="wc-pin-label">📡 Pinnacle</span>
+          <span className="wc-pin-vals">
+            {M.home.cn} {(currentPinnacleOdds.home * 100).toFixed(1)}%
+            {" · "}平 {currentPinnacleOdds.draw != null ? (currentPinnacleOdds.draw * 100).toFixed(1) + "%" : "—"}
+            {" · "}{M.away.cn} {(currentPinnacleOdds.away * 100).toFixed(1)}%
+            {currentPinnacleOdds.over25 != null && ` · 大球 ${(currentPinnacleOdds.over25 * 100).toFixed(1)}%`}
+          </span>
+          <button className="wc-pin-apply" onClick={() => saveSeedOverride(M.id, currentPinnacleOdds)}>
+            填入 Apply
+          </button>
+        </div>
+      )}
+
+      {/* ── Seed market editor (upcoming + live only) ── */}
+      {!showFinishedView && (
+        <WCSeedEditor
+          matchId={M.id}
+          homeCode={M.home.code}
+          awayCode={M.away.code}
+          homeCn={M.home.cn}
+          awayCn={M.away.cn}
+          current={effectiveM.market}
+          onSave={p => saveSeedOverride(M.id, p)}
+          onClear={() => clearSeedOverride(M.id)}
+          pinnacleOdds={currentPinnacleOdds}
+        />
+      )}
 
       {/* ── 1X2 distribution vs market ── */}
       <div className="card wc-card">
@@ -3585,8 +3637,8 @@ function WorldCupView({ resultOverrides = {} }) {
         </div>
       </div>
 
-      {/* ── LIVE in-play simulator — the max-so-far FLOOR analogue ── */}
-      <div className="card wc-card wc-live-card">
+      {/* ── LIVE in-play simulator (hidden for finished matches) ── */}
+      {!showFinishedView && <div className="card wc-card wc-live-card">
         <div className="wc-live-head">
           <div className="wc-live-head-top">
             <h3 className="wc-live-title">🔴 比赛模拟 <em>Live</em></h3>
@@ -3674,7 +3726,7 @@ function WorldCupView({ resultOverrides = {} }) {
             市场若未及时重定价 → 与此模型的差即为近乎无风险 Edge
           </div>
         )}
-      </div>
+      </div>}
 
       <WCBacktestCard />
 
@@ -3732,6 +3784,42 @@ function buildWcResultOverrides(espnResults, groups) {
     }
   }
   return overrides;
+}
+
+// ── The Odds API (Pinnacle) team name matching ──────────────
+const ODDS_API_ALIASES = {
+  COD: ["dr congo","congo dr","democratic republic of congo","congo, dr","dr. congo"],
+  KOR: ["south korea","korea republic","korea, republic of","republic of korea"],
+  USA: ["united states","usa","united states of america"],
+  CPV: ["cape verde","cabo verde"],
+  CIV: ["ivory coast","cote d'ivoire","côte d'ivoire","cote divoire"],
+  BIH: ["bosnia & herzegovina","bosnia and herzegovina","bosnia-herzegovina"],
+  CUW: ["curaçao","curacao"],
+  KSA: ["saudi arabia"],
+  NZL: ["new zealand"],
+  SCO: ["scotland"],
+  HAI: ["haiti"],
+};
+function matchOddsTeam(name) {
+  if (!window.KW_WC_DATA) return null;
+  const dn = name.toLowerCase().trim();
+  for (const [code, team] of Object.entries(window.KW_WC_DATA.TEAMS)) {
+    if (team.name.toLowerCase() === dn) return code;
+    const aliases = ODDS_API_ALIASES[code] || [];
+    if (aliases.some(a => dn === a || dn.startsWith(a.slice(0, 4)))) return code;
+    if (dn.startsWith(team.name.toLowerCase().slice(0, 4)) && team.name.length >= 4) return code;
+  }
+  return null;
+}
+function buildPinnacleOdds(matches) {
+  const map = {};
+  for (const m of matches) {
+    const hCode = matchOddsTeam(m.homeTeam);
+    const aCode = matchOddsTeam(m.awayTeam);
+    if (!hCode || !aCode || hCode === aCode) continue;
+    map[`${hCode}_${aCode}`] = { home: m.home, draw: m.draw, away: m.away, over25: m.over25 };
+  }
+  return map;
 }
 
 function App() {
