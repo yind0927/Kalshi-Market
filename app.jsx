@@ -3161,12 +3161,34 @@ function WCSeedEditor({ matchId, homeCode, awayCode, homeCn, awayCn, current, on
   );
 }
 
+// Find the group + match closest to now: prefer nearest future KO, else most recent past.
+function findDefaultGroupAndMatch(resultOverrides = {}) {
+  const DATA = window.KW_WC_DATA;
+  if (!DATA) return { group: "A", matchId: null };
+  const now = Date.now();
+  let bestGroup = "A", bestMatchId = null, bestScore = Infinity;
+  for (const [g, grp] of Object.entries(DATA.GROUPS)) {
+    for (const mm of grp.matches) {
+      const ts   = new Date(mm.koUTC).getTime();
+      const done = mm.result?.status === "finished" || resultOverrides[mm.id]?.status === "finished";
+      const diff = ts - now;
+      // upcoming: raw diff (small = sooner); past: huge offset so past always ranks lower
+      const score = !done && diff > -90 * 60 * 1000 ? Math.max(0, diff) : 2e15 + Math.abs(diff);
+      if (score < bestScore) { bestScore = score; bestGroup = g; bestMatchId = mm.id; }
+    }
+  }
+  return { group: bestGroup, matchId: bestMatchId };
+}
+
 function WorldCupView({ resultOverrides = {} }) {
   const WC   = window.KW_WC;
   const DATA = window.KW_WC_DATA;
-  const [selectedGroup, setSelectedGroup] = useState("I");
+  const [selectedGroup, setSelectedGroup] = useState(() => findDefaultGroupAndMatch(resultOverrides).group);
   const grp = DATA.GROUPS[selectedGroup];
-  const [selectedMatchId, setSelectedMatchId] = useState(grp.matches[0].id);
+  const [selectedMatchId, setSelectedMatchId] = useState(() => {
+    const def = findDefaultGroupAndMatch(resultOverrides);
+    return def.matchId || DATA.GROUPS[def.group].matches[0].id;
+  });
 
   // When group changes, default to first match of new group
   const handleGroupChange = (g) => {
