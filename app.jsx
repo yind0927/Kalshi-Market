@@ -3024,7 +3024,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
       // SSE streaming reader
       const reader = r.body.getReader();
       const dec = new TextDecoder();
-      let buf = "", accumulated = "";
+      let buf = "", accumulated = "", done_ = false;
       outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -3035,7 +3035,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           if (!line.startsWith("data: ")) continue;
           const payload = line.slice(6);
           if (payload === "[DONE]") {
-            setAiLoading(false);
+            done_ = true;
             setQaList([]);
             try {
               localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ text: accumulated, phase, ts: Date.now() }));
@@ -3047,10 +3047,19 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           }
           try {
             const ev = JSON.parse(payload);
-            if (ev.error) { setAiError(ev.error); setAiLoading(false); break outer; }
+            if (ev.error) { setAiError(ev.error); done_ = true; break outer; }
             if (ev.t) { accumulated += ev.t; setAiText(accumulated); }
           } catch {}
         }
+      }
+      // Stream ended before [DONE] (timeout/network cut) — save whatever arrived
+      if (!done_ && accumulated) {
+        try {
+          localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ text: accumulated, phase, ts: Date.now() }));
+          localStorage.removeItem(`wc_ai_qa_${M.id}`);
+        } catch {}
+        const analyses = session?.analyses || [];
+        saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: accumulated }] });
       }
     } catch (e) { setAiError("分析请求失败，请重试"); }
     setAiLoading(false);
