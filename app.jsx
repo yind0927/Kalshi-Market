@@ -2955,9 +2955,10 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   const [capVal, setCapVal] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiText, setAiText] = useState(null);
-  const [aiScenario, setAiScenario] = useState(null);
   const [aiError, setAiError] = useState(null);
-  const [aiScenError, setAiScenError] = useState(null);
+  const [aiLiveLoading, setAiLiveLoading] = useState(false);
+  const [aiLive, setAiLive] = useState(null);
+  const [aiLiveError, setAiLiveError] = useState(null);
   const [qaList, setQaList] = useState([]);
   const [qaInput, setQaInput] = useState("");
   const [qaLoading, setQaLoading] = useState(false);
@@ -2970,13 +2971,16 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(`wc_ai_${M.id}`) || "null");
-      setAiText(saved?.core || saved?.text || null);
-      setAiScenario(saved?.scenario || null);
-    } catch { setAiText(null); setAiScenario(null); }
+      setAiText(saved?.prematch || saved?.core || saved?.text || null);
+    } catch { setAiText(null); }
+    try {
+      const savedLive = JSON.parse(localStorage.getItem(`wc_ai_live_${M.id}`) || "null");
+      setAiLive(savedLive?.text || null);
+    } catch { setAiLive(null); }
     try {
       setQaList(JSON.parse(localStorage.getItem(`wc_ai_qa_${M.id}`) || "[]"));
     } catch { setQaList([]); }
-    setAiError(null); setAiScenError(null); setQaError(null); setQaInput(""); setSitu("");
+    setAiError(null); setAiLiveError(null); setQaError(null); setQaInput(""); setSitu("");
   }, [M.id]);
 
   // Current Kalshi prices in cents (fall back to seed market)
@@ -3015,90 +3019,78 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     saveSession({ ...session, trades: settled });
   }, [winner]); // eslint-disable-line
 
-  const callAI = async (phase, userInput) => {
-    setAiLoading(true); setAiError(null); setAiScenError(null);
-    setAiText(null); setAiScenario(null);
-    const needsDual = phase !== "prematch" && phase !== "postmatch";
-    try {
-      const bodyBase = {
-        matchInfo: {
-          home: { name: M.home.name, cn: M.home.cn, flag: M.home.flag, elo: M.home.elo, fifaRank: M.home.fifaRank, code: M.home.code },
-          away: { name: M.away.name, cn: M.away.cn, flag: M.away.flag, elo: M.away.elo, fifaRank: M.away.fifaRank, code: M.away.code },
-          competition: M.competition, koBJT: M.koBJT, venue: M.venue,
-        },
-        phase,
-        capital: session?.capital || parseFloat(capVal),
-        kalshiPrices: prices,
-        pinnacleOdds: currentPinnacleOdds ? {
-          home: Math.round(currentPinnacleOdds.home * 100),
-          draw: currentPinnacleOdds.draw ? Math.round(currentPinnacleOdds.draw * 100) : null,
-          away: Math.round(currentPinnacleOdds.away * 100),
-        } : null,
-        modelProbs: modelProbs || null,
-        currentScore: live ? { homeScore: live.scoreA, awayScore: live.scoreB, minute: live.minute } : null,
-        positions: openTrades.map(t => ({ outcome: t.outcome, direction: t.direction, entryPrice: t.entryPrice, units: t.units })),
-        userInput: userInput || "",
-        totalPnl: livePnl,
-        matchContext: { venue: getVenueMeta(M.venue), standings: computeGroupStandings(M) },
-      };
-      const post = (extra) => fetch("/api/trade-analysis", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...bodyBase, ...extra }),
-      });
+  const makeBody = (phase, userInput) => ({
+    matchInfo: {
+      home: { name: M.home.name, cn: M.home.cn, flag: M.home.flag, elo: M.home.elo, fifaRank: M.home.fifaRank, code: M.home.code },
+      away: { name: M.away.name, cn: M.away.cn, flag: M.away.flag, elo: M.away.elo, fifaRank: M.away.fifaRank, code: M.away.code },
+      competition: M.competition, koBJT: M.koBJT, venue: M.venue,
+    },
+    phase,
+    capital: session?.capital || parseFloat(capVal),
+    kalshiPrices: prices,
+    pinnacleOdds: currentPinnacleOdds ? {
+      home: Math.round(currentPinnacleOdds.home * 100),
+      draw: currentPinnacleOdds.draw ? Math.round(currentPinnacleOdds.draw * 100) : null,
+      away: Math.round(currentPinnacleOdds.away * 100),
+    } : null,
+    modelProbs: modelProbs || null,
+    currentScore: live ? { homeScore: live.scoreA, awayScore: live.scoreB, minute: live.minute } : null,
+    positions: openTrades.map(t => ({ outcome: t.outcome, direction: t.direction, entryPrice: t.entryPrice, units: t.units })),
+    userInput: userInput || "",
+    totalPnl: livePnl,
+    matchContext: { venue: getVenueMeta(M.venue), standings: computeGroupStandings(M) },
+  });
 
-      if (needsDual) {
-        // Start both fetches simultaneously
-        const [r1, r2] = await Promise.all([post({ subPhase: "core" }), post({ subPhase: "scenario" })]);
-        if (!r1.ok) {
-          let msg = `核心分析请求失败 (${r1.status})，请重试`;
-          try { const j = await r1.json(); if (j.error) msg = j.error; } catch {}
-          setAiError(msg); setAiLoading(false); return;
-        }
-        if (!r2.ok) {
-          let msg = `情景树请求失败 (${r2.status})`;
-          try { const j = await r2.json(); if (j.error) msg = j.error; } catch {}
-          setAiScenError(msg);
-        }
-        // Stream both in parallel
-        const [{ text: coreText }, { text: scenText }] = await Promise.all([
-          streamSSE(r1, (t) => setAiText(t)).catch(e => { setAiError(e.message || "核心分析失败"); return { text: "" }; }),
-          r2.ok ? streamSSE(r2, (t) => setAiScenario(t)).catch(e => { setAiScenError(e.message || "情景树加载失败"); return { text: "" }; }) : Promise.resolve({ text: "" }),
-        ]);
+  const callAI = async (phase, userInput) => {
+    setAiLoading(true); setAiError(null); setAiText(null);
+    try {
+      const r = await fetch("/api/trade-analysis", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(makeBody(phase, userInput || "")),
+      });
+      if (!r.ok) {
+        let msg = `请求失败 (${r.status})，请重试`;
+        try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+        setAiError(msg); setAiLoading(false); return;
+      }
+      const { text } = await streamSSE(r, (t) => setAiText(t)).catch(e => { setAiError(e.message || "分析失败"); return { text: "" }; });
+      if (text) {
         setQaList([]);
         try {
-          localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ core: coreText, scenario: scenText, phase, ts: Date.now() }));
+          localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ prematch: text, ts: Date.now() }));
           localStorage.removeItem(`wc_ai_qa_${M.id}`);
         } catch {}
-        const analyses = session?.analyses || [];
-        saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: coreText + "\n\n" + scenText }] });
-      } else {
-        // Prematch or postmatch: single full call
-        const r = await post({});
-        if (!r.ok) {
-          let msg = `请求失败 (${r.status})，请重试`;
-          try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
-          setAiError(msg); setAiLoading(false); return;
-        }
-        const { text, completed } = await streamSSE(r, (t) => setAiText(t)).catch(e => { setAiError(e.message || "分析失败"); return { text: "", completed: false }; });
-        if (text) {
-          setQaList([]);
-          try {
-            localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ text, phase, ts: Date.now() }));
-            localStorage.removeItem(`wc_ai_qa_${M.id}`);
-          } catch {}
-          const analyses = session?.analyses || [];
-          saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: text }] });
-        }
       }
     } catch (e) { setAiError("分析请求失败，请重试"); }
     setAiLoading(false);
   };
 
+  const callLive = async (userInput) => {
+    const phase = live ? getTradePeriod(live.minute, scoreData?.status === "ht") : "prematch";
+    setAiLiveLoading(true); setAiLiveError(null); setAiLive(null);
+    try {
+      const r = await fetch("/api/trade-analysis", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(makeBody(phase, userInput || "")),
+      });
+      if (!r.ok) {
+        let msg = `请求失败 (${r.status})，请重试`;
+        try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+        setAiLiveError(msg); setAiLiveLoading(false); return;
+      }
+      const { text } = await streamSSE(r, (t) => setAiLive(t)).catch(e => { setAiLiveError(e.message || "分析失败"); return { text: "" }; });
+      if (text) {
+        try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text, phase, ts: Date.now() })); } catch {}
+      }
+    } catch (e) { setAiLiveError("分析请求失败，请重试"); }
+    setAiLiveLoading(false);
+  };
+
   const callQA = async () => {
     const q = qaInput.trim();
-    if (!q || (!aiText && !aiScenario)) return;
+    if (!q || (!aiText && !aiLive)) return;
     setQaLoading(true); setQaError(null); setQaInput("");
-    const previousAnalysis = [aiText, aiScenario].filter(Boolean).join("\n\n");
+    const previousAnalysis = [aiText, aiLive].filter(Boolean).join("\n\n");
     try {
       const body = {
         matchInfo: {
@@ -3286,15 +3278,22 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         <textarea className="wc-ts-situ-inp" rows={2}
           placeholder="最新消息（可选）"
           value={situ} onChange={e => setSitu(e.target.value)} />
-        <button className="wc-ts-ai-btn" onClick={() => callAI(currentPeriod, situ)} disabled={aiLoading}>
-          {aiLoading ? "AI 分析中…" : live ? `🤖 AI 实时分析（${PERIOD_LABELS[currentPeriod]}）` : "🤖 AI 赛前策略分析"}
-        </button>
+        <div className="wc-ts-ai-btns">
+          <button className="wc-ts-ai-btn" onClick={() => callAI("prematch", "")} disabled={aiLoading}>
+            {aiLoading ? "分析中…" : "📊 赛前综合分析"}
+          </button>
+          {live && (
+            <button className="wc-ts-ai-btn wc-ts-ai-btn-live" onClick={() => callLive(situ)} disabled={aiLiveLoading}>
+              {aiLiveLoading ? "分析中…" : `🎯 赛中分析（${PERIOD_LABELS[currentPeriod]}）`}
+            </button>
+          )}
+        </div>
         {aiError && <div className="wc-ts-ai-err">⚠ {aiError}</div>}
         {aiText && renderAnalysis(aiText)}
-        {aiScenario && <div className="wc-ts-ai-divider" />}
-        {aiScenario && renderAnalysis(aiScenario)}
-        {aiScenError && <div className="wc-ts-ai-err">⚠ {aiScenError}</div>}
-        {(aiText || aiScenario) && (
+        {aiLive && <div className="wc-ts-ai-divider" />}
+        {aiLiveError && <div className="wc-ts-ai-err">⚠ {aiLiveError}</div>}
+        {aiLive && renderAnalysis(aiLive)}
+        {(aiText || aiLive) && (
           <div className="wc-ts-qa">
             {qaList.map((qa, i) => (
               <div key={i} className="wc-ts-qa-item">

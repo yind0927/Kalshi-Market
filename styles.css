@@ -4109,11 +4109,13 @@ input { font-family: inherit; }
   border: 1px solid var(--border); background: var(--surface);
   font-size: 13px; resize: vertical; margin-bottom: 8px; font-family: inherit;
 }
+.wc-ts-ai-btns { display: flex; gap: 8px; }
 .wc-ts-ai-btn {
-  width: 100%; padding: 10px; border-radius: 8px; border: none; cursor: pointer;
+  flex: 1; padding: 10px; border-radius: 8px; border: none; cursor: pointer;
   background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
   transition: opacity .15s;
 }
+.wc-ts-ai-btn-live { background: color-mix(in oklab, var(--accent) 70%, #e65c00); }
 .wc-ts-ai-btn:hover { opacity: .88; }
 .wc-ts-ai-btn:disabled { opacity: .5; cursor: not-allowed; }
 .wc-ts-ai-err { margin-top: 8px; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: var(--neg); background: color-mix(in oklab, var(--neg) 10%, transparent); }
