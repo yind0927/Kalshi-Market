@@ -2852,7 +2852,7 @@ function computeGroupStandings(M) {
   try {
     const grp = window.KW_WC_DATA?.GROUPS[M.groupLetter];
     if (!grp) return null;
-    const standings = WC.buildStandings(grp.order, grp.matches, M.currentElos || {});
+    const standings = window.KW_WC.buildStandings(grp.order, grp.matches, M.currentElos || {});
     const teams = window.KW_WC_DATA.TEAMS;
     return {
       group: M.groupLetter,
@@ -3016,7 +3016,9 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         },
       };
       const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const d = await r.json();
+      if (!r.ok) { setAiError(`请求失败 (${r.status})，请重试`); setAiLoading(false); return; }
+      let d;
+      try { d = await r.json(); } catch { setAiError("响应解析失败，请重试"); setAiLoading(false); return; }
       if (d.ok) {
         setAiText(d.analysis);
         setQaList([]);
@@ -3027,7 +3029,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         const analyses = session?.analyses || [];
         saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: d.analysis }] });
       } else { setAiError(d.error || "AI 分析失败"); }
-    } catch (e) { setAiError(e.message); }
+    } catch (e) { setAiError("分析请求失败，请重试"); }
     setAiLoading(false);
   };
 
@@ -3063,13 +3065,15 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         },
       };
       const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const d = await r.json();
+      if (!r.ok) { setQaError(`请求失败 (${r.status})，请重试`); setQaLoading(false); return; }
+      let d;
+      try { d = await r.json(); } catch { setQaError("响应解析失败，请重试"); setQaLoading(false); return; }
       if (d.ok) {
         const newQa = [...qaList, { q, a: d.analysis, ts: Date.now() }];
         setQaList(newQa);
         try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(newQa)); } catch {}
       } else { setQaError(d.error || "提问失败"); }
-    } catch (e) { setQaError(e.message); }
+    } catch (e) { setQaError("提问请求失败，请重试"); }
     setQaLoading(false);
   };
 
