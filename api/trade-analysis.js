@@ -445,7 +445,7 @@ ${isEndGame ? "（终场阶段：禁止新开仓，所有操作只涉及现有�
   try {
     const client = new Anthropic({ apiKey });
     const stream = client.messages.stream({
-      model: "claude-sonnet-4-6",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 2500,
       system,
       messages: [{ role: "user", content: prompt }],
