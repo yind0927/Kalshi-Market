@@ -2817,6 +2817,57 @@ function calcTradePnl(trade, closeYesPrice) {
 }
 
 /* ─────────────────────────────────────────────────────────
+ * WC 2026 venue metadata (altitude, indoor, coords for weather)
+ * ───────────────────────────────────────────────────────── */
+const VENUE_META = {
+  "AT&T Stadium":            { alt: 184,  indoor: false, lat: 32.748,  lon: -97.093 },
+  "SoFi Stadium":            { alt: 27,   indoor: true,  lat: 33.954,  lon: -118.339 },
+  "Estadio Akron":           { alt: 1566, indoor: false, lat: 20.686,  lon: -103.467 },
+  "Rose Bowl":               { alt: 224,  indoor: false, lat: 34.162,  lon: -118.168 },
+  "BMO Field":               { alt: 76,   indoor: false, lat: 43.633,  lon: -79.418 },
+  "Allegiant Stadium":       { alt: 610,  indoor: true,  lat: 36.091,  lon: -115.184 },
+  "BC Place":                { alt: 4,    indoor: true,  lat: 49.276,  lon: -123.112 },
+  "MetLife Stadium":         { alt: 10,   indoor: false, lat: 40.814,  lon: -74.074 },
+  "Lincoln Financial Field": { alt: 12,   indoor: false, lat: 39.901,  lon: -75.168 },
+  "Gillette Stadium":        { alt: 35,   indoor: false, lat: 42.091,  lon: -71.264 },
+  "Lumen Field":             { alt: 10,   indoor: false, lat: 47.596,  lon: -122.332 },
+  "NRG Stadium":             { alt: 13,   indoor: true,  lat: 29.685,  lon: -95.411 },
+  "Levi's Stadium":          { alt: 22,   indoor: false, lat: 37.403,  lon: -121.970 },
+  "Estadio Azteca":          { alt: 2240, indoor: false, lat: 19.303,  lon: -99.151 },
+  "Estadio BBVA":            { alt: 520,  indoor: false, lat: 25.669,  lon: -100.244 },
+  "Hard Rock Stadium":       { alt: 3,    indoor: false, lat: 25.958,  lon: -80.239 },
+  "Mercedes-Benz Stadium":   { alt: 300,  indoor: true,  lat: 33.755,  lon: -84.401 },
+  "Arrowhead Stadium":       { alt: 268,  indoor: false, lat: 39.049,  lon: -94.484 },
+};
+
+function getVenueMeta(venueStr) {
+  if (!venueStr) return null;
+  const stadiumName = venueStr.split("·")[0].trim();
+  const city = venueStr.split("·")[1]?.trim() || "";
+  const meta = VENUE_META[stadiumName];
+  return meta ? { name: stadiumName, city, ...meta } : null;
+}
+
+function computeGroupStandings(M) {
+  try {
+    const grp = window.KW_WC_DATA?.GROUPS[M.groupLetter];
+    if (!grp) return null;
+    const standings = WC.buildStandings(grp.order, grp.matches, M.currentElos || {});
+    const teams = window.KW_WC_DATA.TEAMS;
+    return {
+      group: M.groupLetter,
+      round: M.round,
+      rows: standings.map((r, i) => ({
+        pos: i + 1, code: r.code,
+        cn: teams[r.code]?.cn || r.code,
+        pts: r.pts, w: r.w, d: r.d, l: r.l,
+        gf: r.gf, ga: r.ga, gd: r.gf - r.ga,
+      })),
+    };
+  } catch { return null; }
+}
+
+/* ─────────────────────────────────────────────────────────
  * Markdown renderer for AI analysis output
  * ───────────────────────────────────────────────────────── */
 function inlineMd(text) {
@@ -2942,8 +2993,8 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     try {
       const body = {
         matchInfo: {
-          home: { name: M.home.name, cn: M.home.cn, flag: M.home.flag, elo: M.home.elo, fifaRank: M.home.fifaRank },
-          away: { name: M.away.name, cn: M.away.cn, flag: M.away.flag, elo: M.away.elo, fifaRank: M.away.fifaRank },
+          home: { name: M.home.name, cn: M.home.cn, flag: M.home.flag, elo: M.home.elo, fifaRank: M.home.fifaRank, code: M.home.code },
+          away: { name: M.away.name, cn: M.away.cn, flag: M.away.flag, elo: M.away.elo, fifaRank: M.away.fifaRank, code: M.away.code },
           competition: M.competition, koBJT: M.koBJT, venue: M.venue,
         },
         phase,
@@ -2959,6 +3010,10 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         positions: openTrades.map(t => ({ outcome: t.outcome, direction: t.direction, entryPrice: t.entryPrice, units: t.units })),
         userInput: userInput || "",
         totalPnl: livePnl,
+        matchContext: {
+          venue: getVenueMeta(M.venue),
+          standings: computeGroupStandings(M),
+        },
       };
       const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json();
@@ -2983,8 +3038,8 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     try {
       const body = {
         matchInfo: {
-          home: { name: M.home.name, cn: M.home.cn, flag: M.home.flag, elo: M.home.elo, fifaRank: M.home.fifaRank },
-          away: { name: M.away.name, cn: M.away.cn, flag: M.away.flag, elo: M.away.elo, fifaRank: M.away.fifaRank },
+          home: { name: M.home.name, cn: M.home.cn, flag: M.home.flag, elo: M.home.elo, fifaRank: M.home.fifaRank, code: M.home.code },
+          away: { name: M.away.name, cn: M.away.cn, flag: M.away.flag, elo: M.away.elo, fifaRank: M.away.fifaRank, code: M.away.code },
           competition: M.competition, koBJT: M.koBJT, venue: M.venue,
         },
         phase: live ? getTradePeriod(live.minute, scoreData?.status === "ht") : "prematch",
@@ -3002,6 +3057,10 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         totalPnl: livePnl,
         followUpQuestion: q,
         previousAnalysis: aiText,
+        matchContext: {
+          venue: getVenueMeta(M.venue),
+          standings: computeGroupStandings(M),
+        },
       };
       const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json();

@@ -23,6 +23,7 @@ module.exports = async function handler(req, res) {
     totalPnl,
     followUpQuestion,
     previousAnalysis,
+    matchContext,
   } = req.body || {};
 
   if (!matchInfo || !phase || !capital) {
@@ -43,11 +44,130 @@ module.exports = async function handler(req, res) {
     return `${fair - 3}–${fair + 2}¢`;
   };
 
+  // Open-Meteo weather fetch (free, no key) — 3s timeout, non-blocking on failure
+  async function fetchWeather(lat, lon) {
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 3000);
+      const r = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+        `&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=auto`,
+        { signal: ctrl.signal }
+      );
+      clearTimeout(tid);
+      if (!r.ok) return null;
+      return (await r.json()).current || null;
+    } catch { return null; }
+  }
+
+  function wmoDesc(code) {
+    if (code === 0)        return "晴";
+    if (code <= 3)         return "多云";
+    if (code <= 48)        return "雾";
+    if (code <= 67)        return "雨";
+    if (code <= 77)        return "雪";
+    if (code <= 82)        return "阵雨";
+    return "雷暴";
+  }
+
+  // Build multi-dimensional context section
+  async function buildContextSection() {
+    const venue = matchContext?.venue;
+    const standings = matchContext?.standings;
+    let s = "";
+
+    // Venue + weather
+    if (venue) {
+      if (venue.indoor) {
+        s += `🏟 **场地**：${venue.name}（${venue.city}）· 海拔${venue.alt}m · **室内恒温，无天气干扰**\n`;
+      } else {
+        s += `🏟 **场地**：${venue.name}（${venue.city}）· 海拔${venue.alt}m · 室外\n`;
+        if (venue.alt >= 1500) {
+          s += `⚠ **高海拔警告**（${venue.alt}m）：欧洲/亚洲球队体能影响显著，60分钟后差距扩大，体能差的队会明显下滑\n`;
+        } else if (venue.alt >= 800) {
+          s += `📍 中等海拔（${venue.alt}m）：对不适应高原的球队有轻微体能影响\n`;
+        }
+        // Fetch live weather for outdoor venues
+        if (venue.lat && venue.lon) {
+          const wx = await fetchWeather(venue.lat, venue.lon);
+          if (wx) {
+            const desc = wmoDesc(wx.weather_code);
+            let wxLine = `🌤 **赛时天气**：${wx.temperature_2m}°C · ${desc}`;
+            if (wx.precipitation > 0.5) wxLine += ` · 降水${wx.precipitation.toFixed(1)}mm（影响传控型打法）`;
+            if (wx.wind_speed_10m > 25) wxLine += ` · 风速${Math.round(wx.wind_speed_10m)}km/h（影响长传和高空球）`;
+            if (wx.temperature_2m > 30) wxLine += ` · 高温（${wx.temperature_2m}°C）影响体能，利于轮换深度更厚的队`;
+            s += wxLine + "\n";
+          }
+        }
+      }
+    }
+
+    // Group standings + qualification pressure
+    if (standings) {
+      const hCode = matchInfo.home?.code;
+      const aCode = matchInfo.away?.code;
+      const round = standings.round || "?";
+      s += `\n📊 **第${round}轮 · ${H.cn}所在小组${standings.group}积分榜**（前2晋级）\n`;
+      for (const r of standings.rows) {
+        const tag = r.code === hCode ? ` ← ${H.cn}（本场）` : r.code === aCode ? ` ← ${A.cn}（本场）` : "";
+        const gdStr = r.gd >= 0 ? `+${r.gd}` : `${r.gd}`;
+        s += `  ${r.pos}. ${r.cn.padEnd(8)} ${String(r.pts).padStart(2)}分  ${r.w}W${r.d}D${r.l}L  GD${gdStr}${tag}\n`;
+      }
+
+      // Qualification need analysis
+      const hRow = standings.rows.find(r => r.code === hCode);
+      const aRow = standings.rows.find(r => r.code === aCode);
+      if (hRow && aRow) {
+        const hPlayed = hRow.w + hRow.d + hRow.l;
+        const aPlayed = aRow.w + aRow.d + aRow.l;
+        const isFinal = hPlayed === 2 || round === 3;
+        s += `\n🎯 **晋级压力分析**（${isFinal ? "末轮决战" : `第${round}轮`}）\n`;
+
+        const needStr = (row, isFinal, rows) => {
+          const pos = rows.indexOf(row) + 1;
+          const secondPts = rows[1]?.pts || 0;
+          const thirdPts  = rows[2]?.pts || 0;
+          if (row.pts > thirdPts + 3 && pos <= 2) return "已提前锁定晋级，无论结果";
+          if (!isFinal) return pos <= 2 ? `当前第${pos}名，形势有利` : `当前第${pos}名，需要积分`;
+          // Final round
+          if (pos <= 2 && row.pts > thirdPts + 0) return "平局大概率可晋级（视另一场结果）";
+          if (pos <= 2) return "必须赢，或等另一场结果配合";
+          if (row.pts + 3 < secondPts) return "晋级希望渺茫，打法激进";
+          return "必须赢才能晋级，预计全力进攻";
+        };
+
+        const hNeed = needStr(hRow, isFinal, standings.rows);
+        const aNeed = needStr(aRow, isFinal, standings.rows);
+        s += `  ${H.cn}：${hNeed}\n`;
+        s += `  ${A.cn}：${aNeed}\n`;
+
+        // Trading implication
+        const aNeedWin = aNeed.includes("必须赢") || aNeed.includes("全力进攻");
+        const hNeedWin = hNeed.includes("必须赢") || hNeed.includes("全力进攻");
+        const bothSafe = hNeed.includes("提前锁定") || aNeed.includes("提前锁定");
+        if (bothSafe) {
+          s += `  💡 交易含义：一方或双方已提前晋级，可能轮换主力 → 强队Yes不宜追高，谨慎赛前建重仓\n`;
+        } else if (aNeedWin && !hNeedWin) {
+          s += `  💡 交易含义：${A.cn}必须赢 → 打法激进，平局概率下降，${A.cn}胜概率略升，${H.cn}胜因对手进攻更多反而适合低价防守反击\n`;
+        } else if (hNeedWin && !aNeedWin) {
+          s += `  💡 交易含义：${H.cn}必须赢 → 打法激进，平局概率下降，平局Yes不宜高价持有\n`;
+        } else if (hNeedWin && aNeedWin) {
+          s += `  💡 交易含义：双方都必须赢 → 激烈对攻，进球多可能性上升，平局概率下降，比分类盘口有价值\n`;
+        }
+      }
+    }
+
+    return s ? `\n## 多维赛事背景\n${s}\n` : "";
+  }
+
   const H = matchInfo.home;
   const A = matchInfo.away;
   const eloDiff = Math.abs((H.elo || 0) - (A.elo || 0));
   const stronger = H.elo >= A.elo ? H.cn : A.cn;
   const weaker   = H.elo >= A.elo ? A.cn : H.cn;
+
+  // Build context section (includes async weather fetch)
+  const contextSection = await buildContextSection();
 
   let prompt = `## 比赛信息
 ${H.flag} **${H.cn}**（${H.name}）Elo ${H.elo} · FIFA 第${H.fifaRank}名
@@ -68,6 +188,7 @@ ${A.cn}胜    ${pc(kalshiPrices?.away).padEnd(10)}  ${fairZone(pinnacleOdds?.awa
 `;
   }
 
+  prompt += contextSection;
   prompt += `\n本场资金：**${capital} 单位**　当前阶段：${phase}\n`;
 
   if (currentScore) {
@@ -232,8 +353,11 @@ ${isEndGame ? "重点：当前是否有止盈机会，不允许新开仓（除�
 
 【世界杯小组赛特点】
 - 中性场地，主客场优势不适用；平局率约28–32%，高于常规联赛
-- 晋级压力差异会影响弱队打法（可能更保守或更激进）
+- 晋级压力差异直接影响打法：必须赢的队更激进，已晋级的队可能轮换主力
 - Elo差>150时强队明显占优，Elo差<80时结果不确定性显著上升
+- 高海拔（>1500m）：不适应球队在60分钟后体能显著下滑，利于本地化球队
+- 高温（>30°C室外）：利于轮换深度更厚的强队，不利于体能储备不足的弱队
+- 室内恒温场馆：天气无影响，场地因素只剩海拔和球队旅途疲劳
 
 【输出规范】
 - ## 章节标题，**粗体**关键数字/价格/结论/操作指令，- 列表要点
