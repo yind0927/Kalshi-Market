@@ -3161,6 +3161,340 @@ function WCSeedEditor({ matchId, homeCode, awayCode, homeCn, awayCn, current, on
   );
 }
 
+/* ─────────────────────────────────────────────────────────
+ * Trading Session helpers
+ * ───────────────────────────────────────────────────────── */
+const PERIOD_LABELS = {
+  prematch: "赛前", "0-25": "0–25'", "25-45": "25'–中场",
+  ht: "中场", "45-70": "45–70'", "70+": "70'+", postmatch: "赛后",
+};
+
+function getTradePeriod(minute, isHT) {
+  if (isHT) return "ht";
+  if (!minute || minute < 25) return "0-25";
+  if (minute < 45) return "25-45";
+  if (minute < 70) return "45-70";
+  return "70+";
+}
+
+function calcTradePnl(trade, closeYesPrice) {
+  // YES profits if price rises, NO profits if price falls
+  const dir = trade.direction === "YES" ? 1 : -1;
+  return +(trade.units * dir * (closeYesPrice - trade.entryPrice) / 100).toFixed(2);
+}
+
+/* ─────────────────────────────────────────────────────────
+ * WCTradingSession component
+ * ───────────────────────────────────────────────────────── */
+function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFinishedView, currentPinnacleOdds }) {
+  const [sessions, setSessions] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("wc_trading_v1") || "{}"); } catch { return {}; }
+  });
+
+  const saveSession = useCallback((data) => {
+    setSessions(prev => {
+      const next = { ...prev, [M.id]: data };
+      try { localStorage.setItem("wc_trading_v1", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, [M.id]);
+
+  const session = sessions[M.id] || null;
+  const participating = !!session?.participating;
+
+  const [showSetup, setShowSetup] = useState(false);
+  const [capVal, setCapVal] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiText, setAiText] = useState(null);
+  const [aiError, setAiError] = useState(null);
+  const [tf, setTf] = useState({ outcome: "home", direction: "YES", price: "", units: "" });
+  const [situ, setSitu] = useState("");
+  const [closeForm, setCloseForm] = useState(null); // { tradeId, price }
+
+  // Reset AI text when match changes
+  useEffect(() => { setAiText(null); setAiError(null); setSitu(""); }, [M.id]);
+
+  // Current Kalshi prices in cents (fall back to seed market)
+  const prices = {
+    home: kalshi?.home != null ? Math.round(kalshi.home * 100) : market?.home != null ? Math.round(market.home * 100) : null,
+    draw: kalshi?.draw != null ? Math.round(kalshi.draw * 100) : market?.draw != null ? Math.round(market.draw * 100) : null,
+    away: kalshi?.away != null ? Math.round(kalshi.away * 100) : market?.away != null ? Math.round(market.away * 100) : null,
+  };
+
+  // Match winner for settlement
+  const matchResult = M.result || null;
+  const winner = matchResult
+    ? matchResult.homeScore > matchResult.awayScore ? "home"
+      : matchResult.awayScore > matchResult.homeScore ? "away" : "draw"
+    : null;
+
+  const trades = session?.trades || [];
+  const openTrades = trades.filter(t => t.status === "open");
+  const closedTrades = trades.filter(t => t.status === "closed");
+
+  // Live P&L for open trades
+  const livePnl = openTrades.reduce((sum, t) => {
+    const cp = prices[t.outcome]; return cp != null ? sum + calcTradePnl(t, cp) : sum;
+  }, 0);
+  const closedPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+  const totalPnl = closedPnl + livePnl;
+
+  // Auto-settle all open trades at match end
+  useEffect(() => {
+    if (!participating || !winner || !openTrades.length) return;
+    const settled = trades.map(t => {
+      if (t.status !== "open") return t;
+      const cp = t.outcome === winner ? 100 : 0;
+      return { ...t, status: "closed", closePrice: cp, pnl: calcTradePnl(t, cp) };
+    });
+    saveSession({ ...session, trades: settled });
+  }, [winner]); // eslint-disable-line
+
+  const callAI = async (phase, userInput) => {
+    setAiLoading(true); setAiError(null); setAiText(null);
+    try {
+      const body = {
+        matchInfo: {
+          home: { name: M.home.name, cn: M.home.cn, flag: M.home.flag, elo: M.home.elo, fifaRank: M.home.fifaRank },
+          away: { name: M.away.name, cn: M.away.cn, flag: M.away.flag, elo: M.away.elo, fifaRank: M.away.fifaRank },
+          competition: M.competition, koBJT: M.koBJT, venue: M.venue,
+        },
+        phase,
+        capital: session?.capital || parseFloat(capVal),
+        kalshiPrices: prices,
+        pinnacleOdds: currentPinnacleOdds ? {
+          home: Math.round(currentPinnacleOdds.home * 100),
+          draw: currentPinnacleOdds.draw ? Math.round(currentPinnacleOdds.draw * 100) : null,
+          away: Math.round(currentPinnacleOdds.away * 100),
+        } : null,
+        currentScore: live ? { homeScore: live.scoreA, awayScore: live.scoreB, minute: live.minute } : null,
+        positions: openTrades.map(t => ({ outcome: t.outcome, direction: t.direction, entryPrice: t.entryPrice, units: t.units })),
+        userInput: userInput || "",
+        totalPnl: livePnl,
+      };
+      const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (d.ok) {
+        setAiText(d.analysis);
+        const analyses = session?.analyses || [];
+        saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: d.analysis }] });
+      } else { setAiError(d.error || "AI 分析失败"); }
+    } catch (e) { setAiError(e.message); }
+    setAiLoading(false);
+  };
+
+  const logTrade = () => {
+    const price = parseFloat(tf.price), units = parseFloat(tf.units);
+    if (!isFinite(price) || price <= 0 || price >= 100 || !isFinite(units) || units <= 0) {
+      alert("请输入有效的价格（1–99¢）和数量（>0）"); return;
+    }
+    const isHT = scoreData?.status === "ht";
+    const phase = live ? getTradePeriod(live.minute, isHT) : "prematch";
+    const trade = { id: `${Date.now()}`, timestamp: new Date().toISOString(), phase, outcome: tf.outcome, direction: tf.direction, entryPrice: price, units, status: "open", closePrice: null, pnl: null };
+    const cur = session || { capital: 0, participating: true, trades: [], analyses: [] };
+    saveSession({ ...cur, trades: [...(cur.trades || []), trade] });
+    setTf(v => ({ ...v, price: "", units: "" }));
+  };
+
+  const closeTrade = (tradeId, closeYesPrice) => {
+    const updated = trades.map(t => t.id === tradeId
+      ? { ...t, status: "closed", closePrice: closeYesPrice, pnl: calcTradePnl(t, closeYesPrice) }
+      : t);
+    saveSession({ ...session, trades: updated });
+    setCloseForm(null);
+  };
+
+  const startParticipation = () => {
+    const cap = parseFloat(capVal);
+    if (!isFinite(cap) || cap <= 0) { alert("请输入有效的资金金额"); return; }
+    saveSession({ capital: cap, participating: true, trades: [], analyses: [] });
+    setShowSetup(false);
+  };
+
+  const outLabel = (o) => o === "home" ? M.home.cn + "胜" : o === "away" ? M.away.cn + "胜" : "平局";
+
+  // ── Not participating ────────────────────────────────────
+  if (!participating) {
+    if (showFinishedView) return null;
+    return (
+      <div className="wc-ts-cta">
+        {!showSetup ? (
+          <button className="wc-ts-join" onClick={() => setShowSetup(true)}>
+            📊 参与此场交易 <em>Trade This Match</em>
+          </button>
+        ) : (
+          <div className="wc-ts-setup">
+            <div className="wc-ts-setup-label">设置本场交易资金（单位）</div>
+            <div className="wc-ts-setup-row">
+              <input className="wc-ts-cap-inp" type="number" min="1" placeholder="e.g. 100"
+                value={capVal} autoFocus onChange={e => setCapVal(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && startParticipation()} />
+              <button className="wc-ts-confirm" onClick={startParticipation}>开始交易</button>
+              <button className="wc-ts-cancel" onClick={() => setShowSetup(false)}>取消</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const currentPeriod = live ? getTradePeriod(live.minute, scoreData?.status === "ht") : "prematch";
+
+  // ── Post-match summary ───────────────────────────────────
+  if (showFinishedView) {
+    const allTrades = session.trades || [];
+    const settledPnl = allTrades.reduce((s, t) => s + (t.pnl || 0), 0);
+    return (
+      <div className="card wc-card wc-ts-card">
+        <div className="card-head">
+          <div>
+            <h3>交易复盘 <em>Post-Match Summary</em></h3>
+            <div className="sub">本场资金 {session.capital} 单位 · {allTrades.length} 笔操作</div>
+          </div>
+          <span className={`wc-ts-pnl-badge ${settledPnl >= 0 ? "pos" : "neg"}`}>
+            {settledPnl >= 0 ? "+" : ""}{settledPnl.toFixed(1)} 单位
+          </span>
+        </div>
+        {allTrades.length > 0 ? (
+          <div className="wc-ts-trades">
+            {allTrades.map(t => (
+              <div key={t.id} className={`wc-ts-trade-row ${t.pnl != null ? (t.pnl >= 0 ? "pos" : "neg") : ""}`}>
+                <span className="wc-ts-tr-period">{PERIOD_LABELS[t.phase] || t.phase}</span>
+                <span className="wc-ts-tr-out">{outLabel(t.outcome)}</span>
+                <span className="wc-ts-tr-dir">{t.direction}</span>
+                <span className="wc-ts-tr-price">@{t.entryPrice}¢</span>
+                <span className="wc-ts-tr-units">{t.units}u</span>
+                <span className="wc-ts-tr-pnl">{t.pnl != null ? (t.pnl >= 0 ? "+" : "") + t.pnl.toFixed(1) : "—"}</span>
+              </div>
+            ))}
+          </div>
+        ) : <div className="wc-ts-empty">无交易记录</div>}
+        <div className="wc-ts-ai-section">
+          <button className="wc-ts-ai-btn" onClick={() => callAI("postmatch", "")} disabled={aiLoading}>
+            {aiLoading ? "AI 分析中…" : "📋 AI 赛后复盘"}
+          </button>
+          {aiError && <div className="wc-ts-ai-err">{aiError}</div>}
+          {aiText && <div className="wc-ts-ai-text">{aiText}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Active trading panel (prematch + in-play) ─────────────
+  return (
+    <div className="card wc-card wc-ts-card">
+      <div className="card-head">
+        <div>
+          <h3>交易面板 <em>Trading</em></h3>
+          <div className="sub">资金 {session.capital} 单位 · {PERIOD_LABELS[currentPeriod]}</div>
+        </div>
+        {(openTrades.length > 0 || closedTrades.length > 0) && (
+          <span className={`wc-ts-pnl-badge ${totalPnl >= 0 ? "pos" : "neg"}`}>
+            总计 {totalPnl >= 0 ? "+" : ""}{totalPnl.toFixed(1)}u
+          </span>
+        )}
+      </div>
+
+      {/* Price strip */}
+      <div className="wc-ts-prices">
+        {[["home", M.home.cn + "胜"], ["draw", "平局"], ["away", M.away.cn + "胜"]].map(([k, lbl]) => (
+          <div key={k} className="wc-ts-price-cell">
+            <span className="wc-tsp-label">{lbl}</span>
+            <span className="wc-tsp-val">{prices[k] != null ? prices[k] + "¢" : "—"}</span>
+          </div>
+        ))}
+        <span className="wc-tsp-src">{kStatus === "live" ? "Kalshi实时" : "种子价格"}</span>
+      </div>
+
+      {/* AI analysis */}
+      <div className="wc-ts-ai-section">
+        {live && (
+          <textarea className="wc-ts-situ-inp" rows={3}
+            placeholder={`描述当前场面（可选）：进球情况、换人、攻防态势、黄牌、伤停等…`}
+            value={situ} onChange={e => setSitu(e.target.value)} />
+        )}
+        <button className="wc-ts-ai-btn" onClick={() => callAI(currentPeriod, situ)} disabled={aiLoading}>
+          {aiLoading ? "AI 分析中…" : live ? `🤖 AI 实时分析（${PERIOD_LABELS[currentPeriod]}）` : "🤖 AI 赛前策略分析"}
+        </button>
+        {aiError && <div className="wc-ts-ai-err">⚠ {aiError}</div>}
+        {aiText && <div className="wc-ts-ai-text">{aiText}</div>}
+      </div>
+
+      {/* Open positions */}
+      {openTrades.length > 0 && (
+        <div className="wc-ts-positions">
+          <div className="wc-ts-pos-head">当前持仓</div>
+          {openTrades.map(t => {
+            const cp = prices[t.outcome];
+            const pnl = cp != null ? calcTradePnl(t, cp) : null;
+            return (
+              <div key={t.id} className={`wc-ts-pos-row ${pnl != null ? (pnl >= 0 ? "pos" : "neg") : ""}`}>
+                <span className="wc-ts-pos-out">{outLabel(t.outcome)}</span>
+                <span className="wc-ts-pos-dir">{t.direction}</span>
+                <span className="wc-ts-pos-price">@{t.entryPrice}¢</span>
+                <span className="wc-ts-pos-units">{t.units}u</span>
+                {pnl != null && <span className="wc-ts-pos-pnl">{pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}u</span>}
+                {closeForm?.tradeId === t.id ? (
+                  <span className="wc-ts-close-form">
+                    <input type="number" className="wc-ts-close-inp" placeholder="平仓价¢" min="0" max="100"
+                      value={closeForm.price}
+                      onChange={e => setCloseForm(f => ({...f, price: e.target.value}))} />
+                    <button className="wc-ts-close-ok" onClick={() => {
+                      const p = parseFloat(closeForm.price);
+                      if (!isFinite(p) || p < 0 || p > 100) { alert("请输入有效价格 0–100¢"); return; }
+                      closeTrade(t.id, p);
+                    }}>确认</button>
+                    <button className="wc-ts-close-x" onClick={() => setCloseForm(null)}>✕</button>
+                  </span>
+                ) : (
+                  <button className="wc-ts-close-btn" onClick={() => setCloseForm({ tradeId: t.id, price: "" })}>平仓</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Trade entry form */}
+      <div className="wc-ts-form">
+        <div className="wc-ts-form-head">记录新操作</div>
+        <div className="wc-ts-form-row">
+          <select className="wc-ts-sel" value={tf.outcome} onChange={e => setTf(v => ({...v, outcome: e.target.value}))}>
+            <option value="home">{M.home.cn}胜</option>
+            <option value="draw">平局</option>
+            <option value="away">{M.away.cn}胜</option>
+          </select>
+          <select className="wc-ts-sel" value={tf.direction} onChange={e => setTf(v => ({...v, direction: e.target.value}))}>
+            <option value="YES">YES</option>
+            <option value="NO">NO</option>
+          </select>
+          <input className="wc-ts-inp" type="number" placeholder="价格 ¢" min="1" max="99" step="0.5"
+            value={tf.price} onChange={e => setTf(v => ({...v, price: e.target.value}))} />
+          <input className="wc-ts-inp sm" type="number" placeholder="数量" min="1" step="1"
+            value={tf.units} onChange={e => setTf(v => ({...v, units: e.target.value}))} />
+          <button className="wc-ts-log-btn" onClick={logTrade}>记录</button>
+        </div>
+      </div>
+
+      {/* Closed trades */}
+      {closedTrades.length > 0 && (
+        <div className="wc-ts-history">
+          <div className="wc-ts-pos-head">已平仓</div>
+          {closedTrades.map(t => (
+            <div key={t.id} className={`wc-ts-pos-row small ${t.pnl != null ? (t.pnl >= 0 ? "pos" : "neg") : ""}`}>
+              <span className="wc-ts-tr-period">{PERIOD_LABELS[t.phase] || t.phase}</span>
+              <span>{outLabel(t.outcome)} {t.direction} @{t.entryPrice}¢</span>
+              <span>{t.units}u</span>
+              <span className="wc-ts-pos-pnl">{t.pnl != null ? (t.pnl >= 0 ? "+" : "") + t.pnl.toFixed(1) + "u" : "—"}</span>
+            </div>
+          ))}
+          <div className="wc-ts-pnl-sum">已结算: {closedPnl >= 0 ? "+" : ""}{closedPnl.toFixed(1)} 单位</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Find the group + match closest to now: prefer nearest future KO, else most recent past.
 function findDefaultGroupAndMatch(resultOverrides = {}) {
   const DATA = window.KW_WC_DATA;
@@ -3522,6 +3856,18 @@ function WorldCupView({ resultOverrides = {} }) {
         topScore={calibratedModel.topScores[0]}
         lambdaA={model.lambdaA}
         lambdaB={model.lambdaB}
+      />
+
+      {/* ── Trading session ── */}
+      <WCTradingSession
+        M={M}
+        market={market}
+        kalshi={kalshi}
+        kStatus={kStatus}
+        live={live}
+        scoreData={scoreData}
+        showFinishedView={showFinishedView}
+        currentPinnacleOdds={currentPinnacleOdds}
       />
 
       {/* ── ① Kalshi status + shrink ── */}
