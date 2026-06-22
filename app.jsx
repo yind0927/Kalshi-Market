@@ -3231,11 +3231,20 @@ function WorldCupView({ resultOverrides = {} }) {
 
   // Pinnacle odds (fetched once on mount, applied per-match)
   const [pinnacleOdds, setPinnacleOdds] = useState(null);
+  const [pinnacleDebug, setPinnacleDebug] = useState("loading…");
   useEffect(() => {
     fetch("/api/match-odds")
       .then(r => r.json())
-      .then(d => { if (d.ok && d.matches?.length) setPinnacleOdds(buildPinnacleOdds(d.matches)); })
-      .catch(() => {});
+      .then(d => {
+        if (d.ok && d.matches?.length) {
+          const built = buildPinnacleOdds(d.matches);
+          setPinnacleOdds(built);
+          setPinnacleDebug(`ok · ${d.matches.length} 场 · ${Object.keys(built).length} 键`);
+        } else {
+          setPinnacleDebug(`error: ${d.error || JSON.stringify(d).slice(0, 80)}`);
+        }
+      })
+      .catch(e => setPinnacleDebug(`fetch失败: ${e.message}`));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // localStorage-backed seed market overrides: { [matchId]: { home, draw, away, over25, btts } }
@@ -3535,18 +3544,22 @@ function WorldCupView({ resultOverrides = {} }) {
       )}
 
       {/* ── Pinnacle odds quick-apply (upcoming matches only) ── */}
-      {!showFinishedView && currentPinnacleOdds && (
+      {!showFinishedView && (
         <div className="wc-pinnacle-bar">
           <span className="wc-pin-label">📡 Pinnacle</span>
-          <span className="wc-pin-vals">
-            {M.home.cn} {(currentPinnacleOdds.home * 100).toFixed(1)}%
-            {" · "}平 {currentPinnacleOdds.draw != null ? (currentPinnacleOdds.draw * 100).toFixed(1) + "%" : "—"}
-            {" · "}{M.away.cn} {(currentPinnacleOdds.away * 100).toFixed(1)}%
-            {currentPinnacleOdds.over25 != null && ` · 大球 ${(currentPinnacleOdds.over25 * 100).toFixed(1)}%`}
-          </span>
-          <button className="wc-pin-apply" onClick={() => saveSeedOverride(M.id, currentPinnacleOdds)}>
-            填入 Apply
-          </button>
+          {currentPinnacleOdds ? (<>
+            <span className="wc-pin-vals">
+              {M.home.cn} {(currentPinnacleOdds.home * 100).toFixed(1)}%
+              {" · "}平 {currentPinnacleOdds.draw != null ? (currentPinnacleOdds.draw * 100).toFixed(1) + "%" : "—"}
+              {" · "}{M.away.cn} {(currentPinnacleOdds.away * 100).toFixed(1)}%
+              {currentPinnacleOdds.over25 != null && ` · 大球 ${(currentPinnacleOdds.over25 * 100).toFixed(1)}%`}
+            </span>
+            <button className="wc-pin-apply" onClick={() => saveSeedOverride(M.id, currentPinnacleOdds)}>
+              填入 Apply
+            </button>
+          </>) : (
+            <span className="wc-pin-vals" style={{opacity:0.55}}>{pinnacleDebug} · 当前场: {M.home.code}_{M.away.code}</span>
+          )}
         </div>
       )}
 
