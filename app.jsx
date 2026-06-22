@@ -2959,6 +2959,8 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   const [aiLiveLoading, setAiLiveLoading] = useState(false);
   const [aiLive, setAiLive] = useState(null);
   const [aiLiveError, setAiLiveError] = useState(null);
+  const [aiCollapsed, setAiCollapsed] = useState(false);
+  const [aiLiveCollapsed, setAiLiveCollapsed] = useState(false);
   const [qaList, setQaList] = useState([]);
   const [qaInput, setQaInput] = useState("");
   const [qaLoading, setQaLoading] = useState(false);
@@ -3279,20 +3281,33 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           placeholder="最新消息（可选）"
           value={situ} onChange={e => setSitu(e.target.value)} />
         <div className="wc-ts-ai-btns">
-          <button className="wc-ts-ai-btn" onClick={() => callAI("prematch", "")} disabled={aiLoading}>
+          <button className="wc-ts-ai-btn" onClick={() => { callAI("prematch", ""); setAiCollapsed(false); }} disabled={aiLoading}>
             {aiLoading ? "分析中…" : "📊 赛前综合分析"}
           </button>
-          {live && (
-            <button className="wc-ts-ai-btn wc-ts-ai-btn-live" onClick={() => callLive(situ)} disabled={aiLiveLoading}>
-              {aiLiveLoading ? "分析中…" : `🎯 赛中分析（${PERIOD_LABELS[currentPeriod]}）`}
-            </button>
-          )}
+          <button className="wc-ts-ai-btn wc-ts-ai-btn-live" onClick={() => { callLive(situ); setAiLiveCollapsed(false); }} disabled={aiLiveLoading}>
+            {aiLiveLoading ? "分析中…" : `🎯 赛中分析${live ? `（${PERIOD_LABELS[currentPeriod]}）` : ""}`}
+          </button>
         </div>
         {aiError && <div className="wc-ts-ai-err">⚠ {aiError}</div>}
-        {aiText && renderAnalysis(aiText)}
-        {aiLive && <div className="wc-ts-ai-divider" />}
+        {aiText && (
+          <div className="wc-ts-ai-block">
+            <div className="wc-ts-ai-collapse-bar" onClick={() => setAiCollapsed(c => !c)}>
+              <span>赛前综合分析</span>
+              <span className="wc-ts-ai-toggle">{aiCollapsed ? "展开 ▾" : "收起 ▴"}</span>
+            </div>
+            {!aiCollapsed && renderAnalysis(aiText)}
+          </div>
+        )}
         {aiLiveError && <div className="wc-ts-ai-err">⚠ {aiLiveError}</div>}
-        {aiLive && renderAnalysis(aiLive)}
+        {aiLive && (
+          <div className="wc-ts-ai-block">
+            <div className="wc-ts-ai-collapse-bar" onClick={() => setAiLiveCollapsed(c => !c)}>
+              <span>赛中分析</span>
+              <span className="wc-ts-ai-toggle">{aiLiveCollapsed ? "展开 ▾" : "收起 ▴"}</span>
+            </div>
+            {!aiLiveCollapsed && renderAnalysis(aiLive)}
+          </div>
+        )}
         {(aiText || aiLive) && (
           <div className="wc-ts-qa">
             {qaList.map((qa, i) => (
