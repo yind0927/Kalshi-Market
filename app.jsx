@@ -3018,7 +3018,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   const callAI = async (phase, userInput) => {
     setAiLoading(true); setAiError(null); setAiScenError(null);
     setAiText(null); setAiScenario(null);
-    const needsDual = phase !== "postmatch";
+    const needsDual = phase !== "prematch" && phase !== "postmatch";
     try {
       const bodyBase = {
         matchInfo: {
@@ -3072,7 +3072,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         const analyses = session?.analyses || [];
         saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: coreText + "\n\n" + scenText }] });
       } else {
-        // Postmatch: single call
+        // Prematch or postmatch: single full call
         const r = await post({});
         if (!r.ok) {
           let msg = `请求失败 (${r.status})，请重试`;
