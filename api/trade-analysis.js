@@ -36,41 +36,44 @@ module.exports = async function handler(req, res) {
       ? `${((modelP - kalshiC / 100) * 100).toFixed(1)}%`
       : "—";
 
-  // Quarter-Kelly position sizing (capped at 20% of capital)
-  const kellyStr = (modelP, kalshiC) => {
-    if (modelP == null || kalshiC == null) return "—";
-    const edge = modelP - kalshiC / 100;
-    if (edge <= 0.01) return "无优势";
-    // binary Kelly: f* = edge / (1 - modelP), then quarter-Kelly
-    const qk = Math.min((edge / (1 - modelP)) * 0.25, 0.20);
-    return `${(qk * 100).toFixed(1)}% (${(qk * capital).toFixed(0)}u)`;
+  // Derive Pinnacle-based fair price zone for reference (±3¢ around de-vigged Pinnacle)
+  const fairZone = (pinP) => {
+    if (pinP == null) return "—";
+    const fair = Math.round(pinP * 100);
+    return `${fair - 3}–${fair + 2}¢`;
   };
 
   const H = matchInfo.home;
   const A = matchInfo.away;
+  const eloDiff = Math.abs((H.elo || 0) - (A.elo || 0));
+  const stronger = H.elo >= A.elo ? H.cn : A.cn;
+  const weaker   = H.elo >= A.elo ? A.cn : H.cn;
 
   let prompt = `## 比赛信息
 ${H.flag} **${H.cn}**（${H.name}）Elo ${H.elo} · FIFA 第${H.fifaRank}名
 ${A.flag} **${A.cn}**（${A.name}）Elo ${A.elo} · FIFA 第${A.fifaRank}名
 赛事：${matchInfo.competition}　时间：${matchInfo.koBJT}（北京时间）　场地：${matchInfo.venue}
-Elo差：${H.elo > A.elo ? H.cn : A.cn} 领先 ${Math.abs((H.elo || 0) - (A.elo || 0))} 分
+实力差：${stronger} 领先 ${eloDiff} Elo分（${eloDiff >= 200 ? "压倒性差距" : eloDiff >= 100 ? "明显差距" : eloDiff >= 50 ? "中等差距" : "接近"}）
 
 `;
 
   if (kalshiPrices || pinnacleOdds || modelProbs) {
-    prompt += `## 定价对比
-标的          Kalshi     Pinnacle    模型概率    Edge(模型-K)   1/4Kelly仓位
-${H.cn}胜    ${pc(kalshiPrices?.home).padEnd(8)} ${pc(pinnacleOdds?.home).padEnd(9)} ${pct(modelProbs?.home).padEnd(9)} ${edgeStr(modelProbs?.home, kalshiPrices?.home).padEnd(12)} ${kellyStr(modelProbs?.home, kalshiPrices?.home)}
-平局          ${pc(kalshiPrices?.draw).padEnd(8)} ${pc(pinnacleOdds?.draw).padEnd(9)} ${pct(modelProbs?.draw).padEnd(9)} ${edgeStr(modelProbs?.draw, kalshiPrices?.draw).padEnd(12)} ${kellyStr(modelProbs?.draw, kalshiPrices?.draw)}
-${A.cn}胜    ${pc(kalshiPrices?.away).padEnd(8)} ${pc(pinnacleOdds?.away).padEnd(9)} ${pct(modelProbs?.away).padEnd(9)} ${edgeStr(modelProbs?.away, kalshiPrices?.away).padEnd(12)} ${kellyStr(modelProbs?.away, kalshiPrices?.away)}
+    prompt += `## 当前定价参考
+标的          Kalshi价格   Pinnacle参考区间   模型概率   统计偏差
+${H.cn}胜    ${pc(kalshiPrices?.home).padEnd(10)}  ${fairZone(pinnacleOdds?.home).padEnd(16)}   ${pct(modelProbs?.home).padEnd(8)} ${edgeStr(modelProbs?.home, kalshiPrices?.home)}
+平局          ${pc(kalshiPrices?.draw).padEnd(10)}  ${fairZone(pinnacleOdds?.draw).padEnd(16)}   ${pct(modelProbs?.draw).padEnd(8)} ${edgeStr(modelProbs?.draw, kalshiPrices?.draw)}
+${A.cn}胜    ${pc(kalshiPrices?.away).padEnd(10)}  ${fairZone(pinnacleOdds?.away).padEnd(16)}   ${pct(modelProbs?.away).padEnd(8)} ${edgeStr(modelProbs?.away, kalshiPrices?.away)}
 
+注：Pinnacle参考区间 = Pinnacle去水后±3¢，反映市场公允价。Kalshi价格高于区间上限则偏贵，低于下限则偏便宜。
 `;
   }
 
-  prompt += `本场资金：**${capital} 单位**　当前阶段：${phase}\n`;
+  prompt += `\n本场资金：**${capital} 单位**　当前阶段：${phase}\n`;
 
   if (currentScore) {
-    prompt += `当前比分：**${H.cn} ${currentScore.homeScore} – ${currentScore.awayScore} ${A.cn}**（第 ${currentScore.minute} 分钟）\n`;
+    const min = currentScore.minute;
+    const decayStage = min >= 75 ? "锁利润期（禁止情绪追仓）" : min >= 60 ? "时间衰减加速期" : min >= 45 ? "下半场建仓期" : "上半场建仓期";
+    prompt += `当前比分：**${H.cn} ${currentScore.homeScore} – ${currentScore.awayScore} ${A.cn}**（第 ${min} 分钟 · ${decayStage}）\n`;
   }
 
   if (positions && positions.length > 0) {
@@ -85,108 +88,156 @@ ${A.cn}胜    ${pc(kalshiPrices?.away).padEnd(8)} ${pc(pinnacleOdds?.away).padEn
   }
 
   if (userInput) {
-    prompt += `\n## 场面描述（用户输入）\n${userInput}\n`;
+    prompt += `\n## 场面描述（用户实时观察）\n${userInput}\n`;
   }
 
-  // Q&A follow-up mode
+  // ── Q&A mode ─────────────────────────────────────────────
   if (followUpQuestion && previousAnalysis) {
-    prompt += `\n## 之前分析（摘要）\n${previousAnalysis.slice(0, 2000)}\n`;
+    prompt += `\n## 之前分析摘要\n${previousAnalysis.slice(0, 2000)}\n`;
     prompt += `\n## 追加提问\n${followUpQuestion}\n\n`;
-    prompt += `请针对以上提问给出简洁直接的回答，结合最新数据和之前分析背景，**粗体**标注关键结论，3–8句为宜。`;
+    prompt += `请针对提问给出简洁直接的回答（3–8句），结合最新数据和之前分析背景，**粗体**标注关键价格和操作结论。`;
 
+  // ── Prematch ──────────────────────────────────────────────
   } else if (phase === "prematch") {
     prompt += `
-请基于以上数据，按如下结构输出完整赛前策略分析（600–900字）：
+请按如下结构输出赛前策略分析（700–1000字）：
 
-## 市场定价解读
-精确分析三家来源（Kalshi / Pinnacle / 模型）的定价差异。哪个标的有正向Edge？Edge是否达到可操作阈值（>3%）？Pinnacle与模型方向若一致，说明市场共识；若有分歧，判断哪方更可信及原因。
+## 首发情报核查清单
+列出两队各4–6名关键球员（决定进攻效率和防线稳定性的核心），以及首发缺席时对策略的具体影响。格式：
+- **球员姓名**（位置）：缺席 → 影响（如：降仓/推迟入场/不买赛前）
 
-## 实力与赛事背景
-结合Elo差距和FIFA排名量化两队强弱。分析世界杯背景下的特殊因素：晋级形势与压力差异、中性场地影响、近期状态与伤病（如已知）、历史交锋倾向（如有参考价值）。
+## 强队价格纪律
+基于Kalshi当前报价和Elo差距，给出**${stronger}胜 Yes** 的具体价格区间（必须与当前Kalshi价格挂钩，不能给脱节区间）：
+- **强买区**（≤X¢）：大仓建立
+- **正常入场区**（X–Y¢）：标准仓
+- **小仓区**（Y–Z¢）：仅底仓
+- **不追区**（≥Z¢）：放弃赛前买入，等滚球
+同时给出**${weaker}胜 Yes** 的彩票仓条件（如果有）。
 
-## 赛前开仓策略
-针对存在正向Edge的标的，给出具体开仓计划：
-- **目标标的与方向**：明确哪个结果的YES或NO（若无显著Edge则明确说明不建议赛前强入）
-- **入场价格区间**：建议在 X¢–Y¢ 之间入场；超出此区间不追单
-- **开盘确认逻辑**：是否等待开盘后5分钟观察流动性和方向再入
-- **首仓规模**：基于1/4Kelly，建议首仓约 N 单位（资金的 X%）；保留余量用于实时加仓
-- **多个Edge机会时**：按优先级排序，说明哪个优先级更高
+## 平局 Yes 时间价值策略
+平局Yes是时间价值策略，不是方向性押注：
+- **入场价格区间**（¢）和入场时机
+- **目标持有时段**：0-0维持到XX分钟时开始分批卖出
+- **卖出触发价格**（¢）：分批卖出区间
+- **止损条件**：何时放弃这笔仓位
 
-## 分时段交易计划
-5个阶段（0–25'、25–45'、中场、45–70'、70+）各给出：
-有利于开仓的比赛情景 → 触发条件 → 方向（YES/NO）→ 建议价格区间
+## 初始仓位结构（T-15参考）
+基于${capital}单位资金，给出具体分配（4格结构）：
+- **主方向 Yes**：X–Y单位（X–Y%），入场条件 ≤Z¢
+- **平局 Yes**：X–Y单位，入场价格 X–Y¢
+- **现金保留**：X–Y单位（滚球加仓弹药）
+- **弱队彩票仓**：0–X单位（仅≤X¢时考虑）
 
-## 资金管理与止损
-单笔最大仓位 / 本场最大总仓位 / 具体止损触发条件（价格或比分情景）/ 需避免的常见操作错误`;
+## 分时段场景手册
+按5个阶段（0–15'、15–30'进球前、进球后场景、半场重定价、60'后）分别给出：
+比赛情景 → 价格区间 → 操作指令（加仓/卖出/不动/止损）
 
+## 止盈与风控纪律
+- 主方向止盈触发价（¢）：何时开始分批卖出
+- 平局仓止盈触发价（¢）
+- 强制止损条件（被系统性打穿时如何判断）
+- 75分钟后纪律：具体禁止和允许的操作`;
+
+  // ── Post-match ─────────────────────────────────────────────
   } else if (phase === "postmatch") {
     prompt += `
 请按如下结构输出赛后复盘分析（400–600字）：
 
 ## 整体交易表现
-总体评价：盈亏结果合理性、执行纪律评分（1–10分）、是否按赛前计划执行。
+总体评价：盈亏结果合理性、纪律执行评分（1–10分，重点评价是否遵守了价格纪律和时间衰减规则）。
 
 ## 逐笔决策复盘
-每笔交易的入场时机、方向依据、结果属于有边际优势的决策还是随机结果。
+每笔交易：入场价格是否在合理区间、是否追高、进球后的处理是否正确区分了偶发型和系统型进球。
 
-## 模型与市场验证
-赛果与赛前模型/Pinnacle预测的吻合程度，哪些信号有效，哪些误导了判断。
+## 价格纪律与场景判读验证
+赛前设定的价格区间是否正确？滚球中的控场判断是否准确区分了"控球"和"真实压制"？
 
 ## 改进建议
-下次相似比赛（Elo差距相近）在入场时机、仓位管理、退出策略和信息使用上的具体优化方向。`;
+具体优化方向：价格纪律（是否追高了）、仓位结构（现金保留是否充足）、时间衰减意识（60分钟后是否控制住了追仓冲动）。`;
 
+  // ── In-play ─────────────────────────────────────────────
   } else {
     const periodName = {
       "0-25": "0–25分钟", "25-45": "25分钟至中场", ht: "中场休息",
       "45-70": "下半场45–70分钟", "70+": "70分钟至终场",
     }[phase] || phase;
 
+    const min = currentScore?.minute || 0;
+    const isLateGame = min >= 60;
+    const isEndGame  = min >= 75;
+
     prompt += `
 当前时段：**${periodName}**
+${isEndGame ? "⚠️ 终场阶段：禁止情绪追仓，只做止盈和止损\n" : isLateGame ? "⚠️ 时间衰减加速：仓位只减不加，除非极低价格极小仓\n" : ""}
 请按如下结构输出实时交易分析（500–700字）：
 
-## 当前局面判断
-结合比分、时段、场面描述，分析三个结果（${H.cn}胜/平局/${A.cn}胜）的实时概率相对于赛前的变化方向与幅度。分析比分对剩余时间内各结果可能性的影响，以及场面控制权归属对后续走势的预判。
+## 控场信号评估
+根据比分和用户描述，评判强队是否形成**真实压制**（0–10分），明确区分：
+- **真实压制**：禁区触球多、射门质量高（禁区内射门/大量扑救）、对方只能解围/定位球解围、角球持续领先
+- **假性控球**：横传多、进攻慢、对方轻松防守 → 不等于压制 → 不加仓
+如果用户未描述场面，说明无法判断控场，建议观察后再操作。
 
-## 比分情景树
-列出接下来最可能的2–3个比分变化情景（如"${H.cn}再进1球"、"${A.cn}扳平"、"维持现状"），每个情景下三标的概率的预期变化方向，对应Kalshi价格的大致冲击幅度。
-
+## 当前价格区间判断
+基于现在的比分+时段+控场信号，给出**各标的Yes的合理价格区间**（好买点/可以买/不追）。
+${currentScore && (currentScore.homeScore !== currentScore.awayScore) ? `
+## 进球性质分析
+判断是**偶发型进球**（定位球/折射/单次反击 → 强队压制仍在时是买点）还是**系统型进球**（中场失控/边路被反复打穿 → 不补仓）。
+说明对当前价格区间操作的影响。` : ""}
 ## 持仓评估
-当前每笔持仓的盈亏现状、原始入场逻辑是否仍成立、继续持有的理由。是否存在可对冲或部分止盈的机会？
+每笔持仓：原始入场逻辑是否仍然成立、当前盈亏状态、继续持有的理由或平仓理由。
+${isEndGame ? "重点：当前是否有止盈机会，不允许新开仓（除非价格在极低区间且极小仓）。" : isLateGame ? "重点：减仓而非加仓，除非价格提供了明显的安全垫。" : ""}
 
-## 操作建议
-给出明确指令：
-- **持有**：哪些仓位不动，理由
-- **加仓**：目标标的 + YES/NO + 入场价格区间 + 建议单位数
-- **减仓/平仓**：在什么价格或比分情景下执行，具体触发条件
+## 操作指令
+明确指令（用**粗体**标出每条结论）：
+- **持有**：哪些仓位不动，原因
+- **加仓**：标的 + YES/NO + 价格区间 + 单位数（若时间过晚则明确说明不宜加仓）
+- **止盈/平仓**：在什么价格或比分触发，分批还是一次性
 
 ## 风险提示
-当前最大尾部风险情景（如红牌、意外失球），对Kalshi价格的预期冲击幅度，止损触发条件与执行方式。`;
+当前最大尾部风险（红牌/意外进球），对各标的价格的冲击预估，止损触发条件。`;
   }
 
-  const system = `你是一位专业的Kalshi足球预测市场交易员，专注1X2合约（主胜/平局/客胜），拥有统计模型背景与大量实战经验。
+  // ── System prompt ─────────────────────────────────────────
+  const system = `你是一位专业的Kalshi足球预测市场交易员，核心专长是1X2合约的**价格纪律交易**和**滚球场景判读**。
+
+【核心交易哲学】
+- **价格 > 观点**：不因为看好某队就追高。赛前价格通常已经反映强队优势，追高反而是负期望
+- 强队很可能赢 ≠ 强队Yes现在是好买点。入场价格决定期望值，不是结果概率
+- **现金是仓位**：保留60–75%现金 = 保留滚球抓机会的能力，不是浪费
+- **平局Yes时间价值**：0-0阶段平局概率随时间上升，平局Yes价格自然上涨。赛前7–13¢买入，0-0维持到25–40分钟在13–18¢分批卖出，是低风险时间价值策略，与方向判断无关
+- **不买情绪仓**：进球后的冲动补仓、落后时的信仰补仓、领先时的贪婪追仓——这三种是最常见的亏损来源
+
+【真实控场 vs 假性控球】
+真实压制信号：禁区触球频率高、射门质量好（禁区内射门/门将大量扑救）、对方只能清解围、角球持续领先
+假性控球：横传多、进攻慢、对方轻松防守、沙特/弱队反击越来越顺 → 不等于压制 → 不加仓
+
+【进球性质分类】
+- 偶发型：定位球/折射/单次反击，强队压制格局未变 → 价格下跌时是买点
+- 系统型：中场持续失控/边路被反复打穿/连续反击成功 → 不补仓，考虑减仓
+
+【时间衰减阶段意识】
+- 0–60分钟：建仓期，可正常操作
+- 60–75分钟：衰减加速，仓位只减不加，除非价格极低且极小仓
+- 75分钟以后：**锁利润期**，禁止情绪追仓，只做止盈和止损
+
+【止盈纪律】
+- 主方向Yes 93¢+ → 开始分批止盈；96¢+ → 大部分清仓
+- "不要把盈利仓变成信仰仓"——锁住利润比等待最后一分钱更重要
 
 【Kalshi市场机制】
-- 1X2合约为二元合约：对应结果发生时YES结算100¢，否则0¢；买入YES @ P¢意味着花P¢换取胜出时100¢
-- 三标的之和通常105–108¢（含Kalshi spread/手续费），故不能简单套利
-- Pinnacle赔率被视为全球体育预测市场最高效定价参考，与其一致时信心更高
-- **Edge阈值**：Edge < 2% 通常不值得入场；2–4% 谨慎小仓；> 4% 可正常仓位；> 7% 可加仓
-- **1/4 Kelly**：full Kelly风险过大，实战建议使用1/4 Kelly控制单笔波动；连续亏损时进一步降仓
+- 1X2合约：Yes结算100¢（正确）或0¢（错误）；买Yes@P¢ = 花P¢，赢得100¢
+- 三标的之和105–108¢（含Kalshi手续费），不能简单套利
+- Pinnacle为全球最高效体育定价参考；Kalshi高于Pinnacle区间 = 偏贵，低于 = 偏便宜
+- 统计Edge（模型-Kalshi）作为辅助参考，但不是唯一决策依据
 
-【世界杯特点】
-- 小组赛在中性场地进行，主客场优势不适用；两队均有不同程度的晋级压力
-- 平局概率高于常规联赛（约28–32%），应在定价对比中特别关注平局标的
-- Elo模型对强弱差距显著的比赛（Elo差>100）预测置信度更高
-- 强队对阵弱队时，大分差胜利概率上升，影响1X2之外的盘口
-
-【分析原则】
-- 输出具体可执行：给出明确价格区间（如"32¢–36¢"），不用"大约"、"可能"等模糊表达
-- Edge不显著时，明确说"无明显入场机会"，不强行找理由
-- 区分"有统计优势的决策"与"运气结果"，避免结果导向评价
-- 承认不确定性：模型预测基于历史数据，实时场面信息有更高优先级
+【世界杯小组赛特点】
+- 中性场地，主客场优势不适用；平局率约28–32%，高于常规联赛
+- 晋级压力差异会影响弱队打法（可能更保守或更激进）
+- Elo差>150时强队明显占优，Elo差<80时结果不确定性显著上升
 
 【输出规范】
-- 使用 ## 作为章节标题，**粗体**标注关键数字/结论/操作指令，- 列表表达要点
+- ## 章节标题，**粗体**关键数字/价格/结论/操作指令，- 列表要点
+- 给出明确价格区间（如"62–68¢"），不用模糊表达
 - 用中文回答`;
 
   try {
