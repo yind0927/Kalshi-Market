@@ -3184,9 +3184,50 @@ function calcTradePnl(trade, closeYesPrice) {
 }
 
 /* ─────────────────────────────────────────────────────────
+ * Markdown renderer for AI analysis output
+ * ───────────────────────────────────────────────────────── */
+function inlineMd(text) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((p, i) =>
+    p.startsWith("**") && p.endsWith("**")
+      ? React.createElement("strong", { key: i }, p.slice(2, -2))
+      : p
+  );
+}
+function renderAnalysis(text) {
+  const lines = text.split("\n");
+  const out = [];
+  let key = 0, i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith("## ")) {
+      out.push(React.createElement("div", { key: key++, className: "wc-ts-ai-h2" }, inlineMd(line.slice(3))));
+    } else if (line.startsWith("### ")) {
+      out.push(React.createElement("div", { key: key++, className: "wc-ts-ai-h3" }, inlineMd(line.slice(4))));
+    } else if (line === "---") {
+      out.push(React.createElement("hr", { key: key++, className: "wc-ts-ai-hr" }));
+    } else if (line.startsWith("- ") || line.startsWith("• ")) {
+      const items = [];
+      while (i < lines.length && (lines[i].startsWith("- ") || lines[i].startsWith("• "))) {
+        items.push(React.createElement("li", { key: key++ }, inlineMd(lines[i].replace(/^[-•] /, ""))));
+        i++;
+      }
+      out.push(React.createElement("ul", { key: key++, className: "wc-ts-ai-ul" }, items));
+      continue;
+    } else if (line.trim() === "") {
+      // skip blank lines — spacing handled by CSS gap
+    } else {
+      out.push(React.createElement("p", { key: key++, className: "wc-ts-ai-p" }, inlineMd(line)));
+    }
+    i++;
+  }
+  return React.createElement("div", { className: "wc-ts-ai-body" }, out);
+}
+
+/* ─────────────────────────────────────────────────────────
  * WCTradingSession component
  * ───────────────────────────────────────────────────────── */
-function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFinishedView, currentPinnacleOdds }) {
+function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFinishedView, currentPinnacleOdds, modelProbs }) {
   const [sessions, setSessions] = useState(() => {
     try { return JSON.parse(localStorage.getItem("wc_trading_v1") || "{}"); } catch { return {}; }
   });
@@ -3267,6 +3308,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           draw: currentPinnacleOdds.draw ? Math.round(currentPinnacleOdds.draw * 100) : null,
           away: Math.round(currentPinnacleOdds.away * 100),
         } : null,
+        modelProbs: modelProbs || null,
         currentScore: live ? { homeScore: live.scoreA, awayScore: live.scoreB, minute: live.minute } : null,
         positions: openTrades.map(t => ({ outcome: t.outcome, direction: t.direction, entryPrice: t.entryPrice, units: t.units })),
         userInput: userInput || "",
@@ -3374,7 +3416,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
             {aiLoading ? "AI 分析中…" : "📋 AI 赛后复盘"}
           </button>
           {aiError && <div className="wc-ts-ai-err">{aiError}</div>}
-          {aiText && <div className="wc-ts-ai-text">{aiText}</div>}
+          {aiText && renderAnalysis(aiText)}
         </div>
       </div>
     );
@@ -3417,7 +3459,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           {aiLoading ? "AI 分析中…" : live ? `🤖 AI 实时分析（${PERIOD_LABELS[currentPeriod]}）` : "🤖 AI 赛前策略分析"}
         </button>
         {aiError && <div className="wc-ts-ai-err">⚠ {aiError}</div>}
-        {aiText && <div className="wc-ts-ai-text">{aiText}</div>}
+        {aiText && renderAnalysis(aiText)}
       </div>
 
       {/* Open positions */}
@@ -3868,6 +3910,7 @@ function WorldCupView({ resultOverrides = {} }) {
         scoreData={scoreData}
         showFinishedView={showFinishedView}
         currentPinnacleOdds={currentPinnacleOdds}
+        modelProbs={calModel}
       />
 
       {/* ── ① Kalshi status + shrink ── */}

@@ -4113,12 +4113,30 @@ input { font-family: inherit; }
 .wc-ts-ai-btn:hover { opacity: .88; }
 .wc-ts-ai-btn:disabled { opacity: .5; cursor: not-allowed; }
 .wc-ts-ai-err { margin-top: 8px; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: var(--neg); background: color-mix(in oklab, var(--neg) 10%, transparent); }
-.wc-ts-ai-text {
-  margin-top: 12px; padding: 14px; border-radius: 8px;
+.wc-ts-ai-body {
+  margin-top: 12px; padding: 14px 16px; border-radius: 8px;
   background: color-mix(in oklab, var(--accent) 5%, var(--surface));
   border: 1px solid color-mix(in oklab, var(--accent) 18%, transparent);
-  font-size: 13.5px; line-height: 1.65; white-space: pre-wrap;
+  font-size: 13.5px; line-height: 1.65;
+  display: flex; flex-direction: column; gap: 6px;
 }
+.wc-ts-ai-h2 {
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--accent);
+  margin-top: 8px; padding-bottom: 4px;
+  border-bottom: 1px solid color-mix(in oklab, var(--accent) 20%, transparent);
+}
+.wc-ts-ai-h2:first-child { margin-top: 0; }
+.wc-ts-ai-h3 {
+  font-size: 12px; font-weight: 600; color: var(--ink-2); margin-top: 4px;
+}
+.wc-ts-ai-p { margin: 0; color: var(--ink); }
+.wc-ts-ai-ul {
+  margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px;
+}
+.wc-ts-ai-ul li { color: var(--ink); }
+.wc-ts-ai-hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+.wc-ts-ai-body strong { color: var(--ink); font-weight: 700; }
 
 .wc-ts-positions, .wc-ts-history { margin-bottom: 14px; }
 .wc-ts-pos-head {
