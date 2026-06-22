@@ -3352,17 +3352,23 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
 
       {/* Trade entry form */}
       <div className="wc-ts-form">
-        <div className="wc-ts-form-head">记录新操作</div>
+        <div className="wc-ts-form-head">记录开仓</div>
+        <div className="wc-ts-qs-row">
+          {[["home", M.home.cn + "胜"], ["draw", "平局"], ["away", M.away.cn + "胜"]].map(([k, lbl]) => (
+            <button key={k} className={`wc-ts-qs-btn${tf.outcome === k ? " sel" : ""}`}
+              onClick={() => setTf(v => ({...v, outcome: k}))}>
+              {lbl}
+            </button>
+          ))}
+          <span className="wc-ts-qs-sep" />
+          {["YES", "NO"].map(d => (
+            <button key={d} className={`wc-ts-qs-btn wc-ts-qs-${d.toLowerCase()}${tf.direction === d ? " sel" : ""}`}
+              onClick={() => setTf(v => ({...v, direction: d}))}>
+              {d}
+            </button>
+          ))}
+        </div>
         <div className="wc-ts-form-row">
-          <select className="wc-ts-sel" value={tf.outcome} onChange={e => setTf(v => ({...v, outcome: e.target.value}))}>
-            <option value="home">{M.home.cn}胜</option>
-            <option value="draw">平局</option>
-            <option value="away">{M.away.cn}胜</option>
-          </select>
-          <select className="wc-ts-sel" value={tf.direction} onChange={e => setTf(v => ({...v, direction: e.target.value}))}>
-            <option value="YES">YES</option>
-            <option value="NO">NO</option>
-          </select>
           <input className="wc-ts-inp" type="number" placeholder="价格 ¢" min="1" max="99" step="0.5"
             value={tf.price} onChange={e => setTf(v => ({...v, price: e.target.value}))} />
           <input className="wc-ts-inp sm" type="number" placeholder="数量" min="1" step="1"
