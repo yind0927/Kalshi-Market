@@ -4059,47 +4059,6 @@ input { font-family: inherit; }
 }
 .wc-pin-apply:hover { opacity: .85; }
 
-/* ── Trade Advisor card ──────────────────────────────────── */
-.wc-advisor {
-  border-left: 3px solid var(--border-strong);
-  transition: border-color .2s;
-}
-.wc-advisor.adv-small   { border-color: var(--warn); }
-.wc-advisor.adv-profit  { border-color: var(--pos); }
-.wc-advisor.adv-hold    { border-color: var(--accent); }
-.wc-advisor.adv-pass    { border-color: var(--neg); }
-.wc-advisor.adv-wait    { border-color: var(--ink-4); }
-.wc-advisor.adv-observe { border-color: var(--ink-3); }
-
-.wc-adv-head {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
-}
-.wc-adv-title {
-  font-size: 13px; font-weight: 700; flex: 1; margin: 0;
-}
-.wc-adv-title em { font-style: normal; font-weight: 400; color: var(--ink-3); margin-left: 5px; font-size: 11px; }
-.wc-adv-pill {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.07em; padding: 3px 9px; border-radius: 20px;
-}
-.wc-adv-pill.adv-small   { background: color-mix(in oklab, var(--warn) 14%, transparent); color: oklch(0.58 0.15 70); }
-.wc-adv-pill.adv-profit  { background: color-mix(in oklab, var(--pos)  14%, transparent); color: var(--pos); }
-.wc-adv-pill.adv-hold    { background: color-mix(in oklab, var(--accent) 12%, transparent); color: var(--accent-ink); }
-.wc-adv-pill.adv-pass    { background: color-mix(in oklab, var(--neg)  12%, transparent); color: var(--neg); }
-.wc-adv-pill.adv-wait    { background: var(--bg-2); color: var(--ink-3); }
-.wc-adv-pill.adv-observe { background: var(--bg-2); color: var(--ink-2); }
-
-.wc-adv-line {
-  font-size: 13.5px; color: var(--ink-2); margin: 0 0 6px; line-height: 1.55;
-}
-.wc-adv-line.lead {
-  font-size: 14px; color: var(--ink-1); font-weight: 500;
-}
-.wc-adv-rule {
-  margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border);
-  font-size: 10.5px; color: var(--ink-4); letter-spacing: 0.03em;
-}
-
 /* Kalshi ticker inline copy button */
 .wc-ticker-copy {
   display: inline; padding: 1px 6px; border-radius: 4px;
