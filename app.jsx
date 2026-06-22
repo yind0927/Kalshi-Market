@@ -2878,6 +2878,30 @@ function inlineMd(text) {
       : p
   );
 }
+async function streamSSE(response, onChunk) {
+  const reader = response.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", accumulated = "", completed = false;
+  outer: while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) !== -1) {
+      const line = buf.slice(0, idx); buf = buf.slice(idx + 2);
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6);
+      if (payload === "[DONE]") { completed = true; break outer; }
+      try {
+        const ev = JSON.parse(payload);
+        if (ev.error) throw new Error(ev.error);
+        if (ev.t) { accumulated += ev.t; onChunk(accumulated); }
+      } catch (e) { throw e; }
+    }
+  }
+  return { text: accumulated, completed };
+}
+
 function renderAnalysis(text) {
   const lines = text.split("\n");
   const out = [];
@@ -2931,7 +2955,9 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   const [capVal, setCapVal] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiText, setAiText] = useState(null);
+  const [aiScenario, setAiScenario] = useState(null);
   const [aiError, setAiError] = useState(null);
+  const [aiScenError, setAiScenError] = useState(null);
   const [qaList, setQaList] = useState([]);
   const [qaInput, setQaInput] = useState("");
   const [qaLoading, setQaLoading] = useState(false);
@@ -2944,12 +2970,13 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(`wc_ai_${M.id}`) || "null");
-      setAiText(saved?.text || null);
-    } catch { setAiText(null); }
+      setAiText(saved?.core || saved?.text || null);
+      setAiScenario(saved?.scenario || null);
+    } catch { setAiText(null); setAiScenario(null); }
     try {
       setQaList(JSON.parse(localStorage.getItem(`wc_ai_qa_${M.id}`) || "[]"));
     } catch { setQaList([]); }
-    setAiError(null); setQaError(null); setQaInput(""); setSitu("");
+    setAiError(null); setAiScenError(null); setQaError(null); setQaInput(""); setSitu("");
   }, [M.id]);
 
   // Current Kalshi prices in cents (fall back to seed market)
@@ -2989,9 +3016,11 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   }, [winner]); // eslint-disable-line
 
   const callAI = async (phase, userInput) => {
-    setAiLoading(true); setAiError(null); setAiText(null);
+    setAiLoading(true); setAiError(null); setAiScenError(null);
+    setAiText(null); setAiScenario(null);
+    const needsDual = phase !== "postmatch";
     try {
-      const body = {
+      const bodyBase = {
         matchInfo: {
           home: { name: M.home.name, cn: M.home.cn, flag: M.home.flag, elo: M.home.elo, fifaRank: M.home.fifaRank, code: M.home.code },
           away: { name: M.away.name, cn: M.away.cn, flag: M.away.flag, elo: M.away.elo, fifaRank: M.away.fifaRank, code: M.away.code },
@@ -3010,56 +3039,56 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         positions: openTrades.map(t => ({ outcome: t.outcome, direction: t.direction, entryPrice: t.entryPrice, units: t.units })),
         userInput: userInput || "",
         totalPnl: livePnl,
-        matchContext: {
-          venue: getVenueMeta(M.venue),
-          standings: computeGroupStandings(M),
-        },
+        matchContext: { venue: getVenueMeta(M.venue), standings: computeGroupStandings(M) },
       };
-      const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!r.ok) {
-        let errMsg = `请求失败 (${r.status})，请重试`;
-        try { const j = await r.json(); if (j.error) errMsg = j.error; } catch {}
-        setAiError(errMsg); setAiLoading(false); return;
-      }
-      // SSE streaming reader
-      const reader = r.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "", accumulated = "", done_ = false;
-      outer: while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let idx;
-        while ((idx = buf.indexOf("\n\n")) !== -1) {
-          const line = buf.slice(0, idx); buf = buf.slice(idx + 2);
-          if (!line.startsWith("data: ")) continue;
-          const payload = line.slice(6);
-          if (payload === "[DONE]") {
-            done_ = true;
-            setQaList([]);
-            try {
-              localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ text: accumulated, phase, ts: Date.now() }));
-              localStorage.removeItem(`wc_ai_qa_${M.id}`);
-            } catch {}
-            const analyses = session?.analyses || [];
-            saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: accumulated }] });
-            break outer;
-          }
-          try {
-            const ev = JSON.parse(payload);
-            if (ev.error) { setAiError(ev.error); done_ = true; break outer; }
-            if (ev.t) { accumulated += ev.t; setAiText(accumulated); }
-          } catch {}
+      const post = (extra) => fetch("/api/trade-analysis", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...bodyBase, ...extra }),
+      });
+
+      if (needsDual) {
+        // Start both fetches simultaneously
+        const [r1, r2] = await Promise.all([post({ subPhase: "core" }), post({ subPhase: "scenario" })]);
+        if (!r1.ok) {
+          let msg = `核心分析请求失败 (${r1.status})，请重试`;
+          try { const j = await r1.json(); if (j.error) msg = j.error; } catch {}
+          setAiError(msg); setAiLoading(false); return;
         }
-      }
-      // Stream ended before [DONE] (timeout/network cut) — save whatever arrived
-      if (!done_ && accumulated) {
+        if (!r2.ok) {
+          let msg = `情景树请求失败 (${r2.status})`;
+          try { const j = await r2.json(); if (j.error) msg = j.error; } catch {}
+          setAiScenError(msg);
+        }
+        // Stream both in parallel
+        const [{ text: coreText }, { text: scenText }] = await Promise.all([
+          streamSSE(r1, (t) => setAiText(t)).catch(e => { setAiError(e.message || "核心分析失败"); return { text: "" }; }),
+          r2.ok ? streamSSE(r2, (t) => setAiScenario(t)).catch(e => { setAiScenError(e.message || "情景树加载失败"); return { text: "" }; }) : Promise.resolve({ text: "" }),
+        ]);
+        setQaList([]);
         try {
-          localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ text: accumulated, phase, ts: Date.now() }));
+          localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ core: coreText, scenario: scenText, phase, ts: Date.now() }));
           localStorage.removeItem(`wc_ai_qa_${M.id}`);
         } catch {}
         const analyses = session?.analyses || [];
-        saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: accumulated }] });
+        saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: coreText + "\n\n" + scenText }] });
+      } else {
+        // Postmatch: single call
+        const r = await post({});
+        if (!r.ok) {
+          let msg = `请求失败 (${r.status})，请重试`;
+          try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+          setAiError(msg); setAiLoading(false); return;
+        }
+        const { text, completed } = await streamSSE(r, (t) => setAiText(t)).catch(e => { setAiError(e.message || "分析失败"); return { text: "", completed: false }; });
+        if (text) {
+          setQaList([]);
+          try {
+            localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ text, phase, ts: Date.now() }));
+            localStorage.removeItem(`wc_ai_qa_${M.id}`);
+          } catch {}
+          const analyses = session?.analyses || [];
+          saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: text }] });
+        }
       }
     } catch (e) { setAiError("分析请求失败，请重试"); }
     setAiLoading(false);
@@ -3067,8 +3096,9 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
 
   const callQA = async () => {
     const q = qaInput.trim();
-    if (!q || !aiText) return;
+    if (!q || (!aiText && !aiScenario)) return;
     setQaLoading(true); setQaError(null); setQaInput("");
+    const previousAnalysis = [aiText, aiScenario].filter(Boolean).join("\n\n");
     try {
       const body = {
         matchInfo: {
@@ -3087,47 +3117,22 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         modelProbs: modelProbs || null,
         currentScore: live ? { homeScore: live.scoreA, awayScore: live.scoreB, minute: live.minute } : null,
         positions: openTrades.map(t => ({ outcome: t.outcome, direction: t.direction, entryPrice: t.entryPrice, units: t.units })),
-        userInput: "",
-        totalPnl: livePnl,
+        userInput: "", totalPnl: livePnl,
         followUpQuestion: q,
-        previousAnalysis: aiText,
-        matchContext: {
-          venue: getVenueMeta(M.venue),
-          standings: computeGroupStandings(M),
-        },
+        previousAnalysis,
+        matchContext: { venue: getVenueMeta(M.venue), standings: computeGroupStandings(M) },
       };
       const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) {
-        let errMsg = `请求失败 (${r.status})，请重试`;
-        try { const j = await r.json(); if (j.error) errMsg = j.error; } catch {}
-        setQaError(errMsg); setQaLoading(false); return;
+        let msg = `请求失败 (${r.status})，请重试`;
+        try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+        setQaError(msg); setQaLoading(false); return;
       }
-      // SSE streaming reader
-      const reader = r.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "", accumulated = "";
-      outer: while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let idx;
-        while ((idx = buf.indexOf("\n\n")) !== -1) {
-          const line = buf.slice(0, idx); buf = buf.slice(idx + 2);
-          if (!line.startsWith("data: ")) continue;
-          const payload = line.slice(6);
-          if (payload === "[DONE]") {
-            const newQa = [...qaList, { q, a: accumulated, ts: Date.now() }];
-            setQaList(newQa);
-            setQaLoading(false);
-            try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(newQa)); } catch {}
-            break outer;
-          }
-          try {
-            const ev = JSON.parse(payload);
-            if (ev.error) { setQaError(ev.error); setQaLoading(false); break outer; }
-            if (ev.t) { accumulated += ev.t; }
-          } catch {}
-        }
+      const { text } = await streamSSE(r, () => {}).catch(e => { setQaError(e.message || "提问失败"); return { text: "" }; });
+      if (text) {
+        const newQa = [...qaList, { q, a: text, ts: Date.now() }];
+        setQaList(newQa);
+        try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(newQa)); } catch {}
       }
     } catch (e) { setQaError("提问请求失败，请重试"); }
     setQaLoading(false);
@@ -3286,7 +3291,10 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         </button>
         {aiError && <div className="wc-ts-ai-err">⚠ {aiError}</div>}
         {aiText && renderAnalysis(aiText)}
-        {aiText && (
+        {aiScenario && <div className="wc-ts-ai-divider" />}
+        {aiScenario && renderAnalysis(aiScenario)}
+        {aiScenError && <div className="wc-ts-ai-err">⚠ {aiScenError}</div>}
+        {(aiText || aiScenario) && (
           <div className="wc-ts-qa">
             {qaList.map((qa, i) => (
               <div key={i} className="wc-ts-qa-item">
