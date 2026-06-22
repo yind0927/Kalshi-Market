@@ -2522,103 +2522,6 @@ function WCOutcomeRow({ label, sub, q, quote }) {
   );
 }
 
-function WCBacktestCard() {
-  const BT = window.KW_WC.BACKTEST;
-  const [open, setOpen] = useState(false);
-
-  // Calibration bars: compare predicted vs actual for home-win probability buckets
-  const calRows = BT.calibration;
-
-  return (
-    <div className="card wc-card wc-bt-card">
-      <div className="card-head" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
-        <div>
-          <h3>回测验证 <em>Backtest · {BT.matchCount.toLocaleString()} 场</em></h3>
-          <div className="sub">
-            {BT.cutoffFrom.slice(0, 7)} – {BT.cutoffTo.slice(0, 7)} · 国际正式赛事（含 {BT.wcMatchCount} 场世界杯）
-          </div>
-        </div>
-        <span className="wc-bt-toggle">{open ? "▲" : "▼"}</span>
-      </div>
-
-      {/* Always-visible summary row */}
-      <div className="wc-bt-summary">
-        <div className="wc-bt-metric">
-          <span className="wc-bt-val pos">+{BT.brier.skillScore}%</span>
-          <span className="wc-bt-lbl">Brier 技能分<br /><em>vs 随机基准</em></span>
-        </div>
-        <div className="wc-bt-metric">
-          <span className="wc-bt-val">{BT.brier.model}</span>
-          <span className="wc-bt-lbl">模型 Brier<br /><em>基准 {BT.brier.naive}</em></span>
-        </div>
-        <div className="wc-bt-metric">
-          <span className="wc-bt-val">{BT.wcBrier}</span>
-          <span className="wc-bt-lbl">世界杯 Brier<br /><em>{BT.wcMatchCount} 场</em></span>
-        </div>
-        <div className="wc-bt-metric">
-          <span className="wc-bt-val">{BT.wcAvgGoals}</span>
-          <span className="wc-bt-lbl">WC 场均进球<br /><em>μ 已更新</em></span>
-        </div>
-      </div>
-
-      {open && (
-        <div className="wc-bt-detail">
-          <div className="wc-bt-params">
-            <span className="wc-bt-param-row">
-              <span>⚙ 参数更新</span>
-              <span>c (强弱差): 175 → 225（国际赛）/ <strong>300</strong>（WC · 顶队差距更小）</span>
-              <span>ρ (低分修正): 0.06 → <strong>0.04</strong>（国际赛 DC 修正收益微弱）</span>
-              <span>μ: 2.55 → <strong>2.71</strong>（WC 场均实测）</span>
-              <span>Platt 校准: 开启（piecewise 插值，30% 偏差修正）</span>
-              <span>Elo: 法国 {BT.eloSnapshot.France} · 塞内加尔 {BT.eloSnapshot.Senegal}（49k 场累计）</span>
-            </span>
-          </div>
-
-          <div className="wc-bt-cal-title">校准曲线 · 主队胜率（预测 vs 实际，c=225 ρ=0）</div>
-          <div className="wc-bt-cal">
-            {calRows.map((row, i) => {
-              const diff = row.meanActual - row.meanPred;
-              const absDiff = Math.abs(diff);
-              const pctPred   = (row.meanPred   * 100).toFixed(0);
-              const pctActual = (row.meanActual * 100).toFixed(0);
-              const barW = Math.round(row.meanActual * 100);
-              const errColor = absDiff > 0.08 ? "var(--neg)" : absDiff > 0.04 ? "var(--warn)" : "var(--pos)";
-              return (
-                <div className="wc-bt-cal-row" key={i}>
-                  <span className="wc-bt-cal-bin">{Math.round(row.bin * 100)}–{Math.round((row.bin + 0.1) * 100)}%</span>
-                  <div className="wc-bt-cal-bar-wrap">
-                    <div className="wc-bt-cal-bar-pred"  style={{ width: `${Math.round(row.meanPred   * 100)}%` }} />
-                    <div className="wc-bt-cal-bar-actual" style={{ width: `${Math.round(row.meanActual * 100)}%` }} />
-                  </div>
-                  <span className="wc-bt-cal-pred">{pctPred}%</span>
-                  <span className="wc-bt-cal-arr" style={{ color: errColor }}>{diff > 0 ? "▲" : "▼"}{Math.round(absDiff * 100)}pp</span>
-                  <span className="wc-bt-cal-actual">{pctActual}%</span>
-                  <span className="wc-bt-cal-n">n={row.n}</span>
-                </div>
-              );
-            })}
-            <div className="wc-bt-cal-legend">
-              <span><i className="bt-pred" /> 预测</span>
-              <span><i className="bt-actual" /> 实际</span>
-              <span className="wc-bt-cal-note">
-                30–70% 区间校准近乎完美 · 已通过 Platt 修正应用于当前预测值
-              </span>
-            </div>
-          </div>
-
-          <div className="wc-bt-assess">
-            <div className="wc-bt-assess-row pos">✓ 模型有真实预测能力：BSS +{BT.brier.skillScore}% 远超随机（0技能基准）</div>
-            <div className="wc-bt-assess-row pos">✓ ρ 扫描发现：国际赛 Dixon-Coles 修正 Brier 收益≤0.0004，已降至 0.04（最小化 0-0 偏差）</div>
-            <div className="wc-bt-assess-row pos">✓ WC 专项 c=300：顶队间 Elo 差对进球比影响更小，减少强队被高估</div>
-            <div className="wc-bt-assess-row pos">✓ Platt 校准已应用：30–70% 区间近乎完美，极端尾部保守截断避免过拟合</div>
-            <div className="wc-bt-assess-row info">ℹ WC 样本 {BT.wcMatchCount} 场，置信区间宽 ±3–5pp；1X2 边际后校准仍 &lt;1pp</div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 const WC_GROUP_LABELS = ["A","B","C","D","E","F","G","H","I","J","K","L"];
 
 function WCGroupSelector({ selectedGroup, onSelect }) {
@@ -3681,7 +3584,6 @@ function WorldCupView({ resultOverrides = {} }) {
       </div>
 
 
-      <WCBacktestCard />
       </>)}
     </div>
   );
