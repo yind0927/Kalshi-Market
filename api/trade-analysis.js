@@ -70,10 +70,11 @@ module.exports = async function handler(req, res) {
     return "雷暴";
   }
 
-  // Build multi-dimensional context section
+  // Build multi-dimensional context section — never throws
   async function buildContextSection() {
-    const venue = matchContext?.venue;
-    const standings = matchContext?.standings;
+    try {
+      const venue = matchContext?.venue;
+      const standings = matchContext?.standings;
     let s = "";
 
     // Venue + weather
@@ -157,7 +158,8 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    return s ? `\n## 多维赛事背景\n${s}\n` : "";
+      return s ? `\n## 多维赛事背景\n${s}\n` : "";
+    } catch { return ""; }
   }
 
   const H = matchInfo.home;
@@ -166,8 +168,7 @@ module.exports = async function handler(req, res) {
   const stronger = H.elo >= A.elo ? H.cn : A.cn;
   const weaker   = H.elo >= A.elo ? A.cn : H.cn;
 
-  // Build context section (includes async weather fetch)
-  const contextSection = await buildContextSection();
+  const contextSection = await buildContextSection().catch(() => "");
 
   let prompt = `## 比赛信息
 ${H.flag} **${H.cn}**（${H.name}）Elo ${H.elo} · FIFA 第${H.fifaRank}名

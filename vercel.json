@@ -1,7 +1,6 @@
 {
   "functions": {
-    "api/*.js": {
-      "maxDuration": 60
-    }
+    "api/trade-analysis.js": { "maxDuration": 60 },
+    "api/match-odds.js": { "maxDuration": 15 }
   }
 }

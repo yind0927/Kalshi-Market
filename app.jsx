@@ -3219,9 +3219,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
       {/* AI analysis */}
       <div className="wc-ts-ai-section">
         <textarea className="wc-ts-situ-inp" rows={2}
-          placeholder={live
-            ? `描述当前场面（可选）：比分、换人、攻防态势、黄牌、伤停等…`
-            : `最新消息（可选）：首发阵容、伤停、球员状态、换帅等…`}
+          placeholder="最新消息（可选）"
           value={situ} onChange={e => setSitu(e.target.value)} />
         <button className="wc-ts-ai-btn" onClick={() => callAI(currentPeriod, situ)} disabled={aiLoading}>
           {aiLoading ? "AI 分析中…" : live ? `🤖 AI 实时分析（${PERIOD_LABELS[currentPeriod]}）` : "🤖 AI 赛前策略分析"}
