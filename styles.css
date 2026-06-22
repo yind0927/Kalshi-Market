@@ -4142,6 +4142,32 @@ input { font-family: inherit; }
 .wc-ts-ai-hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 .wc-ts-ai-body strong { color: var(--ink); font-weight: 700; }
 
+/* ── AI Q&A follow-up ── */
+.wc-ts-qa { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.wc-ts-qa-item { border-left: 2px solid color-mix(in oklab, var(--accent) 40%, transparent); padding-left: 10px; }
+.wc-ts-qa-q {
+  font-size: 12px; font-weight: 600; color: var(--ink-2);
+  margin-bottom: 6px; padding: 5px 8px;
+  background: color-mix(in oklab, var(--accent) 8%, transparent);
+  border-radius: 4px;
+}
+.wc-ts-qa-row {
+  display: flex; gap: 6px; align-items: center;
+  padding: 6px 0;
+}
+.wc-ts-qa-inp {
+  flex: 1; padding: 7px 11px; border-radius: 6px; font-size: 13px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+  outline: none;
+}
+.wc-ts-qa-inp:focus { border-color: var(--accent); }
+.wc-ts-qa-btn {
+  padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  background: var(--accent); color: #fff; border: none; cursor: pointer;
+  white-space: nowrap;
+}
+.wc-ts-qa-btn:disabled { opacity: .45; cursor: not-allowed; }
+
 .wc-ts-positions, .wc-ts-history { margin-bottom: 14px; }
 .wc-ts-pos-head {
   font-size: 10px; font-weight: 700; text-transform: uppercase;

@@ -2881,12 +2881,25 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   const [aiLoading, setAiLoading] = useState(false);
   const [aiText, setAiText] = useState(null);
   const [aiError, setAiError] = useState(null);
+  const [qaList, setQaList] = useState([]);
+  const [qaInput, setQaInput] = useState("");
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaError, setQaError] = useState(null);
   const [tf, setTf] = useState({ outcome: "home", direction: "YES", price: "", units: "" });
   const [situ, setSitu] = useState("");
   const [closeForm, setCloseForm] = useState(null); // { tradeId, price }
 
-  // Reset AI text when match changes
-  useEffect(() => { setAiText(null); setAiError(null); setSitu(""); }, [M.id]);
+  // Load saved AI analysis and Q&A when match changes
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`wc_ai_${M.id}`) || "null");
+      setAiText(saved?.text || null);
+    } catch { setAiText(null); }
+    try {
+      setQaList(JSON.parse(localStorage.getItem(`wc_ai_qa_${M.id}`) || "[]"));
+    } catch { setQaList([]); }
+    setAiError(null); setQaError(null); setQaInput(""); setSitu("");
+  }, [M.id]);
 
   // Current Kalshi prices in cents (fall back to seed market)
   const prices = {
@@ -2951,11 +2964,54 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
       const d = await r.json();
       if (d.ok) {
         setAiText(d.analysis);
+        setQaList([]);
+        try {
+          localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ text: d.analysis, phase, ts: Date.now() }));
+          localStorage.removeItem(`wc_ai_qa_${M.id}`);
+        } catch {}
         const analyses = session?.analyses || [];
         saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: d.analysis }] });
       } else { setAiError(d.error || "AI 分析失败"); }
     } catch (e) { setAiError(e.message); }
     setAiLoading(false);
+  };
+
+  const callQA = async () => {
+    const q = qaInput.trim();
+    if (!q || !aiText) return;
+    setQaLoading(true); setQaError(null); setQaInput("");
+    try {
+      const body = {
+        matchInfo: {
+          home: { name: M.home.name, cn: M.home.cn, flag: M.home.flag, elo: M.home.elo, fifaRank: M.home.fifaRank },
+          away: { name: M.away.name, cn: M.away.cn, flag: M.away.flag, elo: M.away.elo, fifaRank: M.away.fifaRank },
+          competition: M.competition, koBJT: M.koBJT, venue: M.venue,
+        },
+        phase: live ? getTradePeriod(live.minute, scoreData?.status === "ht") : "prematch",
+        capital: session?.capital || 0,
+        kalshiPrices: prices,
+        pinnacleOdds: currentPinnacleOdds ? {
+          home: Math.round(currentPinnacleOdds.home * 100),
+          draw: currentPinnacleOdds.draw ? Math.round(currentPinnacleOdds.draw * 100) : null,
+          away: Math.round(currentPinnacleOdds.away * 100),
+        } : null,
+        modelProbs: modelProbs || null,
+        currentScore: live ? { homeScore: live.scoreA, awayScore: live.scoreB, minute: live.minute } : null,
+        positions: openTrades.map(t => ({ outcome: t.outcome, direction: t.direction, entryPrice: t.entryPrice, units: t.units })),
+        userInput: "",
+        totalPnl: livePnl,
+        followUpQuestion: q,
+        previousAnalysis: aiText,
+      };
+      const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (d.ok) {
+        const newQa = [...qaList, { q, a: d.analysis, ts: Date.now() }];
+        setQaList(newQa);
+        try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(newQa)); } catch {}
+      } else { setQaError(d.error || "提问失败"); }
+    } catch (e) { setQaError(e.message); }
+    setQaLoading(false);
   };
 
   const logTrade = () => {
@@ -3050,6 +3106,26 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           </button>
           {aiError && <div className="wc-ts-ai-err">{aiError}</div>}
           {aiText && renderAnalysis(aiText)}
+          {aiText && (
+            <div className="wc-ts-qa">
+              {qaList.map((qa, i) => (
+                <div key={i} className="wc-ts-qa-item">
+                  <div className="wc-ts-qa-q">❓ {qa.q}</div>
+                  {renderAnalysis(qa.a)}
+                </div>
+              ))}
+              <div className="wc-ts-qa-row">
+                <input className="wc-ts-qa-inp" placeholder="继续提问…"
+                  value={qaInput} onChange={e => setQaInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && !qaLoading && callQA()}
+                  disabled={qaLoading} />
+                <button className="wc-ts-qa-btn" onClick={callQA} disabled={qaLoading || !qaInput.trim()}>
+                  {qaLoading ? "…" : "发送"}
+                </button>
+              </div>
+              {qaError && <div className="wc-ts-ai-err">⚠ {qaError}</div>}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -3093,6 +3169,26 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         </button>
         {aiError && <div className="wc-ts-ai-err">⚠ {aiError}</div>}
         {aiText && renderAnalysis(aiText)}
+        {aiText && (
+          <div className="wc-ts-qa">
+            {qaList.map((qa, i) => (
+              <div key={i} className="wc-ts-qa-item">
+                <div className="wc-ts-qa-q">❓ {qa.q}</div>
+                {renderAnalysis(qa.a)}
+              </div>
+            ))}
+            <div className="wc-ts-qa-row">
+              <input className="wc-ts-qa-inp" placeholder="继续提问…"
+                value={qaInput} onChange={e => setQaInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && !qaLoading && callQA()}
+                disabled={qaLoading} />
+              <button className="wc-ts-qa-btn" onClick={callQA} disabled={qaLoading || !qaInput.trim()}>
+                {qaLoading ? "…" : "发送"}
+              </button>
+            </div>
+            {qaError && <div className="wc-ts-ai-err">⚠ {qaError}</div>}
+          </div>
+        )}
       </div>
 
       {/* Open positions */}
