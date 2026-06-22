@@ -3078,7 +3078,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
             <span className="wc-tsp-val">{prices[k] != null ? prices[k] + "¢" : "—"}</span>
           </div>
         ))}
-        <span className="wc-tsp-src">{kStatus === "live" ? "Kalshi实时" : "种子价格"}</span>
+        <span className="wc-tsp-src">{kStatus === "live" ? "Kalshi实时" : currentPinnacleOdds ? "Pinnacle参考" : "模型预测"}</span>
       </div>
 
       {/* AI analysis */}
@@ -3400,10 +3400,9 @@ function WorldCupView({ resultOverrides = {} }) {
     }
   };
 
-  // Auto-apply Pinnacle odds as seed when available (de-vigged; only if no manual override)
+  // Auto-apply Pinnacle odds as seed whenever available (de-vigged; always overwrite stale data)
   useEffect(() => {
     if (!currentPinnacleOdds) return;
-    if (seedOverrides[M.id]) return;
     const { home, draw, away, overround } = WC.devig3way(
       currentPinnacleOdds.home, currentPinnacleOdds.draw, currentPinnacleOdds.away
     );
@@ -3434,7 +3433,7 @@ function WorldCupView({ resultOverrides = {} }) {
       loading: <span className="wc-kbadge pending">⏳ Kalshi 连接中…</span>,
       live:    <span className="wc-kbadge ok">✓ Kalshi LIVE · {kalshi?.resolvedTicker || effectiveM.kalshiTicker}</span>,
       seed:    <span className="wc-kbadge warn">
-                 ⚠ 种子市场 ·{" "}
+                 ⏳ Kalshi 待开盘 ·{" "}
                  <button className="wc-ticker-copy" onClick={copyTicker} title="点击复制 ticker，在 Kalshi 网站验证">
                    {effectiveM.kalshiTicker}
                  </button>
@@ -3455,7 +3454,7 @@ function WorldCupView({ resultOverrides = {} }) {
           小组分析 <em>Group</em>
         </button>
         <button className={`wc-subtab${wcSubView === "rankings" ? " sel" : ""}`} onClick={() => setWcSubView("rankings")}>
-          ⚡ Elo 排名 <em>Power Rankings</em>
+          Elo 排名 <em>Power Rankings</em>
         </button>
       </div>
       {wcSubView === "rankings" ? <WCEloRankings resultOverrides={resultOverrides} /> : (<>
