@@ -3400,11 +3400,14 @@ function WorldCupView({ resultOverrides = {} }) {
     }
   };
 
-  // Auto-apply Pinnacle odds as seed when available (only if user hasn't set a manual override)
+  // Auto-apply Pinnacle odds as seed when available (de-vigged; only if no manual override)
   useEffect(() => {
     if (!currentPinnacleOdds) return;
-    if (seedOverrides[M.id]) return; // respect manual override
-    saveSeedOverride(M.id, currentPinnacleOdds);
+    if (seedOverrides[M.id]) return;
+    const { home, draw, away, overround } = WC.devig3way(
+      currentPinnacleOdds.home, currentPinnacleOdds.draw, currentPinnacleOdds.away
+    );
+    saveSeedOverride(M.id, { home, draw, away, over25: currentPinnacleOdds.over25 });
   }, [currentPinnacleOdds, M.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Match status badge for hero
@@ -3543,19 +3546,24 @@ function WorldCupView({ resultOverrides = {} }) {
         </div>
       )}
 
-      {/* ── Pinnacle reference (auto-calibrates model seed) ── */}
-      {!showFinishedView && currentPinnacleOdds && (
-        <div className="wc-pinnacle-bar">
-          <span className="wc-pin-label">📡 Pinnacle</span>
-          <span className="wc-pin-vals">
-            {M.home.cn} {(currentPinnacleOdds.home * 100).toFixed(1)}%
-            {" · "}平 {currentPinnacleOdds.draw != null ? (currentPinnacleOdds.draw * 100).toFixed(1) + "%" : "—"}
-            {" · "}{M.away.cn} {(currentPinnacleOdds.away * 100).toFixed(1)}%
-            {currentPinnacleOdds.over25 != null && ` · 大球 ${(currentPinnacleOdds.over25 * 100).toFixed(1)}%`}
-          </span>
-          <span className="wc-pin-auto">已自动校准 ✓</span>
-        </div>
-      )}
+      {/* ── Pinnacle reference (auto-calibrates model seed, de-vigged) ── */}
+      {!showFinishedView && currentPinnacleOdds && (() => {
+        const dv = WC.devig3way(currentPinnacleOdds.home, currentPinnacleOdds.draw, currentPinnacleOdds.away);
+        const or = ((dv.overround - 1) * 100).toFixed(1);
+        return (
+          <div className="wc-pinnacle-bar">
+            <span className="wc-pin-label">📡 Pinnacle</span>
+            <span className="wc-pin-vals">
+              {M.home.cn} {(dv.home * 100).toFixed(1)}%
+              {" · "}平 {dv.draw != null ? (dv.draw * 100).toFixed(1) + "%" : "—"}
+              {" · "}{M.away.cn} {(dv.away * 100).toFixed(1)}%
+              {currentPinnacleOdds.over25 != null && ` · 大球 ${(currentPinnacleOdds.over25 * 100).toFixed(1)}%`}
+              <em className="wc-pin-or"> 水率+{or}%</em>
+            </span>
+            <span className="wc-pin-auto">已校准 ✓</span>
+          </div>
+        );
+      })()}
 
 
       {/* ── 1X2 distribution vs market ── */}

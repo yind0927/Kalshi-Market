@@ -4054,6 +4054,7 @@ input { font-family: inherit; }
 .wc-pin-auto {
   margin-left: auto; font-size: 11px; color: var(--pos); font-weight: 600; white-space: nowrap;
 }
+.wc-pin-or { font-size: 11px; color: var(--ink-3); font-style: normal; margin-left: 4px; }
 .wc-pin-apply {
   padding: 5px 14px; border-radius: 7px; cursor: pointer;
   background: var(--accent); color: #fff; border: none;
