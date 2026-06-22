@@ -3016,19 +3016,42 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         },
       };
       const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!r.ok) { setAiError(`请求失败 (${r.status})，请重试`); setAiLoading(false); return; }
-      let d;
-      try { d = await r.json(); } catch { setAiError("响应解析失败，请重试"); setAiLoading(false); return; }
-      if (d.ok) {
-        setAiText(d.analysis);
-        setQaList([]);
-        try {
-          localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ text: d.analysis, phase, ts: Date.now() }));
-          localStorage.removeItem(`wc_ai_qa_${M.id}`);
-        } catch {}
-        const analyses = session?.analyses || [];
-        saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: d.analysis }] });
-      } else { setAiError(d.error || "AI 分析失败"); }
+      if (!r.ok) {
+        let errMsg = `请求失败 (${r.status})，请重试`;
+        try { const j = await r.json(); if (j.error) errMsg = j.error; } catch {}
+        setAiError(errMsg); setAiLoading(false); return;
+      }
+      // SSE streaming reader
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", accumulated = "";
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) !== -1) {
+          const line = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6);
+          if (payload === "[DONE]") {
+            setAiLoading(false);
+            setQaList([]);
+            try {
+              localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ text: accumulated, phase, ts: Date.now() }));
+              localStorage.removeItem(`wc_ai_qa_${M.id}`);
+            } catch {}
+            const analyses = session?.analyses || [];
+            saveSession({ ...session, analyses: [...analyses, { phase, timestamp: new Date().toISOString(), userInput: userInput || "", analysis: accumulated }] });
+            break outer;
+          }
+          try {
+            const ev = JSON.parse(payload);
+            if (ev.error) { setAiError(ev.error); setAiLoading(false); break outer; }
+            if (ev.t) { accumulated += ev.t; setAiText(accumulated); }
+          } catch {}
+        }
+      }
     } catch (e) { setAiError("分析请求失败，请重试"); }
     setAiLoading(false);
   };
@@ -3065,14 +3088,38 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         },
       };
       const r = await fetch("/api/trade-analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!r.ok) { setQaError(`请求失败 (${r.status})，请重试`); setQaLoading(false); return; }
-      let d;
-      try { d = await r.json(); } catch { setQaError("响应解析失败，请重试"); setQaLoading(false); return; }
-      if (d.ok) {
-        const newQa = [...qaList, { q, a: d.analysis, ts: Date.now() }];
-        setQaList(newQa);
-        try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(newQa)); } catch {}
-      } else { setQaError(d.error || "提问失败"); }
+      if (!r.ok) {
+        let errMsg = `请求失败 (${r.status})，请重试`;
+        try { const j = await r.json(); if (j.error) errMsg = j.error; } catch {}
+        setQaError(errMsg); setQaLoading(false); return;
+      }
+      // SSE streaming reader
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", accumulated = "";
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) !== -1) {
+          const line = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6);
+          if (payload === "[DONE]") {
+            const newQa = [...qaList, { q, a: accumulated, ts: Date.now() }];
+            setQaList(newQa);
+            setQaLoading(false);
+            try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(newQa)); } catch {}
+            break outer;
+          }
+          try {
+            const ev = JSON.parse(payload);
+            if (ev.error) { setQaError(ev.error); setQaLoading(false); break outer; }
+            if (ev.t) { accumulated += ev.t; }
+          } catch {}
+        }
+      }
     } catch (e) { setQaError("提问请求失败，请重试"); }
     setQaLoading(false);
   };

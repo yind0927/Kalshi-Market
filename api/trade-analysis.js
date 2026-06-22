@@ -1,5 +1,7 @@
 "use strict";
 
+const Anthropic = require("@anthropic-ai/sdk");
+
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -433,30 +435,32 @@ ${isEndGame ? "（终场阶段：禁止新开仓，所有操作只涉及现有�
 - 每个章节都要有实质内容，不能仅用一句话敷衍
 - 用中文回答`;
 
+  // Switch to SSE streaming mode
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const sseWrite = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 5000,
-        system,
-        messages: [{ role: "user", content: prompt }],
-      }),
+    const client = new Anthropic({ apiKey });
+    const stream = client.messages.stream({
+      model: "claude-sonnet-4-6",
+      max_tokens: 5000,
+      system,
+      messages: [{ role: "user", content: prompt }],
     });
 
-    if (!r.ok) {
-      const txt = await r.text().catch(() => "");
-      return res.status(500).json({ error: `Anthropic ${r.status}: ${txt.slice(0, 200)}` });
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+        sseWrite({ t: event.delta.text });
+      }
     }
-    const data = await r.json();
-    const analysis = data.content?.[0]?.text || "";
-    return res.json({ ok: true, analysis, phase, isQA: !!(followUpQuestion) });
+
+    res.write("data: [DONE]\n\n");
+    res.end();
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    sseWrite({ error: e.message || "AI 分析失败" });
+    res.end();
   }
 };
