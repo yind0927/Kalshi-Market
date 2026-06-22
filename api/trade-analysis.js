@@ -224,7 +224,7 @@ ${A.cn}胜    ${pc(kalshiPrices?.away).padEnd(10)}  ${fairZone(pinnacleOdds?.awa
   // ── Prematch ──────────────────────────────────────────────
   } else if (phase === "prematch") {
     prompt += `
-**输出要求**：前两章（赛事速览 + 首发核查）合计严格不超过100字；后五章（价格纪律起）每章精炼但完整，每章80–120字，不得以"见上"或一句话敷衍。总目标600–750字。
+**输出要求**：每章完整输出，不得以"见上"或一句话敷衍。前两章简洁，后五章详尽。
 
 ## 赛事速览
 （仅3–4个要点，合计不超过80字）
@@ -297,7 +297,7 @@ ${userInput ? `\n用户提供的最新消息：${userInput}\n请在后续各章�
   // ── Post-match ─────────────────────────────────────────────
   } else if (phase === "postmatch") {
     prompt += `
-请按如下结构输出赛后复盘分析（目标400–550字，每章节精炼）：
+请按如下结构输出赛后复盘分析，每章节详尽完整：
 
 ## 整体交易表现
 - 盈亏结果（单位数）及其合理性：是运气还是有优势的决策？
@@ -338,7 +338,7 @@ ${userInput ? `\n用户提供的最新消息：${userInput}\n请在后续各章�
     prompt += `
 当前时段：**${periodName}**
 ${isEndGame ? "⚠️ 终场阶段：禁止情绪追仓，只做止盈和止损\n" : isLateGame ? "⚠️ 时间衰减加速：仓位只减不加，除非极低价格极小仓\n" : ""}
-请按如下结构输出完整实时交易分析（目标550–700字，每个章节精炼完整）：
+请按如下结构输出完整实时交易分析，每个章节详尽完整：
 
 ## 当前局势综合判断
 结合比分、时段、积分形势、场地条件，综合评估当前局势：
@@ -445,8 +445,8 @@ ${isEndGame ? "（终场阶段：禁止新开仓，所有操作只涉及现有�
   try {
     const client = new Anthropic({ apiKey });
     const stream = client.messages.stream({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1800,
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 4096,
       system,
       messages: [{ role: "user", content: prompt }],
     });
