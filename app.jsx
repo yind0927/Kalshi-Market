@@ -3649,6 +3649,8 @@ const ODDS_API_ALIASES = {
   NZL: ["new zealand"],
   SCO: ["scotland"],
   HAI: ["haiti"],
+  TUR: ["turkey","türkiye"],
+  CZE: ["czech republic","czechia"],
 };
 function matchOddsTeam(name) {
   if (!window.KW_WC_DATA) return null;
@@ -3668,6 +3670,8 @@ function buildPinnacleOdds(matches) {
     const aCode = matchOddsTeam(m.awayTeam);
     if (!hCode || !aCode || hCode === aCode) continue;
     map[`${hCode}_${aCode}`] = { home: m.home, draw: m.draw, away: m.away, over25: m.over25 };
+    // Store reversed key too — WC is neutral venue so API home/away may differ from our fixture data
+    map[`${aCode}_${hCode}`] = { home: m.away, draw: m.draw, away: m.home, over25: m.over25 };
   }
   return map;
 }
