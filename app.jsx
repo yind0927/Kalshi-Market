@@ -3070,8 +3070,8 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         setQaList(cQa);
         try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(cQa)); } catch {}
       }
-      if (cTrades?.length && cCapital && !sessions[M.id]?.trades?.length) {
-        saveSession({ capital: cCapital, participating: true, trades: cTrades });
+      if (cCapital != null && !sessions[M.id]?.participating) {
+        saveSession({ capital: cCapital, participating: true, trades: cTrades || [] });
       }
     }).catch(() => {});
   }, [M.id]); // eslint-disable-line
@@ -4120,8 +4120,11 @@ function SyncSettings() {
   const [url,  setUrl]      = useState(() => localStorage.getItem("kw_sync_url")   || "");
   const [tok,  setTok]      = useState(() => localStorage.getItem("kw_sync_token") || "");
   const [status, setStatus] = useState(null); // null | "testing" | "ok" | "error"
+  const [copied, setCopied] = useState(null); // null | "url" | "tok"
 
-  const active = !!(localStorage.getItem("kw_sync_url") && localStorage.getItem("kw_sync_token"));
+  const savedUrl = localStorage.getItem("kw_sync_url")   || "";
+  const savedTok = localStorage.getItem("kw_sync_token") || "";
+  const active   = !!(savedUrl && savedTok);
 
   const save = async () => {
     const u = url.trim().replace(/\/$/, "");
@@ -4143,29 +4146,67 @@ function SyncSettings() {
     setUrl(""); setTok(""); setStatus(null); setOpen(false);
   };
 
+  const copyVal = (val, key) => {
+    navigator.clipboard?.writeText(val).then(() => {
+      setCopied(key); setTimeout(() => setCopied(null), 1800);
+    }).catch(() => {});
+  };
+
   return (
-    <div className="sync-wrap">
-      <button className={`sync-toggle-btn${active ? " active" : ""}`} onClick={() => setOpen(o => !o)}>
-        ☁ {active ? "云同步已开启" : "设置云同步"} {open ? "▴" : "▾"}
+    <div className="sync-module">
+      <button className={`sync-header${active ? " active" : ""}`} onClick={() => setOpen(o => !o)}>
+        <span className="sync-header-left">
+          <span className="sync-dot" />
+          {active ? "云同步已开启" : "☁ 设置云同步"}
+        </span>
+        <span className="sync-header-right">
+          {active && !open && <span className="sync-badge">已连接</span>}
+          <span className="sync-chevron">{open ? "▴" : "▾"}</span>
+        </span>
       </button>
+
       {open && (
-        <div className="sync-panel">
-          <p className="sync-desc">
-            在 <a href="https://upstash.com" target="_blank" rel="noopener">upstash.com</a> 免费注册，
-            创建 <strong>Redis</strong> 数据库，复制 <strong>REST URL</strong> 和
-            <strong> Token（Read-Write）</strong> 填入，即可在电脑与手机间同步 AI 分析和交易记录。
-          </p>
+        <div className="sync-body">
+          {!active && (
+            <p className="sync-desc">
+              在 <a href="https://upstash.com" target="_blank" rel="noopener">upstash.com</a> 免费注册，
+              创建 <strong>Redis</strong> 数据库，复制 <strong>REST URL</strong> 和 <strong>Token（Read-Write）</strong> 填入。
+              <br />电脑和手机各需配置一次，数据自动双向同步。
+            </p>
+          )}
+          {active && (
+            <div className="sync-current">
+              <div className="sync-current-row">
+                <span className="sync-current-label">REST URL</span>
+                <span className="sync-current-val">{savedUrl.replace("https://", "")}</span>
+                <button className="sync-copy-btn" onClick={() => copyVal(savedUrl, "url")}>
+                  {copied === "url" ? "✓" : "复制"}
+                </button>
+              </div>
+              <div className="sync-current-row">
+                <span className="sync-current-label">Token</span>
+                <span className="sync-current-val">{savedTok.slice(0, 8)}…</span>
+                <button className="sync-copy-btn" onClick={() => copyVal(savedTok, "tok")}>
+                  {copied === "tok" ? "✓" : "复制"}
+                </button>
+              </div>
+              <p className="sync-hint">手机端也需在此填入相同 URL 和 Token</p>
+            </div>
+          )}
           <input className="sync-inp" placeholder="REST URL  (https://xxxx.upstash.io)"
-            value={url} onChange={e => setUrl(e.target.value)} autoComplete="off" spellCheck={false} />
+            value={url} onChange={e => { setUrl(e.target.value); setStatus(null); }}
+            autoComplete="off" spellCheck={false} />
           <input className="sync-inp" placeholder="Token  (AX…)"
-            value={tok} onChange={e => setTok(e.target.value)} autoComplete="off" spellCheck={false} />
+            value={tok} onChange={e => { setTok(e.target.value); setStatus(null); }}
+            autoComplete="off" spellCheck={false} />
           <div className="sync-actions">
-            <button className="sync-save-btn" onClick={save} disabled={!url.trim() || !tok.trim() || status === "testing"}>
+            <button className="sync-save-btn" onClick={save}
+              disabled={!url.trim() || !tok.trim() || status === "testing"}>
               {status === "testing" ? "测试中…" : "保存并测试"}
             </button>
             {active && <button className="sync-clear-btn" onClick={clear}>断开</button>}
-            {status === "ok"    && <span className="sync-status ok">✓ 连接成功</span>}
-            {status === "error" && <span className="sync-status err">✗ 连接失败，请检查 URL / Token</span>}
+            {status === "ok"    && <span className="sync-status ok">✓ 连接成功，刷新页面后开始同步</span>}
+            {status === "error" && <span className="sync-status err">✗ 连接失败，请检查 URL 和 Token</span>}
           </div>
         </div>
       )}
