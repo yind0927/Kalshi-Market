@@ -2933,6 +2933,53 @@ function renderAnalysis(text) {
 }
 
 /* ─────────────────────────────────────────────────────────
+ * Cloud sync — direct Upstash Redis REST calls from browser
+ * Creds stored in localStorage: kw_sync_url, kw_sync_token
+ * ───────────────────────────────────────────────────────── */
+const CLOUD_TTL = 90 * 24 * 3600;
+
+function getCloudCreds() {
+  const url   = (localStorage.getItem("kw_sync_url")   || "").replace(/\/$/, "");
+  const token =  localStorage.getItem("kw_sync_token") || "";
+  return url && token ? { url, token } : null;
+}
+
+async function cloudGet(matchId, field) {
+  const c = getCloudCreds(); if (!c) return null;
+  try {
+    const r = await fetch(`${c.url}/get/${encodeURIComponent(`wc:${matchId}:${field}`)}`, {
+      headers: { Authorization: `Bearer ${c.token}` },
+    });
+    const d = await r.json();
+    if (!d.result) return null;
+    try { return JSON.parse(d.result); } catch { return d.result; }
+  } catch { return null; }
+}
+
+async function cloudSet(matchId, field, value) {
+  const c = getCloudCreds(); if (!c) return;
+  const stored = typeof value === "string" ? value : JSON.stringify(value);
+  try {
+    await fetch(`${c.url}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify([["SET", `wc:${matchId}:${field}`, stored, "EX", String(CLOUD_TTL)]]),
+    });
+  } catch {}
+}
+
+async function cloudDel(matchId, ...fields) {
+  const c = getCloudCreds(); if (!c) return;
+  try {
+    await fetch(`${c.url}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(fields.map(f => ["DEL", `wc:${matchId}:${f}`])),
+    });
+  } catch {}
+}
+
+/* ─────────────────────────────────────────────────────────
  * WCTradingSession component
  * ───────────────────────────────────────────────────────── */
 function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFinishedView, currentPinnacleOdds, modelProbs }) {
@@ -2949,10 +2996,10 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   }, [M.id]);
 
   const pushToCloud = useCallback((patch) => {
-    fetch("/api/sync", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ matchId: M.id, patch }),
-    }).catch(() => {});
+    for (const [field, value] of Object.entries(patch)) {
+      if (value === null) cloudDel(M.id, field);
+      else cloudSet(M.id, field, value);
+    }
   }, [M.id]);
 
   const session = sessions[M.id] || null;
@@ -3003,30 +3050,30 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     setAiError(null); setAiLiveError(null); setAiPostError(null); setQaError(null); setQaInput(""); setSitu("");
 
     // Cloud sync: populate states where local storage is empty
-    fetch(`/api/sync?matchId=${encodeURIComponent(M.id)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.ai && !localAi) {
-          setAiText(data.ai);
-          try { localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ prematch: data.ai })); } catch {}
-        }
-        if (data.aiLive && !localAiLive) {
-          setAiLive(data.aiLive);
-          try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text: data.aiLive })); } catch {}
-        }
-        if (data.aiPost && !localAiPost) {
-          setAiPost(data.aiPost);
-          try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text: data.aiPost })); } catch {}
-        }
-        if (data.qaList?.length && !localQa.length) {
-          setQaList(data.qaList);
-          try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(data.qaList)); } catch {}
-        }
-        if (data.trades?.length && data.capital && !sessions[M.id]?.trades?.length) {
-          saveSession({ capital: data.capital, participating: true, trades: data.trades });
-        }
-      })
-      .catch(() => {});
+    Promise.all([
+      cloudGet(M.id, "ai"), cloudGet(M.id, "aiLive"), cloudGet(M.id, "aiPost"),
+      cloudGet(M.id, "qaList"), cloudGet(M.id, "trades"), cloudGet(M.id, "capital"),
+    ]).then(([cAi, cAiLive, cAiPost, cQa, cTrades, cCapital]) => {
+      if (cAi && !localAi) {
+        setAiText(cAi);
+        try { localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ prematch: cAi })); } catch {}
+      }
+      if (cAiLive && !localAiLive) {
+        setAiLive(cAiLive);
+        try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text: cAiLive })); } catch {}
+      }
+      if (cAiPost && !localAiPost) {
+        setAiPost(cAiPost);
+        try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text: cAiPost })); } catch {}
+      }
+      if (cQa?.length && !localQa.length) {
+        setQaList(cQa);
+        try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(cQa)); } catch {}
+      }
+      if (cTrades?.length && cCapital && !sessions[M.id]?.trades?.length) {
+        saveSession({ capital: cCapital, participating: true, trades: cTrades });
+      }
+    }).catch(() => {});
   }, [M.id]); // eslint-disable-line
 
   // Sync trades to cloud 600ms after any session change
@@ -3242,6 +3289,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     if (!window.confirm("确认删除本场所有交易记录？此操作不可恢复。")) return;
     saveSession({ ...session, trades: [] });
     clearAI("post");
+    cloudDel(M.id, "trades");
   };
 
   const logTrade = () => {
@@ -3830,6 +3878,7 @@ function WorldCupView({ resultOverrides = {} }) {
           Elo 排名 <em>Power Rankings</em>
         </button>
       </div>
+      <SyncSettings />
       {wcSubView === "rankings" ? <WCEloRankings resultOverrides={resultOverrides} /> : (<>
       {/* ── Group selector + standings + match switcher ── */}
       <WCGroupSelector selectedGroup={selectedGroup} onSelect={handleGroupChange} />
@@ -4061,6 +4110,67 @@ function buildPinnacleOdds(matches) {
     map[`${aCode}_${hCode}`] = { home: m.away, draw: m.draw, away: m.home, over25: m.over25 };
   }
   return map;
+}
+
+/* ─────────────────────────────────────────────────────────
+ * SyncSettings — Upstash credentials panel
+ * ───────────────────────────────────────────────────────── */
+function SyncSettings() {
+  const [open, setOpen]     = useState(false);
+  const [url,  setUrl]      = useState(() => localStorage.getItem("kw_sync_url")   || "");
+  const [tok,  setTok]      = useState(() => localStorage.getItem("kw_sync_token") || "");
+  const [status, setStatus] = useState(null); // null | "testing" | "ok" | "error"
+
+  const active = !!(localStorage.getItem("kw_sync_url") && localStorage.getItem("kw_sync_token"));
+
+  const save = async () => {
+    const u = url.trim().replace(/\/$/, "");
+    const t = tok.trim();
+    if (!u || !t) return;
+    localStorage.setItem("kw_sync_url", u);
+    localStorage.setItem("kw_sync_token", t);
+    setStatus("testing");
+    try {
+      const r = await fetch(`${u}/ping`, { headers: { Authorization: `Bearer ${t}` } });
+      const d = await r.json();
+      setStatus(d.result === "PONG" ? "ok" : "error");
+    } catch { setStatus("error"); }
+  };
+
+  const clear = () => {
+    localStorage.removeItem("kw_sync_url");
+    localStorage.removeItem("kw_sync_token");
+    setUrl(""); setTok(""); setStatus(null); setOpen(false);
+  };
+
+  return (
+    <div className="sync-wrap">
+      <button className={`sync-toggle-btn${active ? " active" : ""}`} onClick={() => setOpen(o => !o)}>
+        ☁ {active ? "云同步已开启" : "设置云同步"} {open ? "▴" : "▾"}
+      </button>
+      {open && (
+        <div className="sync-panel">
+          <p className="sync-desc">
+            在 <a href="https://upstash.com" target="_blank" rel="noopener">upstash.com</a> 免费注册，
+            创建 <strong>Redis</strong> 数据库，复制 <strong>REST URL</strong> 和
+            <strong> Token（Read-Write）</strong> 填入，即可在电脑与手机间同步 AI 分析和交易记录。
+          </p>
+          <input className="sync-inp" placeholder="REST URL  (https://xxxx.upstash.io)"
+            value={url} onChange={e => setUrl(e.target.value)} autoComplete="off" spellCheck={false} />
+          <input className="sync-inp" placeholder="Token  (AX…)"
+            value={tok} onChange={e => setTok(e.target.value)} autoComplete="off" spellCheck={false} />
+          <div className="sync-actions">
+            <button className="sync-save-btn" onClick={save} disabled={!url.trim() || !tok.trim() || status === "testing"}>
+              {status === "testing" ? "测试中…" : "保存并测试"}
+            </button>
+            {active && <button className="sync-clear-btn" onClick={clear}>断开</button>}
+            {status === "ok"    && <span className="sync-status ok">✓ 连接成功</span>}
+            {status === "error" && <span className="sync-status err">✗ 连接失败，请检查 URL / Token</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function App() {
