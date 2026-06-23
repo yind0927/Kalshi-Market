@@ -2971,6 +2971,10 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   const [tf, setTf] = useState({ outcome: "home", direction: "YES", price: "", units: "" });
   const [situ, setSitu] = useState("");
   const [closeForm, setCloseForm] = useState(null); // { tradeId, price }
+  const [tsTab, setTsTab] = useState(() => {
+    const hasTrades = ((JSON.parse(localStorage.getItem("wc_trading_v1") || "{}")[M.id]?.trades) || []).length > 0;
+    return showFinishedView && hasTrades ? "history" : "analysis";
+  });
 
   // Load saved AI analysis and Q&A when match changes
   useEffect(() => {
@@ -3027,6 +3031,11 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     });
     saveSession({ ...session, trades: settled });
   }, [winner]); // eslint-disable-line
+
+  // Switch away from "trade" tab when match finishes
+  useEffect(() => {
+    if (showFinishedView) setTsTab(t => t === "trade" ? "history" : t);
+  }, [showFinishedView]);
 
   const makeBody = (phase, userInput) => ({
     matchInfo: {
@@ -3171,6 +3180,20 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     setQaLoading(false);
   };
 
+  const clearAI = (which) => {
+    if (which === "prematch") { setAiText(null); try { localStorage.removeItem(`wc_ai_${M.id}`); } catch {} }
+    else if (which === "live") { setAiLive(null); try { localStorage.removeItem(`wc_ai_live_${M.id}`); } catch {} }
+    else if (which === "post") { setAiPost(null); try { localStorage.removeItem(`wc_ai_post_${M.id}`); } catch {} }
+    setQaList([]); setQaInput("");
+    try { localStorage.removeItem(`wc_ai_qa_${M.id}`); } catch {}
+  };
+
+  const clearHistory = () => {
+    if (!window.confirm("确认删除本场所有交易记录？此操作不可恢复。")) return;
+    saveSession({ ...session, trades: [] });
+    clearAI("post");
+  };
+
   const logTrade = () => {
     const price = parseFloat(tf.price), units = parseFloat(tf.units);
     if (!isFinite(price) || price <= 0 || price >= 100 || !isFinite(units) || units <= 0) {
@@ -3227,23 +3250,196 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   }
 
   const currentPeriod = live ? getTradePeriod(live.minute, scoreData?.status === "ht") : "prematch";
+  const allTrades = session.trades || [];
+  const settledPnl = allTrades.reduce((s, t) => s + (t.pnl || 0), 0);
+  const hasHistory = allTrades.length > 0;
 
-  // ── Post-match summary ───────────────────────────────────
-  if (showFinishedView) {
-    const allTrades = session.trades || [];
-    const settledPnl = allTrades.reduce((s, t) => s + (t.pnl || 0), 0);
-    return (
-      <div className="card wc-card wc-ts-card">
-        <div className="card-head">
-          <div>
-            <h3>交易复盘 <em>Post-Match Summary</em></h3>
-            <div className="sub">本场资金 {session.capital} 单位 · {allTrades.length} 笔操作</div>
+  return (
+    <div className="card wc-card wc-ts-card">
+      {/* ── Tab bar ── */}
+      <div className="wc-ts-tabs">
+        <button className={`wc-ts-tab${tsTab === "analysis" ? " sel" : ""}`} onClick={() => setTsTab("analysis")}>
+          AI 分析
+        </button>
+        {!showFinishedView && (
+          <button className={`wc-ts-tab${tsTab === "trade" ? " sel" : ""}`} onClick={() => setTsTab("trade")}>
+            交易面板{openTrades.length > 0 && <span className="wc-ts-tab-badge">{openTrades.length}</span>}
+          </button>
+        )}
+        {hasHistory && (
+          <button className={`wc-ts-tab${tsTab === "history" ? " sel" : ""}`} onClick={() => setTsTab("history")}>
+            历史记录<span className="wc-ts-tab-badge">{allTrades.length}</span>
+          </button>
+        )}
+      </div>
+
+      {/* ── Analysis tab ── */}
+      {tsTab === "analysis" && (
+        <div className="wc-ts-ai-section">
+          <textarea className="wc-ts-situ-inp" rows={2}
+            placeholder="最新消息（可选）"
+            value={situ} onChange={e => setSitu(e.target.value)} />
+          <div className="wc-ts-ai-btns">
+            <button className="wc-ts-ai-btn" onClick={() => { callAI("prematch", ""); setAiCollapsed(false); }} disabled={aiLoading}>
+              {aiLoading ? "分析中…" : "📊 赛前综合分析"}
+            </button>
+            <button className="wc-ts-ai-btn wc-ts-ai-btn-live" onClick={() => { callLive(situ); setAiLiveCollapsed(false); }} disabled={aiLiveLoading}>
+              {aiLiveLoading ? "分析中…" : `🎯 赛中分析${live ? `（${PERIOD_LABELS[currentPeriod]}）` : ""}`}
+            </button>
           </div>
-          <span className={`wc-ts-pnl-badge ${settledPnl >= 0 ? "pos" : "neg"}`}>
-            {settledPnl >= 0 ? "+" : ""}{settledPnl.toFixed(1)} 单位
-          </span>
+          {aiError && <div className="wc-ts-ai-err">⚠ {aiError}</div>}
+          {aiText && (
+            <div className="wc-ts-ai-block">
+              <div className="wc-ts-ai-collapse-bar">
+                <button className="wc-ts-ai-collapse-toggle" onClick={() => setAiCollapsed(c => !c)}>
+                  📋 赛前综合分析 <span className="wc-ts-ai-toggle">{aiCollapsed ? "展开 ▾" : "收起 ▴"}</span>
+                </button>
+                <button className="wc-ts-ai-del" onClick={() => clearAI("prematch")} title="删除分析">✕</button>
+              </div>
+              {!aiCollapsed && renderAnalysis(aiText)}
+            </div>
+          )}
+          {aiLiveError && <div className="wc-ts-ai-err">⚠ {aiLiveError}</div>}
+          {aiLive && (
+            <div className="wc-ts-ai-block">
+              <div className="wc-ts-ai-collapse-bar">
+                <button className="wc-ts-ai-collapse-toggle" onClick={() => setAiLiveCollapsed(c => !c)}>
+                  ⚡ 赛中分析 <span className="wc-ts-ai-toggle">{aiLiveCollapsed ? "展开 ▾" : "收起 ▴"}</span>
+                </button>
+                <button className="wc-ts-ai-del" onClick={() => clearAI("live")} title="删除分析">✕</button>
+              </div>
+              {!aiLiveCollapsed && renderAnalysis(aiLive)}
+            </div>
+          )}
+          {(aiText || aiLive) && (
+            <div className="wc-ts-qa">
+              {qaList.map((qa, i) => (
+                <div key={i} className="wc-ts-qa-item">
+                  <div className="wc-ts-qa-q">❓ {qa.q}</div>
+                  {renderAnalysis(qa.a)}
+                </div>
+              ))}
+              <div className="wc-ts-qa-row">
+                <input className="wc-ts-qa-inp" placeholder="继续提问…"
+                  value={qaInput} onChange={e => setQaInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && !qaLoading && callQA()}
+                  disabled={qaLoading} />
+                <button className="wc-ts-qa-btn" onClick={callQA} disabled={qaLoading || !qaInput.trim()}>
+                  {qaLoading ? "…" : "发送"}
+                </button>
+              </div>
+              {qaError && <div className="wc-ts-ai-err">⚠ {qaError}</div>}
+            </div>
+          )}
         </div>
-        {allTrades.length > 0 ? (
+      )}
+
+      {/* ── Trade tab (active matches only) ── */}
+      {tsTab === "trade" && !showFinishedView && (
+        <div>
+          <div className="wc-ts-trade-head">
+            <span>资金 {session.capital} 单位 · {PERIOD_LABELS[currentPeriod]}</span>
+            {(openTrades.length > 0 || closedTrades.length > 0) && (
+              <span className={`wc-ts-pnl-badge ${totalPnl >= 0 ? "pos" : "neg"}`}>
+                总计 {totalPnl >= 0 ? "+" : ""}{totalPnl.toFixed(1)}u
+              </span>
+            )}
+          </div>
+          <div className="wc-ts-prices">
+            {[["home", M.home.cn + "胜"], ["draw", "平局"], ["away", M.away.cn + "胜"]].map(([k, lbl]) => (
+              <div key={k} className="wc-ts-price-cell">
+                <span className="wc-tsp-label">{lbl}</span>
+                <span className="wc-tsp-val">{prices[k] != null ? prices[k] + "¢" : "—"}</span>
+              </div>
+            ))}
+            <span className="wc-tsp-src">{kStatus === "live" ? "Kalshi实时" : currentPinnacleOdds ? "Pinnacle参考" : "模型预测"}</span>
+          </div>
+          {openTrades.length > 0 && (
+            <div className="wc-ts-positions">
+              <div className="wc-ts-pos-head">当前持仓</div>
+              {openTrades.map(t => {
+                const cp = prices[t.outcome];
+                const pnl = cp != null ? calcTradePnl(t, cp) : null;
+                return (
+                  <div key={t.id} className={`wc-ts-pos-row ${pnl != null ? (pnl >= 0 ? "pos" : "neg") : ""}`}>
+                    <span className="wc-ts-pos-out">{outLabel(t.outcome)}</span>
+                    <span className="wc-ts-pos-dir">{t.direction}</span>
+                    <span className="wc-ts-pos-price">@{t.entryPrice}¢</span>
+                    <span className="wc-ts-pos-units">{t.units}u</span>
+                    {pnl != null && <span className="wc-ts-pos-pnl">{pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}u</span>}
+                    {closeForm?.tradeId === t.id ? (
+                      <span className="wc-ts-close-form">
+                        <input type="number" className="wc-ts-close-inp" placeholder="平仓价¢" min="0" max="100"
+                          value={closeForm.price}
+                          onChange={e => setCloseForm(f => ({...f, price: e.target.value}))} />
+                        <button className="wc-ts-close-ok" onClick={() => {
+                          const p = parseFloat(closeForm.price);
+                          if (!isFinite(p) || p < 0 || p > 100) { alert("请输入有效价格 0–100¢"); return; }
+                          closeTrade(t.id, p);
+                        }}>确认</button>
+                        <button className="wc-ts-close-x" onClick={() => setCloseForm(null)}>✕</button>
+                      </span>
+                    ) : (
+                      <button className="wc-ts-close-btn" onClick={() => setCloseForm({ tradeId: t.id, price: "" })}>平仓</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="wc-ts-form">
+            <div className="wc-ts-form-head">记录开仓</div>
+            <div className="wc-ts-qs-row">
+              {[["home", M.home.cn + "胜"], ["draw", "平局"], ["away", M.away.cn + "胜"]].map(([k, lbl]) => (
+                <button key={k} className={`wc-ts-qs-btn${tf.outcome === k ? " sel" : ""}`}
+                  onClick={() => setTf(v => ({...v, outcome: k}))}>
+                  {lbl}
+                </button>
+              ))}
+              <span className="wc-ts-qs-sep" />
+              {["YES", "NO"].map(d => (
+                <button key={d} className={`wc-ts-qs-btn wc-ts-qs-${d.toLowerCase()}${tf.direction === d ? " sel" : ""}`}
+                  onClick={() => setTf(v => ({...v, direction: d}))}>
+                  {d}
+                </button>
+              ))}
+            </div>
+            <div className="wc-ts-form-row">
+              <input className="wc-ts-inp" type="number" placeholder="价格 ¢" min="1" max="99" step="0.5"
+                value={tf.price} onChange={e => setTf(v => ({...v, price: e.target.value}))} />
+              <input className="wc-ts-inp sm" type="number" placeholder="数量" min="1" step="1"
+                value={tf.units} onChange={e => setTf(v => ({...v, units: e.target.value}))} />
+              <button className="wc-ts-log-btn" onClick={logTrade}>记录</button>
+            </div>
+          </div>
+          {closedTrades.length > 0 && (
+            <div className="wc-ts-history">
+              <div className="wc-ts-pos-head">已平仓</div>
+              {closedTrades.map(t => (
+                <div key={t.id} className={`wc-ts-pos-row small ${t.pnl != null ? (t.pnl >= 0 ? "pos" : "neg") : ""}`}>
+                  <span className="wc-ts-tr-period">{PERIOD_LABELS[t.phase] || t.phase}</span>
+                  <span>{outLabel(t.outcome)} {t.direction} @{t.entryPrice}¢</span>
+                  <span>{t.units}u</span>
+                  <span className="wc-ts-pos-pnl">{t.pnl != null ? (t.pnl >= 0 ? "+" : "") + t.pnl.toFixed(1) + "u" : "—"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── History tab ── */}
+      {tsTab === "history" && hasHistory && (
+        <div>
+          <div className="wc-ts-hist-head">
+            <span className="wc-ts-hist-cap">本场资金 {session.capital} 单位 · {allTrades.length} 笔操作</span>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span className={`wc-ts-pnl-badge ${settledPnl >= 0 ? "pos" : "neg"}`}>
+                {settledPnl >= 0 ? "+" : ""}{settledPnl.toFixed(1)} 单位
+              </span>
+              <button className="wc-ts-del-hist" onClick={clearHistory}>🗑 删除记录</button>
+            </div>
+          </div>
           <div className="wc-ts-trades">
             {allTrades.map(t => (
               <div key={t.id} className={`wc-ts-trade-row ${t.pnl != null ? (t.pnl >= 0 ? "pos" : "neg") : ""}`}>
@@ -3256,212 +3452,41 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
               </div>
             ))}
           </div>
-        ) : <div className="wc-ts-empty">无交易记录</div>}
-        <div className="wc-ts-ai-section">
-          {/* Collapsed history: prematch + in-play analyses */}
-          {aiText && (
-            <div className="wc-ts-ai-block">
-              <button className="wc-ts-ai-collapse-bar" onClick={() => setAiCollapsed(v => !v)}>
-                📋 赛前分析 <span className="wc-ts-ai-toggle">{aiCollapsed ? "▸ 展开" : "▾ 收起"}</span>
-              </button>
-              {!aiCollapsed && <div className="wc-ts-ai-body">{renderAnalysis(aiText)}</div>}
-            </div>
-          )}
-          {aiLive && (
-            <div className="wc-ts-ai-block">
-              <button className="wc-ts-ai-collapse-bar" onClick={() => setAiLiveCollapsed(v => !v)}>
-                ⚡ 赛中分析 <span className="wc-ts-ai-toggle">{aiLiveCollapsed ? "▸ 展开" : "▾ 收起"}</span>
-              </button>
-              {!aiLiveCollapsed && <div className="wc-ts-ai-body">{renderAnalysis(aiLive)}</div>}
-            </div>
-          )}
-          {/* Postmatch review */}
-          <button className="wc-ts-ai-btn" onClick={callPostmatch} disabled={aiPostLoading}>
-            {aiPostLoading ? "AI 分析中…" : "📊 AI 赛后复盘"}
-          </button>
-          {aiPostError && <div className="wc-ts-ai-err">{aiPostError}</div>}
-          {aiPost && renderAnalysis(aiPost)}
-          {aiPost && (
-            <div className="wc-ts-qa">
-              {qaList.map((qa, i) => (
-                <div key={i} className="wc-ts-qa-item">
-                  <div className="wc-ts-qa-q">❓ {qa.q}</div>
-                  {renderAnalysis(qa.a)}
+          <div className="wc-ts-ai-section">
+            <button className="wc-ts-ai-btn" onClick={callPostmatch} disabled={aiPostLoading}>
+              {aiPostLoading ? "AI 分析中…" : "📊 AI 赛后复盘"}
+            </button>
+            {aiPostError && <div className="wc-ts-ai-err">{aiPostError}</div>}
+            {aiPost && (
+              <div className="wc-ts-ai-block">
+                <div className="wc-ts-ai-collapse-bar">
+                  <span>📊 赛后复盘</span>
+                  <button className="wc-ts-ai-del" onClick={() => clearAI("post")} title="删除分析">✕</button>
                 </div>
-              ))}
-              <div className="wc-ts-qa-row">
-                <input className="wc-ts-qa-inp" placeholder="针对复盘继续提问…"
-                  value={qaInput} onChange={e => setQaInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && !qaLoading && callQA()}
-                  disabled={qaLoading} />
-                <button className="wc-ts-qa-btn" onClick={callQA} disabled={qaLoading || !qaInput.trim()}>
-                  {qaLoading ? "…" : "发送"}
-                </button>
+                {renderAnalysis(aiPost)}
               </div>
-              {qaError && <div className="wc-ts-ai-err">⚠ {qaError}</div>}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ── Active trading panel (prematch + in-play) ─────────────
-  return (
-    <div className="card wc-card wc-ts-card">
-      <div className="card-head">
-        <div>
-          <h3>交易面板 <em>Trading</em></h3>
-          <div className="sub">资金 {session.capital} 单位 · {PERIOD_LABELS[currentPeriod]}</div>
-        </div>
-        {(openTrades.length > 0 || closedTrades.length > 0) && (
-          <span className={`wc-ts-pnl-badge ${totalPnl >= 0 ? "pos" : "neg"}`}>
-            总计 {totalPnl >= 0 ? "+" : ""}{totalPnl.toFixed(1)}u
-          </span>
-        )}
-      </div>
-
-      {/* Price strip */}
-      <div className="wc-ts-prices">
-        {[["home", M.home.cn + "胜"], ["draw", "平局"], ["away", M.away.cn + "胜"]].map(([k, lbl]) => (
-          <div key={k} className="wc-ts-price-cell">
-            <span className="wc-tsp-label">{lbl}</span>
-            <span className="wc-tsp-val">{prices[k] != null ? prices[k] + "¢" : "—"}</span>
-          </div>
-        ))}
-        <span className="wc-tsp-src">{kStatus === "live" ? "Kalshi实时" : currentPinnacleOdds ? "Pinnacle参考" : "模型预测"}</span>
-      </div>
-
-      {/* AI analysis */}
-      <div className="wc-ts-ai-section">
-        <textarea className="wc-ts-situ-inp" rows={2}
-          placeholder="最新消息（可选）"
-          value={situ} onChange={e => setSitu(e.target.value)} />
-        <div className="wc-ts-ai-btns">
-          <button className="wc-ts-ai-btn" onClick={() => { callAI("prematch", ""); setAiCollapsed(false); }} disabled={aiLoading}>
-            {aiLoading ? "分析中…" : "📊 赛前综合分析"}
-          </button>
-          <button className="wc-ts-ai-btn wc-ts-ai-btn-live" onClick={() => { callLive(situ); setAiLiveCollapsed(false); }} disabled={aiLiveLoading}>
-            {aiLiveLoading ? "分析中…" : `🎯 赛中分析${live ? `（${PERIOD_LABELS[currentPeriod]}）` : ""}`}
-          </button>
-        </div>
-        {aiError && <div className="wc-ts-ai-err">⚠ {aiError}</div>}
-        {aiText && (
-          <div className="wc-ts-ai-block">
-            <div className="wc-ts-ai-collapse-bar" onClick={() => setAiCollapsed(c => !c)}>
-              <span>赛前综合分析</span>
-              <span className="wc-ts-ai-toggle">{aiCollapsed ? "展开 ▾" : "收起 ▴"}</span>
-            </div>
-            {!aiCollapsed && renderAnalysis(aiText)}
-          </div>
-        )}
-        {aiLiveError && <div className="wc-ts-ai-err">⚠ {aiLiveError}</div>}
-        {aiLive && (
-          <div className="wc-ts-ai-block">
-            <div className="wc-ts-ai-collapse-bar" onClick={() => setAiLiveCollapsed(c => !c)}>
-              <span>赛中分析</span>
-              <span className="wc-ts-ai-toggle">{aiLiveCollapsed ? "展开 ▾" : "收起 ▴"}</span>
-            </div>
-            {!aiLiveCollapsed && renderAnalysis(aiLive)}
-          </div>
-        )}
-        {(aiText || aiLive) && (
-          <div className="wc-ts-qa">
-            {qaList.map((qa, i) => (
-              <div key={i} className="wc-ts-qa-item">
-                <div className="wc-ts-qa-q">❓ {qa.q}</div>
-                {renderAnalysis(qa.a)}
+            )}
+            {aiPost && (
+              <div className="wc-ts-qa">
+                {qaList.map((qa, i) => (
+                  <div key={i} className="wc-ts-qa-item">
+                    <div className="wc-ts-qa-q">❓ {qa.q}</div>
+                    {renderAnalysis(qa.a)}
+                  </div>
+                ))}
+                <div className="wc-ts-qa-row">
+                  <input className="wc-ts-qa-inp" placeholder="针对复盘继续提问…"
+                    value={qaInput} onChange={e => setQaInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && !qaLoading && callQA()}
+                    disabled={qaLoading} />
+                  <button className="wc-ts-qa-btn" onClick={callQA} disabled={qaLoading || !qaInput.trim()}>
+                    {qaLoading ? "…" : "发送"}
+                  </button>
+                </div>
+                {qaError && <div className="wc-ts-ai-err">⚠ {qaError}</div>}
               </div>
-            ))}
-            <div className="wc-ts-qa-row">
-              <input className="wc-ts-qa-inp" placeholder="继续提问…"
-                value={qaInput} onChange={e => setQaInput(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && !qaLoading && callQA()}
-                disabled={qaLoading} />
-              <button className="wc-ts-qa-btn" onClick={callQA} disabled={qaLoading || !qaInput.trim()}>
-                {qaLoading ? "…" : "发送"}
-              </button>
-            </div>
-            {qaError && <div className="wc-ts-ai-err">⚠ {qaError}</div>}
+            )}
           </div>
-        )}
-      </div>
-
-      {/* Open positions */}
-      {openTrades.length > 0 && (
-        <div className="wc-ts-positions">
-          <div className="wc-ts-pos-head">当前持仓</div>
-          {openTrades.map(t => {
-            const cp = prices[t.outcome];
-            const pnl = cp != null ? calcTradePnl(t, cp) : null;
-            return (
-              <div key={t.id} className={`wc-ts-pos-row ${pnl != null ? (pnl >= 0 ? "pos" : "neg") : ""}`}>
-                <span className="wc-ts-pos-out">{outLabel(t.outcome)}</span>
-                <span className="wc-ts-pos-dir">{t.direction}</span>
-                <span className="wc-ts-pos-price">@{t.entryPrice}¢</span>
-                <span className="wc-ts-pos-units">{t.units}u</span>
-                {pnl != null && <span className="wc-ts-pos-pnl">{pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}u</span>}
-                {closeForm?.tradeId === t.id ? (
-                  <span className="wc-ts-close-form">
-                    <input type="number" className="wc-ts-close-inp" placeholder="平仓价¢" min="0" max="100"
-                      value={closeForm.price}
-                      onChange={e => setCloseForm(f => ({...f, price: e.target.value}))} />
-                    <button className="wc-ts-close-ok" onClick={() => {
-                      const p = parseFloat(closeForm.price);
-                      if (!isFinite(p) || p < 0 || p > 100) { alert("请输入有效价格 0–100¢"); return; }
-                      closeTrade(t.id, p);
-                    }}>确认</button>
-                    <button className="wc-ts-close-x" onClick={() => setCloseForm(null)}>✕</button>
-                  </span>
-                ) : (
-                  <button className="wc-ts-close-btn" onClick={() => setCloseForm({ tradeId: t.id, price: "" })}>平仓</button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Trade entry form */}
-      <div className="wc-ts-form">
-        <div className="wc-ts-form-head">记录开仓</div>
-        <div className="wc-ts-qs-row">
-          {[["home", M.home.cn + "胜"], ["draw", "平局"], ["away", M.away.cn + "胜"]].map(([k, lbl]) => (
-            <button key={k} className={`wc-ts-qs-btn${tf.outcome === k ? " sel" : ""}`}
-              onClick={() => setTf(v => ({...v, outcome: k}))}>
-              {lbl}
-            </button>
-          ))}
-          <span className="wc-ts-qs-sep" />
-          {["YES", "NO"].map(d => (
-            <button key={d} className={`wc-ts-qs-btn wc-ts-qs-${d.toLowerCase()}${tf.direction === d ? " sel" : ""}`}
-              onClick={() => setTf(v => ({...v, direction: d}))}>
-              {d}
-            </button>
-          ))}
-        </div>
-        <div className="wc-ts-form-row">
-          <input className="wc-ts-inp" type="number" placeholder="价格 ¢" min="1" max="99" step="0.5"
-            value={tf.price} onChange={e => setTf(v => ({...v, price: e.target.value}))} />
-          <input className="wc-ts-inp sm" type="number" placeholder="数量" min="1" step="1"
-            value={tf.units} onChange={e => setTf(v => ({...v, units: e.target.value}))} />
-          <button className="wc-ts-log-btn" onClick={logTrade}>记录</button>
-        </div>
-      </div>
-
-      {/* Closed trades */}
-      {closedTrades.length > 0 && (
-        <div className="wc-ts-history">
-          <div className="wc-ts-pos-head">已平仓</div>
-          {closedTrades.map(t => (
-            <div key={t.id} className={`wc-ts-pos-row small ${t.pnl != null ? (t.pnl >= 0 ? "pos" : "neg") : ""}`}>
-              <span className="wc-ts-tr-period">{PERIOD_LABELS[t.phase] || t.phase}</span>
-              <span>{outLabel(t.outcome)} {t.direction} @{t.entryPrice}¢</span>
-              <span>{t.units}u</span>
-              <span className="wc-ts-pos-pnl">{t.pnl != null ? (t.pnl >= 0 ? "+" : "") + t.pnl.toFixed(1) + "u" : "—"}</span>
-            </div>
-          ))}
-          <div className="wc-ts-pnl-sum">已结算: {closedPnl >= 0 ? "+" : ""}{closedPnl.toFixed(1)} 单位</div>
         </div>
       )}
     </div>

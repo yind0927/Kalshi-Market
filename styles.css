@@ -4145,15 +4145,68 @@ input { font-family: inherit; }
 .wc-ts-ai-body strong { color: var(--ink); font-weight: 700; }
 .wc-ts-ai-divider { border: none; border-top: 2px dashed color-mix(in oklab, var(--accent) 30%, transparent); margin: 14px 0; }
 .wc-ts-ai-block { margin-top: 10px; }
+
+/* ── Trading session tab bar ── */
+.wc-ts-tabs {
+  display: flex; gap: 2px; margin-bottom: 14px;
+  border-bottom: 2px solid var(--border); padding-bottom: 0;
+}
+.wc-ts-tab {
+  padding: 7px 14px; border: none; background: transparent; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--ink-3);
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+  transition: color .12s, border-color .12s; border-radius: 4px 4px 0 0;
+}
+.wc-ts-tab:hover { color: var(--ink-2); }
+.wc-ts-tab.sel { color: var(--accent); border-bottom-color: var(--accent); }
+.wc-ts-tab-badge {
+  display: inline-block; margin-left: 5px; padding: 1px 5px;
+  border-radius: 10px; font-size: 10px; font-weight: 700;
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+  color: var(--accent-ink);
+}
+.wc-ts-tab.sel .wc-ts-tab-badge {
+  background: var(--accent); color: #fff;
+}
+
+/* ── Trade tab header ── */
+.wc-ts-trade-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px; font-size: 12px; color: var(--ink-2);
+}
+
+/* ── History tab header ── */
+.wc-ts-hist-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+.wc-ts-hist-cap { font-size: 12px; color: var(--ink-2); }
+.wc-ts-del-hist {
+  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: transparent; cursor: pointer; font-size: 11px; color: var(--ink-3);
+  transition: color .12s, border-color .12s, background .12s;
+}
+.wc-ts-del-hist:hover { color: var(--neg); border-color: var(--neg); background: color-mix(in oklab, var(--neg) 8%, transparent); }
+
 .wc-ts-ai-collapse-bar {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 10px; border-radius: 6px; cursor: pointer; user-select: none;
+  padding: 2px 2px 2px 10px; border-radius: 6px;
   background: color-mix(in oklab, var(--accent) 8%, var(--surface));
-  font-size: 11px; font-weight: 700; color: var(--ink-2); margin-bottom: 2px;
-  transition: background .12s;
+  margin-bottom: 2px;
 }
-.wc-ts-ai-collapse-bar:hover { background: color-mix(in oklab, var(--accent) 14%, var(--surface)); }
-.wc-ts-ai-toggle { font-size: 10px; color: var(--ink-3); }
+.wc-ts-ai-collapse-toggle {
+  flex: 1; text-align: left; padding: 4px 0; border: none; background: transparent;
+  cursor: pointer; font-size: 11px; font-weight: 700; color: var(--ink-2);
+  transition: color .12s;
+}
+.wc-ts-ai-collapse-toggle:hover { color: var(--accent); }
+.wc-ts-ai-toggle { font-size: 10px; color: var(--ink-3); margin-left: 4px; }
+.wc-ts-ai-del {
+  flex-shrink: 0; padding: 4px 8px; border: none; background: transparent;
+  cursor: pointer; font-size: 13px; color: var(--ink-3); border-radius: 4px;
+  transition: color .12s, background .12s; line-height: 1;
+}
+.wc-ts-ai-del:hover { color: var(--neg); background: color-mix(in oklab, var(--neg) 10%, transparent); }
 
 /* ── AI Q&A follow-up ── */
 .wc-ts-qa { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
