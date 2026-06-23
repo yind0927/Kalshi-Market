@@ -4111,13 +4111,17 @@ input { font-family: inherit; }
   border: 1px solid color-mix(in oklab, var(--accent) 15%, var(--border));
 }
 .wc-ts-sync-label { font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.wc-ts-sync-right { display: flex; align-items: center; gap: 6px; }
+.wc-ts-sync-msg { font-size: 11px; color: var(--ink-3); }
+.wc-ts-sync-msg.err { color: var(--neg); font-weight: 600; }
 .wc-ts-sync-btn {
   padding: 3px 10px; border-radius: 5px; border: 1px solid var(--accent);
   background: transparent; font-size: 11px; font-weight: 600; color: var(--accent);
-  cursor: pointer; transition: background .12s;
+  cursor: pointer; transition: background .12s, color .12s, border-color .12s;
 }
 .wc-ts-sync-btn:hover:not(:disabled) { background: var(--accent-soft); }
 .wc-ts-sync-btn:disabled { opacity: .6; cursor: default; }
+.wc-ts-sync-btn.ok { border-color: var(--pos); color: var(--pos); background: color-mix(in oklab, var(--pos) 8%, transparent); }
 .wc-ts-situ-inp {
   width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--surface);

@@ -3003,22 +3003,36 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   }, [M.id]);
 
   const syncFromCloud = useCallback(async () => {
-    if (!getCloudCreds()) return;
-    setSyncing(true); setSyncDone(false);
+    const creds = getCloudCreds();
+    if (!creds) return;
+    setSyncing(true); setSyncDone("");
+
+    // Step 1: verify connectivity
+    try {
+      const pr = await fetch(`${creds.url}/ping`, { headers: { Authorization: `Bearer ${creds.token}` } });
+      const pd = await pr.json();
+      if (pd.result !== "PONG") throw new Error("bad ping");
+    } catch {
+      setSyncDone("error"); setSyncing(false); return;
+    }
+
+    // Step 2: fetch all fields
     try {
       const [cAi, cAiLive, cAiPost, cQa, cTrades, cCapital] = await Promise.all([
         cloudGet(M.id, "ai"), cloudGet(M.id, "aiLive"), cloudGet(M.id, "aiPost"),
         cloudGet(M.id, "qaList"), cloudGet(M.id, "trades"), cloudGet(M.id, "capital"),
       ]);
-      if (cAi)     { setAiText(cAi);     try { localStorage.setItem(`wc_ai_${M.id}`,      JSON.stringify({ prematch: cAi })); }  catch {} }
-      if (cAiLive) { setAiLive(cAiLive); try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text: cAiLive })); } catch {} }
-      if (cAiPost) { setAiPost(cAiPost); try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text: cAiPost })); } catch {} }
-      if (cQa?.length) { setQaList(cQa); try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(cQa)); } catch {} }
+      let found = false;
+      if (cAi)     { setAiText(cAi);     found = true; try { localStorage.setItem(`wc_ai_${M.id}`,      JSON.stringify({ prematch: cAi })); }  catch {} }
+      if (cAiLive) { setAiLive(cAiLive); found = true; try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text: cAiLive })); } catch {} }
+      if (cAiPost) { setAiPost(cAiPost); found = true; try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text: cAiPost })); } catch {} }
+      if (cQa?.length) { setQaList(cQa); found = true; try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(cQa)); } catch {} }
       if (cCapital != null && !sessions[M.id]?.participating) {
-        saveSession({ capital: cCapital, participating: true, trades: cTrades || [] });
+        saveSession({ capital: cCapital, participating: true, trades: cTrades || [] }); found = true;
       }
-      setSyncDone(true); setTimeout(() => setSyncDone(false), 2500);
-    } catch {}
+      setSyncDone(found ? "ok" : "empty");
+      if (found) setTimeout(() => setSyncDone(""), 3000);
+    } catch { setSyncDone("error"); }
     setSyncing(false);
   }, [M.id, sessions, saveSession]); // eslint-disable-line
 
@@ -3039,7 +3053,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   const [aiPostLoading, setAiPostLoading] = useState(false);
   const [aiPostError, setAiPostError] = useState(null);
   const [syncing, setSyncing] = useState(false);
-  const [syncDone, setSyncDone] = useState(false);
+  const [syncDone, setSyncDone] = useState(""); // "" | "ok" | "empty" | "error"
   const [qaList, setQaList] = useState([]);
   const [qaInput, setQaInput] = useState("");
   const [qaLoading, setQaLoading] = useState(false);
@@ -3399,9 +3413,15 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           {getCloudCreds() && (
             <div className="wc-ts-sync-bar">
               <span className="wc-ts-sync-label">☁ 云同步</span>
-              <button className="wc-ts-sync-btn" onClick={syncFromCloud} disabled={syncing}>
-                {syncing ? "同步中…" : syncDone ? "✓ 已同步" : "从云端加载"}
-              </button>
+              <span className="wc-ts-sync-right">
+                {syncDone === "empty" && <span className="wc-ts-sync-msg">无云端记录</span>}
+                {syncDone === "error" && <span className="wc-ts-sync-msg err">✗ 连接失败，请检查 URL/Token</span>}
+                <button
+                  className={`wc-ts-sync-btn${syncDone === "ok" ? " ok" : ""}`}
+                  onClick={syncFromCloud} disabled={syncing || syncDone === "ok"}>
+                  {syncing ? "同步中…" : syncDone === "ok" ? "✓ 已同步" : "从云端加载"}
+                </button>
+              </span>
             </div>
           )}
           <textarea className="wc-ts-situ-inp" rows={2}
