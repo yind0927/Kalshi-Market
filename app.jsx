@@ -2957,15 +2957,17 @@ async function cloudGet(matchId, field) {
 }
 
 async function cloudSet(matchId, field, value) {
-  const c = getCloudCreds(); if (!c) return;
+  const c = getCloudCreds(); if (!c) return false;
   const stored = typeof value === "string" ? value : JSON.stringify(value);
   try {
-    await fetch(`${c.url}/pipeline`, {
+    const r = await fetch(`${c.url}/pipeline`, {
       method: "POST",
       headers: { Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify([["SET", `wc:${matchId}:${field}`, stored, "EX", String(CLOUD_TTL)]]),
+      body: JSON.stringify([["SET", `wc:${matchId}:${field}`, stored, "EX", CLOUD_TTL]]),
     });
-  } catch {}
+    const d = await r.json();
+    return r.ok && d?.[0]?.result === "OK";
+  } catch { return false; }
 }
 
 async function cloudDel(matchId, ...fields) {
@@ -3007,26 +3009,36 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     if (!creds) return;
     setSyncing(true); setSyncDone("");
 
-    // Step 1: verify connectivity
+    // Step 1: ping connectivity
     try {
       const pr = await fetch(`${creds.url}/ping`, { headers: { Authorization: `Bearer ${creds.token}` } });
       const pd = await pr.json();
-      if (pd.result !== "PONG") throw new Error("bad ping");
-    } catch {
-      setSyncDone("error"); setSyncing(false); return;
-    }
+      if (pd.result !== "PONG") throw new Error("ping");
+    } catch { setSyncDone("error"); setSyncing(false); return; }
 
-    // Step 2: fetch all fields
+    // Step 2: write-permission test (set + read-back a temp key)
+    try {
+      const testKey = `wc:writetest`;
+      const wr = await fetch(`${creds.url}/pipeline`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify([["SET", testKey, "1", "EX", "30"]]),
+      });
+      const wd = await wr.json();
+      if (!wr.ok || wd?.[0]?.result !== "OK") throw new Error("write");
+    } catch { setSyncDone("write-error"); setSyncing(false); return; }
+
+    // Step 3: fetch all fields for this match
     try {
       const [cAi, cAiLive, cAiPost, cQa, cTrades, cCapital] = await Promise.all([
         cloudGet(M.id, "ai"), cloudGet(M.id, "aiLive"), cloudGet(M.id, "aiPost"),
         cloudGet(M.id, "qaList"), cloudGet(M.id, "trades"), cloudGet(M.id, "capital"),
       ]);
       let found = false;
-      if (cAi)     { setAiText(cAi);     found = true; try { localStorage.setItem(`wc_ai_${M.id}`,      JSON.stringify({ prematch: cAi })); }  catch {} }
-      if (cAiLive) { setAiLive(cAiLive); found = true; try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text: cAiLive })); } catch {} }
-      if (cAiPost) { setAiPost(cAiPost); found = true; try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text: cAiPost })); } catch {} }
-      if (cQa?.length) { setQaList(cQa); found = true; try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(cQa)); } catch {} }
+      if (cAi)       { setAiText(cAi);     found = true; try { localStorage.setItem(`wc_ai_${M.id}`,      JSON.stringify({ prematch: cAi })); }  catch {} }
+      if (cAiLive)   { setAiLive(cAiLive); found = true; try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text: cAiLive })); } catch {} }
+      if (cAiPost)   { setAiPost(cAiPost); found = true; try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text: cAiPost })); } catch {} }
+      if (cQa?.length) { setQaList(cQa);  found = true; try { localStorage.setItem(`wc_ai_qa_${M.id}`,   JSON.stringify(cQa)); }              catch {} }
       if (cCapital != null && !sessions[M.id]?.participating) {
         saveSession({ capital: cCapital, participating: true, trades: cTrades || [] }); found = true;
       }
@@ -3205,7 +3217,9 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ prematch: text, ts: Date.now() }));
           localStorage.removeItem(`wc_ai_qa_${M.id}`);
         } catch {}
-        pushToCloud({ ai: text, qaList: null });
+        const ok = await cloudSet(M.id, "ai", text);
+        await cloudDel(M.id, "qaList");
+        if (getCloudCreds() && !ok) setAiError("⚠ 分析已保存到本地，但云同步写入失败（请检查 Token 权限）");
       }
     } catch (e) { setAiError("分析请求失败，请重试"); }
     setAiLoading(false);
@@ -3414,8 +3428,9 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
             <div className="wc-ts-sync-bar">
               <span className="wc-ts-sync-label">☁ 云同步</span>
               <span className="wc-ts-sync-right">
-                {syncDone === "empty" && <span className="wc-ts-sync-msg">无云端记录</span>}
-                {syncDone === "error" && <span className="wc-ts-sync-msg err">✗ 连接失败，请检查 URL/Token</span>}
+                {syncDone === "empty"       && <span className="wc-ts-sync-msg">无记录，请先在电脑端生成分析</span>}
+                {syncDone === "write-error" && <span className="wc-ts-sync-msg err">✗ Token 无写入权限，请用 Read-Write Token</span>}
+                {syncDone === "error"       && <span className="wc-ts-sync-msg err">✗ 连接失败，请检查 URL/Token</span>}
                 <button
                   className={`wc-ts-sync-btn${syncDone === "ok" ? " ok" : ""}`}
                   onClick={syncFromCloud} disabled={syncing || syncDone === "ok"}>
