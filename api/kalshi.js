@@ -136,6 +136,23 @@ function todayKalshiSuffix() {
   return `${yy}${mon}${dd}`;
 }
 
+// Shift a ticker's date component by `days` (±1).
+// e.g. shiftTickerDate("KXWCGAME-26JUN23NORSEN", -1) → "KXWCGAME-26JUN22NORSEN"
+// Handles UTC/US-local date boundary: matches at midnight UTC = evening ET previous day.
+function shiftTickerDate(ticker, days) {
+  const r = ticker.match(/^([A-Z0-9]+-)(\d{2})([A-Z]{3})(\d{2})(.*)$/);
+  if (!r) return null;
+  const [, prefix, yy, mon, dd, suffix] = r;
+  const monIdx = MONTHS_ABB.indexOf(mon);
+  if (monIdx < 0) return null;
+  const date = new Date(Date.UTC(2000 + parseInt(yy, 10), monIdx, parseInt(dd, 10)));
+  date.setUTCDate(date.getUTCDate() + days);
+  const newYY  = String(date.getUTCFullYear()).slice(2);
+  const newMon = MONTHS_ABB[date.getUTCMonth()];
+  const newDD  = String(date.getUTCDate()).padStart(2, "0");
+  return `${prefix}${newYY}${newMon}${newDD}${suffix}`;
+}
+
 // ── Group markets by event_ticker ─────────────────────────────
 function groupByEvent(markets) {
   const groups = {};
@@ -147,13 +164,26 @@ function groupByEvent(markets) {
   return groups;
 }
 
-// Pick today's group, or fall back to the largest group in the result set
-function pickBestGroup(groups, todayEventTicker) {
+// Pick the right group for a requested event from a series result set.
+// For multi-event series (e.g. KXWCGAME has many matches per day), use the
+// team-code suffix from the original requested ticker to pick the right game.
+function pickBestGroup(groups, todayEventTicker, requestedTicker) {
   // Exact match for today
   if (groups[todayEventTicker]?.length) {
     return { markets: groups[todayEventTicker], ticker: todayEventTicker };
   }
-  // Partial match (e.g. event ticker uses a different suffix format)
+  // Match by team-code suffix from the requested ticker.
+  // e.g. "KXWCGAME-26JUN23NORSEN" → suffix "NORSEN" → find group ending with "NORSEN".
+  // This handles multi-game series (KXWCGAME) where many events share the same date.
+  if (requestedTicker) {
+    const teamSuffix = requestedTicker.replace(/^[A-Z0-9]+-\d{2}[A-Z]{3}\d{2}/, "");
+    if (teamSuffix) {
+      for (const [et, mks] of Object.entries(groups)) {
+        if (et.endsWith(teamSuffix)) return { markets: mks, ticker: et };
+      }
+    }
+  }
+  // Partial match by date (may return first match on that date — weather-series fallback)
   const todaySuffix = todayEventTicker.split("-").slice(1).join("-");
   for (const [et, mks] of Object.entries(groups)) {
     if (et.includes(todaySuffix)) return { markets: mks, ticker: et };
@@ -195,11 +225,26 @@ async function findMarkets(ticker) {
       if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: ticker, dbg };
       dbg.errors.push(`exact ${ticker}: 0 markets`);
     } catch (e) { dbg.errors.push(`exact ${ticker}: ${e.message}`); }
+
+    // ⓪.5 UTC/US-local date boundary: a game at 00:00–03:59 UTC is still
+    // the previous evening in US local time. Kalshi may label the event with
+    // the local kickoff date rather than the UTC date. Try ±1 day.
+    for (const shift of [-1, 1]) {
+      const altTicker = shiftTickerDate(ticker, shift);
+      if (altTicker && altTicker !== ticker) {
+        try {
+          dbg.tried.push(`exact${shift > 0 ? "+" : ""}${shift}d:${altTicker}`);
+          const d = await kalshiGet(`/markets?event_ticker=${encodeURIComponent(altTicker)}&limit=50`);
+          if (d.markets?.length > 0) return { markets: d.markets, resolvedTicker: altTicker, dbg };
+          dbg.errors.push(`exact${shift > 0 ? "+" : ""}${shift}d ${altTicker}: 0 markets`);
+        } catch (e) { dbg.errors.push(`exact${shift > 0 ? "+" : ""}${shift}d ${altTicker}: ${e.message}`); }
+      }
+    }
   }
 
   // ① series_ticker + status=open — primary confirmed approach
   //   Returns all currently open markets for the series (may include today + tomorrow);
-  //   group by event_ticker to isolate today's markets.
+  //   group by event_ticker to isolate the correct event.
   try {
     dbg.tried.push(`${series}?open`);
     const d = await kalshiGet(
@@ -209,7 +254,7 @@ async function findMarkets(ticker) {
     if (d.markets?.length > 0) {
       const groups = groupByEvent(d.markets);
       dbg.openEvents = Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.length]));
-      const { markets, ticker: resolved } = pickBestGroup(groups, todayEventTicker);
+      const { markets, ticker: resolved } = pickBestGroup(groups, todayEventTicker, ticker);
       if (markets.length > 0) return { markets, resolvedTicker: resolved, dbg };
     }
     dbg.errors.push(`${series} open: 0 markets`);
@@ -237,7 +282,7 @@ async function findMarkets(ticker) {
     } catch (e) { dbg.errors.push(`${ticker}: ${e.message}`); }
   }
 
-  // ④ series_ticker without status filter (catches already-settled markets for today)
+  // ④ series_ticker without status filter (catches already-settled markets)
   try {
     dbg.tried.push(`${series}?all`);
     const d = await kalshiGet(
@@ -246,7 +291,7 @@ async function findMarkets(ticker) {
     if (d.markets?.length > 0) {
       const groups = groupByEvent(d.markets);
       dbg.allEvents = Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.length]));
-      const { markets, ticker: resolved } = pickBestGroup(groups, todayEventTicker);
+      const { markets, ticker: resolved } = pickBestGroup(groups, todayEventTicker, ticker);
       if (markets.length > 0) return { markets, resolvedTicker: resolved, dbg };
     }
     dbg.errors.push(`${series} all: 0 markets`);
