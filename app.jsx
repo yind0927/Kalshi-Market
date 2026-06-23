@@ -2948,6 +2948,13 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     });
   }, [M.id]);
 
+  const pushToCloud = useCallback((patch) => {
+    fetch("/api/sync", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matchId: M.id, patch }),
+    }).catch(() => {});
+  }, [M.id]);
+
   const session = sessions[M.id] || null;
   const participating = !!session?.participating;
 
@@ -2976,25 +2983,62 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     return showFinishedView && hasTrades ? "history" : "analysis";
   });
 
-  // Load saved AI analysis and Q&A when match changes
+  // Load saved AI analysis and Q&A when match changes, then sync from cloud
   useEffect(() => {
+    let localAi = null, localAiLive = null, localAiPost = null, localQa = [];
     try {
       const saved = JSON.parse(localStorage.getItem(`wc_ai_${M.id}`) || "null");
-      setAiText(saved?.prematch || saved?.core || saved?.text || null);
-    } catch { setAiText(null); }
+      localAi = saved?.prematch || saved?.core || saved?.text || null;
+    } catch {}
     try {
-      const savedLive = JSON.parse(localStorage.getItem(`wc_ai_live_${M.id}`) || "null");
-      setAiLive(savedLive?.text || null);
-    } catch { setAiLive(null); }
+      const saved = JSON.parse(localStorage.getItem(`wc_ai_live_${M.id}`) || "null");
+      localAiLive = saved?.text || null;
+    } catch {}
     try {
-      const savedPost = JSON.parse(localStorage.getItem(`wc_ai_post_${M.id}`) || "null");
-      setAiPost(savedPost?.text || null);
-    } catch { setAiPost(null); }
-    try {
-      setQaList(JSON.parse(localStorage.getItem(`wc_ai_qa_${M.id}`) || "[]"));
-    } catch { setQaList([]); }
+      const saved = JSON.parse(localStorage.getItem(`wc_ai_post_${M.id}`) || "null");
+      localAiPost = saved?.text || null;
+    } catch {}
+    try { localQa = JSON.parse(localStorage.getItem(`wc_ai_qa_${M.id}`) || "[]"); } catch {}
+    setAiText(localAi); setAiLive(localAiLive); setAiPost(localAiPost); setQaList(localQa);
     setAiError(null); setAiLiveError(null); setAiPostError(null); setQaError(null); setQaInput(""); setSitu("");
-  }, [M.id]);
+
+    // Cloud sync: populate states where local storage is empty
+    fetch(`/api/sync?matchId=${encodeURIComponent(M.id)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.ai && !localAi) {
+          setAiText(data.ai);
+          try { localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ prematch: data.ai })); } catch {}
+        }
+        if (data.aiLive && !localAiLive) {
+          setAiLive(data.aiLive);
+          try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text: data.aiLive })); } catch {}
+        }
+        if (data.aiPost && !localAiPost) {
+          setAiPost(data.aiPost);
+          try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text: data.aiPost })); } catch {}
+        }
+        if (data.qaList?.length && !localQa.length) {
+          setQaList(data.qaList);
+          try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(data.qaList)); } catch {}
+        }
+        if (data.trades?.length && data.capital && !sessions[M.id]?.trades?.length) {
+          saveSession({ capital: data.capital, participating: true, trades: data.trades });
+        }
+      })
+      .catch(() => {});
+  }, [M.id]); // eslint-disable-line
+
+  // Sync trades to cloud 600ms after any session change
+  const cloudTradeTimer = useRef(null);
+  useEffect(() => {
+    if (!session?.participating) return;
+    clearTimeout(cloudTradeTimer.current);
+    cloudTradeTimer.current = setTimeout(() => {
+      pushToCloud({ trades: session.trades || [], capital: session.capital || 0 });
+    }, 600);
+    return () => clearTimeout(cloudTradeTimer.current);
+  }, [session]); // eslint-disable-line
 
   // Current Kalshi prices in cents (fall back to seed market)
   const prices = {
@@ -3078,6 +3122,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           localStorage.setItem(`wc_ai_${M.id}`, JSON.stringify({ prematch: text, ts: Date.now() }));
           localStorage.removeItem(`wc_ai_qa_${M.id}`);
         } catch {}
+        pushToCloud({ ai: text, qaList: null });
       }
     } catch (e) { setAiError("分析请求失败，请重试"); }
     setAiLoading(false);
@@ -3099,6 +3144,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
       const { text } = await streamSSE(r, (t) => setAiLive(t)).catch(e => { setAiLiveError(e.message || "分析失败"); return { text: "" }; });
       if (text) {
         try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text, phase, ts: Date.now() })); } catch {}
+        pushToCloud({ aiLive: text });
       }
     } catch (e) { setAiLiveError("分析请求失败，请重试"); }
     setAiLiveLoading(false);
@@ -3131,6 +3177,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
       const { text } = await streamSSE(r, (t) => setAiPost(t)).catch(e => { setAiPostError(e.message || "分析失败"); return { text: "" }; });
       if (text) {
         try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text, ts: Date.now() })); } catch {}
+        pushToCloud({ aiPost: text });
       }
     } catch (e) { setAiPostError("分析请求失败，请重试"); }
     setAiPostLoading(false);
@@ -3175,6 +3222,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
         const newQa = [...qaList, { q, a: text, ts: Date.now() }];
         setQaList(newQa);
         try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(newQa)); } catch {}
+        pushToCloud({ qaList: newQa });
       }
     } catch (e) { setQaError("提问请求失败，请重试"); }
     setQaLoading(false);
@@ -3186,6 +3234,8 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     else if (which === "post") { setAiPost(null); try { localStorage.removeItem(`wc_ai_post_${M.id}`); } catch {} }
     setQaList([]); setQaInput("");
     try { localStorage.removeItem(`wc_ai_qa_${M.id}`); } catch {}
+    const cloudKey = which === "prematch" ? "ai" : which === "live" ? "aiLive" : "aiPost";
+    pushToCloud({ [cloudKey]: null, qaList: null });
   };
 
   const clearHistory = () => {
