@@ -3002,6 +3002,26 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     }
   }, [M.id]);
 
+  const syncFromCloud = useCallback(async () => {
+    if (!getCloudCreds()) return;
+    setSyncing(true); setSyncDone(false);
+    try {
+      const [cAi, cAiLive, cAiPost, cQa, cTrades, cCapital] = await Promise.all([
+        cloudGet(M.id, "ai"), cloudGet(M.id, "aiLive"), cloudGet(M.id, "aiPost"),
+        cloudGet(M.id, "qaList"), cloudGet(M.id, "trades"), cloudGet(M.id, "capital"),
+      ]);
+      if (cAi)     { setAiText(cAi);     try { localStorage.setItem(`wc_ai_${M.id}`,      JSON.stringify({ prematch: cAi })); }  catch {} }
+      if (cAiLive) { setAiLive(cAiLive); try { localStorage.setItem(`wc_ai_live_${M.id}`, JSON.stringify({ text: cAiLive })); } catch {} }
+      if (cAiPost) { setAiPost(cAiPost); try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text: cAiPost })); } catch {} }
+      if (cQa?.length) { setQaList(cQa); try { localStorage.setItem(`wc_ai_qa_${M.id}`, JSON.stringify(cQa)); } catch {} }
+      if (cCapital != null && !sessions[M.id]?.participating) {
+        saveSession({ capital: cCapital, participating: true, trades: cTrades || [] });
+      }
+      setSyncDone(true); setTimeout(() => setSyncDone(false), 2500);
+    } catch {}
+    setSyncing(false);
+  }, [M.id, sessions, saveSession]); // eslint-disable-line
+
   const session = sessions[M.id] || null;
   const participating = !!session?.participating;
 
@@ -3018,6 +3038,8 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   const [aiPost, setAiPost] = useState(null);
   const [aiPostLoading, setAiPostLoading] = useState(false);
   const [aiPostError, setAiPostError] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncDone, setSyncDone] = useState(false);
   const [qaList, setQaList] = useState([]);
   const [qaInput, setQaInput] = useState("");
   const [qaLoading, setQaLoading] = useState(false);
@@ -3374,6 +3396,14 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
       {/* ── Analysis tab ── */}
       {tsTab === "analysis" && (
         <div className="wc-ts-ai-section">
+          {getCloudCreds() && (
+            <div className="wc-ts-sync-bar">
+              <span className="wc-ts-sync-label">☁ 云同步</span>
+              <button className="wc-ts-sync-btn" onClick={syncFromCloud} disabled={syncing}>
+                {syncing ? "同步中…" : syncDone ? "✓ 已同步" : "从云端加载"}
+              </button>
+            </div>
+          )}
           <textarea className="wc-ts-situ-inp" rows={2}
             placeholder="最新消息（可选）"
             value={situ} onChange={e => setSitu(e.target.value)} />

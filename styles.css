@@ -4104,6 +4104,20 @@ input { font-family: inherit; }
 .wc-tsp-src { font-size: 10px; color: var(--ink-4); white-space: nowrap; }
 
 .wc-ts-ai-section { margin-bottom: 14px; }
+.wc-ts-sync-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 8px; border-radius: 6px; margin-bottom: 8px;
+  background: color-mix(in oklab, var(--accent) 6%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--accent) 15%, var(--border));
+}
+.wc-ts-sync-label { font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.wc-ts-sync-btn {
+  padding: 3px 10px; border-radius: 5px; border: 1px solid var(--accent);
+  background: transparent; font-size: 11px; font-weight: 600; color: var(--accent);
+  cursor: pointer; transition: background .12s;
+}
+.wc-ts-sync-btn:hover:not(:disabled) { background: var(--accent-soft); }
+.wc-ts-sync-btn:disabled { opacity: .6; cursor: default; }
 .wc-ts-situ-inp {
   width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--surface);
