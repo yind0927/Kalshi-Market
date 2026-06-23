@@ -2961,6 +2961,9 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
   const [aiLiveError, setAiLiveError] = useState(null);
   const [aiCollapsed, setAiCollapsed] = useState(false);
   const [aiLiveCollapsed, setAiLiveCollapsed] = useState(false);
+  const [aiPost, setAiPost] = useState(null);
+  const [aiPostLoading, setAiPostLoading] = useState(false);
+  const [aiPostError, setAiPostError] = useState(null);
   const [qaList, setQaList] = useState([]);
   const [qaInput, setQaInput] = useState("");
   const [qaLoading, setQaLoading] = useState(false);
@@ -2980,9 +2983,13 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
       setAiLive(savedLive?.text || null);
     } catch { setAiLive(null); }
     try {
+      const savedPost = JSON.parse(localStorage.getItem(`wc_ai_post_${M.id}`) || "null");
+      setAiPost(savedPost?.text || null);
+    } catch { setAiPost(null); }
+    try {
       setQaList(JSON.parse(localStorage.getItem(`wc_ai_qa_${M.id}`) || "[]"));
     } catch { setQaList([]); }
-    setAiError(null); setAiLiveError(null); setQaError(null); setQaInput(""); setSitu("");
+    setAiError(null); setAiLiveError(null); setAiPostError(null); setQaError(null); setQaInput(""); setSitu("");
   }, [M.id]);
 
   // Current Kalshi prices in cents (fall back to seed market)
@@ -3088,11 +3095,43 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
     setAiLiveLoading(false);
   };
 
+  const callPostmatch = async () => {
+    setAiPostLoading(true); setAiPostError(null);
+    const allTrades = trades; // settled after auto-settlement
+    const settledPnl = allTrades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const resultData = M.result || (live ? { homeScore: live.scoreA, awayScore: live.scoreB } : null);
+    const body = {
+      ...makeBody("postmatch", ""),
+      tradeHistory: allTrades.map(t => ({
+        outcome: t.outcome, direction: t.direction, entryPrice: t.entryPrice,
+        units: t.units, closePrice: t.closePrice, pnl: t.pnl, phase: t.phase,
+      })),
+      totalPnl: settledPnl,
+      matchResult: resultData,
+    };
+    try {
+      const r = await fetch("/api/trade-analysis", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        let msg = `请求失败 (${r.status})，请重试`;
+        try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+        setAiPostError(msg); setAiPostLoading(false); return;
+      }
+      const { text } = await streamSSE(r, (t) => setAiPost(t)).catch(e => { setAiPostError(e.message || "分析失败"); return { text: "" }; });
+      if (text) {
+        try { localStorage.setItem(`wc_ai_post_${M.id}`, JSON.stringify({ text, ts: Date.now() })); } catch {}
+      }
+    } catch (e) { setAiPostError("分析请求失败，请重试"); }
+    setAiPostLoading(false);
+  };
+
   const callQA = async () => {
     const q = qaInput.trim();
-    if (!q || (!aiText && !aiLive)) return;
+    if (!q || (!aiText && !aiLive && !aiPost)) return;
     setQaLoading(true); setQaError(null); setQaInput("");
-    const previousAnalysis = [aiText, aiLive].filter(Boolean).join("\n\n");
+    const previousAnalysis = [aiPost, aiText, aiLive].filter(Boolean).join("\n\n");
     try {
       const body = {
         matchInfo: {
@@ -3219,12 +3258,30 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
           </div>
         ) : <div className="wc-ts-empty">无交易记录</div>}
         <div className="wc-ts-ai-section">
-          <button className="wc-ts-ai-btn" onClick={() => callAI("postmatch", "")} disabled={aiLoading}>
-            {aiLoading ? "AI 分析中…" : "📋 AI 赛后复盘"}
-          </button>
-          {aiError && <div className="wc-ts-ai-err">{aiError}</div>}
-          {aiText && renderAnalysis(aiText)}
+          {/* Collapsed history: prematch + in-play analyses */}
           {aiText && (
+            <div className="wc-ts-ai-block">
+              <button className="wc-ts-ai-collapse-bar" onClick={() => setAiCollapsed(v => !v)}>
+                📋 赛前分析 <span className="wc-ts-ai-toggle">{aiCollapsed ? "▸ 展开" : "▾ 收起"}</span>
+              </button>
+              {!aiCollapsed && <div className="wc-ts-ai-body">{renderAnalysis(aiText)}</div>}
+            </div>
+          )}
+          {aiLive && (
+            <div className="wc-ts-ai-block">
+              <button className="wc-ts-ai-collapse-bar" onClick={() => setAiLiveCollapsed(v => !v)}>
+                ⚡ 赛中分析 <span className="wc-ts-ai-toggle">{aiLiveCollapsed ? "▸ 展开" : "▾ 收起"}</span>
+              </button>
+              {!aiLiveCollapsed && <div className="wc-ts-ai-body">{renderAnalysis(aiLive)}</div>}
+            </div>
+          )}
+          {/* Postmatch review */}
+          <button className="wc-ts-ai-btn" onClick={callPostmatch} disabled={aiPostLoading}>
+            {aiPostLoading ? "AI 分析中…" : "📊 AI 赛后复盘"}
+          </button>
+          {aiPostError && <div className="wc-ts-ai-err">{aiPostError}</div>}
+          {aiPost && renderAnalysis(aiPost)}
+          {aiPost && (
             <div className="wc-ts-qa">
               {qaList.map((qa, i) => (
                 <div key={i} className="wc-ts-qa-item">
@@ -3233,7 +3290,7 @@ function WCTradingSession({ M, market, kalshi, kStatus, live, scoreData, showFin
                 </div>
               ))}
               <div className="wc-ts-qa-row">
-                <input className="wc-ts-qa-inp" placeholder="继续提问…"
+                <input className="wc-ts-qa-inp" placeholder="针对复盘继续提问…"
                   value={qaInput} onChange={e => setQaInput(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && !qaLoading && callQA()}
                   disabled={qaLoading} />

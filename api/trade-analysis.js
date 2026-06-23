@@ -27,6 +27,8 @@ module.exports = async function handler(req, res) {
     followUpQuestion,
     previousAnalysis,
     matchContext,
+    tradeHistory,
+    matchResult,
   } = req.body || {};
 
   if (!matchInfo || !phase || !capital) {
@@ -271,18 +273,40 @@ ${userInput ? `\n用户最新消息：${userInput}\n` : ""}
 
   // ── Post-match ─────────────────────────────────────────────
   } else if (phase === "postmatch") {
+    const periodLabel = { prematch:"赛前", "0-25":"0–25'", "25-45":"25'–中场", ht:"中场", "45-70":"45–70'", "70+":"70'+" };
+    const allTrades = tradeHistory || [];
+    const settledPnl = allTrades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const finalScore = matchResult
+      ? `${H.cn} ${matchResult.homeScore} – ${matchResult.awayScore} ${A.cn}`
+      : null;
+
+    if (finalScore) prompt += `最终比分：**${finalScore}**\n`;
+
+    if (allTrades.length > 0) {
+      prompt += `\n## 本场实际交易记录（共${allTrades.length}笔）\n`;
+      for (const t of allTrades) {
+        const out = t.outcome === "home" ? H.cn + "胜" : t.outcome === "away" ? A.cn + "胜" : "平局";
+        const seg = periodLabel[t.phase] || t.phase || "";
+        const pnlStr = t.pnl != null ? (t.pnl >= 0 ? `+${t.pnl.toFixed(1)}` : `${t.pnl.toFixed(1)}`) : "—";
+        prompt += `- [${seg}] ${out} ${t.direction} @ ${t.entryPrice}¢ × ${t.units}单位 → 出场 ${t.closePrice != null ? t.closePrice + "¢" : "未出场"} · ${pnlStr}单位\n`;
+      }
+      prompt += `**合计：${settledPnl >= 0 ? "+" : ""}${settledPnl.toFixed(1)} 单位 / 本金 ${capital} 单位（${(settledPnl / capital * 100).toFixed(1)}%）**\n`;
+    } else {
+      prompt += `\n本场未记录任何交易。\n`;
+    }
+
     prompt += `
-**格式**：简洁子弹点，直接评价，不写背景段落。总输出约500–600字。
+**格式**：简洁子弹点，直接评价，不写背景段落。总输出约500字。
 
 ## 交易总结
-- 盈亏：X单位 · 评价：[运气/有优势决策/错误决策]
+- 盈亏：${allTrades.length > 0 ? `${settledPnl >= 0 ? "+" : ""}${settledPnl.toFixed(1)}单位` : "未参与"} · 评价：[运气/有优势决策/错误决策]
 - 纪律评分：价格纪律X/10 · 仓位控制X/10 · 时间衰减意识X/10
 
 ## 逐笔复盘
-[每笔交易一行]：标的 @ 入场价 → 出场价 · [偶发/系统/情绪仓] · 评价一句话
+[对上面每笔交易逐一评价]：[时段] 标的 @ 入场价 → 出场价 · [偶发/系统/情绪仓] · 评价一句话
 
 ## 改进
-- [3条下场直接可执行的改进点，针对本场具体失误]`;
+- [3条下场直接可执行的改进点，针对本场具体失误，无交易则给通用建议]`;
 
   // ── In-play ─────────────────────────────────────────────
   } else {
